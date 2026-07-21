@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック一覧</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+  background: #fdf8f0; color: #3c2a14;
+  padding: 40px 20px 60px;
+}
+.wrap { max-width: 900px; margin: 0 auto; }
+
+header { margin-bottom: 28px; }
+header h1 { font-size: 22px; color: #0f766e; margin-bottom: 6px; }
+header p { font-size: 13px; color: #a8937a; line-height: 1.6; }
+header p a { color: #0f766e; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+
+.card {
+  background: white; border: 1px solid #e5e0d3; border-radius: 12px;
+  padding: 18px 20px; text-decoration: none; color: inherit;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  transition: all 0.15s;
+  display: flex; flex-direction: column;
+}
+.card:hover { border-color: #0f766e; box-shadow: 0 4px 16px rgba(15,118,110,0.15); transform: translateY(-2px); }
+
+.card .badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; width: 34px; height: 34px; border-radius: 9px;
+  margin-bottom: 10px;
+}
+.card h2 { font-size: 14px; color: #1f2937; margin-bottom: 6px; }
+.card p { font-size: 12px; color: #6b7280; line-height: 1.6; flex: 1; }
+.card .tags { margin-top: 12px; display: flex; gap: 5px; flex-wrap: wrap; }
+.tag { font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 20px; color: white; }
+
+footer { margin-top: 36px; font-size: 11px; color: #a8937a; line-height: 1.8; }
+footer a { color: #0f766e; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🗺️ 地図制覇ゲーム モック集</h1>
+  <p>
+    <a href="../map_conquest_game_design.md">map_conquest_game_design.md</a> の内容を検証している、単体HTMLの動くプロトタイプ一覧です。<br>
+    各モックはブラウザで直接開くだけで動く自己完結HTML。実データ（国土数値情報・国勢調査の町丁目境界）を直接CloudFrontから取得します。<br>
+    データソース・計算式・既知の限界などの詳細は <a href="README.md">README.md</a> を参照してください。
+  </p>
+</header>
+
+<div class="grid">
+
+  <a class="card" href="attribute-map-mock.html">
+    <div class="badge" style="background:#fef3c7">🎨</div>
+    <h2>属性マップ</h2>
+    <p>町丁目ごとの火・水・地・風の4属性を、面積・人口密度・形状などの実統計データから機械的に算出して色分け表示する。</p>
+    <div class="tags">
+      <span class="tag" style="background:#eab308">地</span>
+      <span class="tag" style="background:#ef4444">火</span>
+      <span class="tag" style="background:#22c55e">風</span>
+      <span class="tag" style="background:#3b82f6">水</span>
+    </div>
+  </a>
+
+  <a class="card" href="movement-phase-mock.html">
+    <div class="badge" style="background:#ecfdf5">🎲</div>
+    <h2>移動フェーズ</h2>
+    <p>サイコロを振って隣接町丁目を辿る移動。分岐点でのルート選択UI、歩いたルートの足跡表示を検証する。</p>
+    <div class="tags"><span class="tag" style="background:#0f766e">移動</span></div>
+  </a>
+
+  <a class="card" href="battle-phase-mock.html">
+    <div class="badge" style="background:#fef2f2">⚔️</div>
+    <h2>戦闘フェーズ</h2>
+    <p>隣接ロック下で攻略可能な町丁目を選び、守備力・デッキ5枚の攻撃力・事前勝率を提示。挑戦→サイコロ補正→勝敗→占領/資金増減までの一連の流れ。</p>
+    <div class="tags"><span class="tag" style="background:#0f766e">戦闘</span><span class="tag" style="background:#7c3aed">デッキ</span></div>
+  </a>
+
+  <a class="card" href="integrated-loop-mock.html">
+    <div class="badge" style="background:#eff6ff">🔁</div>
+    <h2>統合ループ</h2>
+    <p>移動フェーズと戦闘フェーズを1本に統合。サイコロで移動→未攻略地に着地したら戦闘発生→「次のターンへ」で明示的に区切るテンポを検証する。</p>
+    <div class="tags"><span class="tag" style="background:#0f766e">移動</span><span class="tag" style="background:#0f766e">戦闘</span></div>
+  </a>
+
+  <a class="card" href="card-acquisition-mock.html">
+    <div class="badge" style="background:#f5f3ff">🎴</div>
+    <h2>カード獲得演出</h2>
+    <p>占領した瞬間のカード獲得演出（3Dカードフリップ）の単体検証。属性カードとアクセス系カード（離島/フェリー/飛行機）の獲得を確認できる。</p>
+    <div class="tags"><span class="tag" style="background:#7c3aed">カード</span></div>
+  </a>
+
+  <a class="card" href="occupation-investment-mock.html">
+    <div class="badge" style="background:#f0fdfa">🏯</div>
+    <h2>占領地の二層構造</h2>
+    <p>占領直後は基礎値のみ。ターンを進めながら「投資する/放置する」を選び、守備力ボーナスが積み上がる・減衰する様子と、属性別収入・維持費の収支を検証する。</p>
+    <div class="tags"><span class="tag" style="background:#0f766e">経済</span></div>
+  </a>
+
+  <a class="card" href="macro-structure-mock.html">
+    <div class="badge" style="background:#eef2ff">🗾</div>
+    <h2>市区町村マクロ構造</h2>
+    <p>市区町村単位での攻略・隣接ロック。占領すると、直前にいた自治体と実際に境界を接する町丁目を探して「侵入口」を動的に決定する。</p>
+    <div class="tags"><span class="tag" style="background:#4f46e5">マクロ</span></div>
+  </a>
+
+  <a class="card" href="tourism-mock.html">
+    <div class="badge" style="background:#fff7ed">🌸</div>
+    <h2>観光要素</h2>
+    <p>市区町村単位の観光地フラグと季節倍率（春夏秋冬）を占領地の収支に重ねる。観光地ONだと夏に収入が跳ね、冬は落ち込む。</p>
+    <div class="tags"><span class="tag" style="background:#0f766e">経済</span></div>
+  </a>
+
+  <a class="card" href="movement-cards-mock.html">
+    <div class="badge" style="background:#f5f3ff">🏝️</div>
+    <h2>移動手段の進化</h2>
+    <p>離島の渡し船・港町のフェリー券・空港ワープパスを所持すると、名前パターン一致の町丁目同士に特殊ルートが開通し、サイコロ移動でワープできる。</p>
+    <div class="tags"><span class="tag" style="background:#7c3aed">カード</span><span class="tag" style="background:#0f766e">移動</span></div>
+  </a>
+
+  <a class="card" href="rival-territory-mock.html">
+    <div class="badge" style="background:#faf5ff">👑</div>
+    <h2>他プレイヤーの占領地</h2>
+    <p>読み込んだ町丁目の約2割をCPUの縄張りとしてランダム割当（守備力+30%）。隣接すると通行料を払うか奪還を狙うか選べる。</p>
+    <div class="tags"><span class="tag" style="background:#9333ea">CPU</span><span class="tag" style="background:#0f766e">戦闘</span></div>
+  </a>
+
+  <a class="card" href="card-categories-mock.html">
+    <div class="badge" style="background:#fefce8">🃏</div>
+    <h2>カードカテゴリ4種</h2>
+    <p>サイコロ操作系・経済系・拠点強化系・統計連動レアの4カテゴリをミニデモで単体検証。統計連動レアは読み込んだ市区町村の実データと連動。</p>
+    <div class="tags"><span class="tag" style="background:#7c3aed">カード</span></div>
+  </a>
+
+  <a class="card" href="macro-micro-integrated-mock.html">
+    <div class="badge" style="background:#ecfeff">🧭</div>
+    <h2>マクロ⇄ミクロ統合</h2>
+    <p>市区町村マクロ構造と移動+戦闘の統合ループを接続した本命モック。侵入口から町丁目攻略→区市町村を確保→次の区市町村が解放、という往復ループの通し検証。</p>
+    <div class="tags"><span class="tag" style="background:#4f46e5">マクロ</span><span class="tag" style="background:#0f766e">統合</span></div>
+  </a>
+
+</div>
+
+<footer>
+  すべて usapo.net本体の `docs/sample/` と同じ流儀（プロキシなし・CloudFrontから直接fetch）の使い捨てプロトタイプです。<br>
+  本番想定はスマートフォンでのプレイですが、これらのモックはデスクトップ・マウス操作前提のレイアウトです。
+</footer>
+
+</div>
+</body>
+</html>

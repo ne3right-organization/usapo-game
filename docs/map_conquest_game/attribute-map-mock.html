@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - 属性マップ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 280px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel input[type=text], #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel select:focus, #panel input:focus { border-color: #0f766e; }
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover { background: #0d6660; }
+#panel button:disabled { background: #b7c4c2; cursor: not-allowed; }
+
+#advanced-toggle {
+  font-size: 10px; color: #a8937a; cursor: pointer; margin-top: 10px;
+  text-decoration: underline dotted;
+}
+#advanced-box { display: none; margin-top: 6px; }
+#advanced-box.show { display: block; }
+.preset-row { display: flex; gap: 4px; margin-top: 4px; }
+.preset-row button {
+  flex: 1; font-size: 10px; padding: 5px 4px; margin-top: 0;
+  background: #f3ede1; color: #6b5638; border: 1px solid #d9cdb8;
+}
+.preset-row button:hover { background: #e9dfc9; }
+
+#mode-row { display: flex; gap: 4px; margin: 8px 0 4px; }
+#mode-row button {
+  flex: 1; padding: 6px 4px; font-size: 11px; margin-top: 0;
+  background: #f3ede1; color: #6b5638; border: 1px solid #d9cdb8; font-weight: 500;
+}
+#mode-row button.active { background: #0f766e; color: white; border-color: #0f766e; }
+
+#status { font-size: 11px; color: #6b7280; margin-top: 8px; line-height: 1.5; min-height: 14px; }
+#status.error { color: #dc2626; }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 240px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: flex-start; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.5; margin-bottom: 6px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; margin-top: 1px; }
+.legend-item b { color: #1f2937; }
+.legend-bar-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.legend-bar-track { flex: 1; height: 6px; background: #f0ebe0; border-radius: 3px; overflow: hidden; }
+.legend-bar-fill { height: 100%; }
+.legend-bar-pct { font-size: 10px; color: #9ca3af; width: 30px; text-align: right; }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+
+.attr-tooltip { font-size: 11px; line-height: 1.5; }
+.attr-tooltip .t-name { font-weight: 700; color: #1f2937; margin-bottom: 3px; }
+.attr-tooltip .t-row { display: flex; justify-content: space-between; gap: 10px; color: #4b5563; }
+.attr-tooltip .t-score-row { display: flex; align-items: center; gap: 5px; margin-top: 1px; }
+.attr-tooltip .t-score-label { width: 46px; flex-shrink: 0; }
+.attr-tooltip .t-score-track { flex: 1; height: 5px; background: #eee; border-radius: 3px; overflow: hidden; min-width: 40px; }
+.attr-tooltip .t-score-fill { height: 100%; }
+.attr-tooltip .t-winner { font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">属性マップ（火・水・地・風の機械算出）</div>
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+
+  <label>市区町村</label>
+  <select id="city-select" disabled>
+    <option>都道府県を選んでください</option>
+  </select>
+
+  <button id="load-btn" disabled>この市区町村を読み込む</button>
+
+  <div id="mode-row">
+    <button class="active" data-mode="attr">属性表示</button>
+    <button data-mode="density">人口密度(参考)</button>
+  </div>
+
+  <div id="advanced-toggle">▸ 詳細設定（データソースURL）</div>
+  <div id="advanced-box">
+    <label>CloudFront ベースURL</label>
+    <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+  </div>
+
+  <div id="status"></div>
+</div>
+
+<div id="legend">
+  <h4 id="legend-title">土地属性（4種）</h4>
+  <div id="legend-items"></div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  属性スコアはこのモック独自の試算式（設計書「土地の個性」より・要調整）
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+
+// 4属性: 設計書「土地の個性（属性システム）」の判定条件をそのままスコア式に落とし込んだもの。
+// 複合スコア方式（4属性のスコアを算出し最も高いものを採用）。数値は仮のバランス調整値。
+// カルドセプトの4属性配色（火=赤/水=青/地=黄/風=緑）に寄せた原色ベース
+//
+// 「森・農地」「工業地帯」等の実世界ラベルは付けない方針にした。
+// 実データ由来の相対的なスコアなので、大田区の田園調布や檜原村のように
+// 具体的な土地の実態と食い違うケースがあり、断定的な説明文をつけると誤解を招くため
+// （2026-07-16の議論: 地名の実態と合わないのは正規化の限界。断言を弱めて対処する）。
+const ATTR = {
+  land:  { key: "land",  label: "地", color: "#eab308" },
+  fire:  { key: "fire",  label: "火", color: "#ef4444" },
+  wind:  { key: "wind",  label: "風", color: "#22c55e" },
+  water: { key: "water", label: "水", color: "#3b82f6" },
+};
+
+let baseUrl = document.getElementById("base-url").value;
+let currentMode = "attr"; // "attr" | "density"
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const layerGroup = L.layerGroup().addTo(map);
+
+// =====================================================================
+// UI: 都道府県セレクト
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  $prefSelect.appendChild(opt);
+});
+
+const $citySelect = document.getElementById("city-select");
+const $loadBtn = document.getElementById("load-btn");
+const $status = document.getElementById("status");
+
+function setStatus(msg, isError) {
+  $status.textContent = msg;
+  $status.className = isError ? "error" : "";
+}
+
+// =====================================================================
+// 詳細設定（データソースURL）
+// =====================================================================
+document.getElementById("advanced-toggle").addEventListener("click", (e) => {
+  const box = document.getElementById("advanced-box");
+  box.classList.toggle("show");
+  e.target.textContent = box.classList.contains("show")
+    ? "▾ 詳細設定（データソースURL）"
+    : "▸ 詳細設定（データソースURL）";
+});
+document.getElementById("base-url").addEventListener("change", (e) => {
+  baseUrl = e.target.value.replace(/\/+$/, "");
+});
+
+// =====================================================================
+// 表示モード切替
+// =====================================================================
+document.getElementById("mode-row").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-mode]");
+  if (!btn || btn.dataset.mode === currentMode) return;
+  currentMode = btn.dataset.mode;
+  document.querySelectorAll("#mode-row button").forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+  buildLegend();
+  if (lastComputed) renderLayer(lastComputed);
+});
+
+// =====================================================================
+// 市区町村リスト取得
+// =====================================================================
+$prefSelect.addEventListener("change", async () => {
+  const prefCode = $prefSelect.value;
+  $citySelect.disabled = true;
+  $citySelect.innerHTML = "<option>読み込み中...</option>";
+  $loadBtn.disabled = true;
+  setStatus("市区町村一覧を取得中...");
+
+  try {
+    const url = `${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    const seen = new Map();
+    for (const f of geojson.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) seen.set(code, name);
+    }
+    const cities = Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+
+    $citySelect.innerHTML = "";
+    cities.forEach(([code, name]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      $citySelect.appendChild(opt);
+    });
+    $citySelect.disabled = false;
+    $loadBtn.disabled = false;
+    setStatus(`${cities.length} 市区町村を取得しました`);
+  } catch (err) {
+    $citySelect.innerHTML = "<option>取得失敗</option>";
+    setStatus(
+      `市区町村一覧の取得に失敗: ${err.message}\n` +
+      `CORSエラーの場合、S3バケットのCORS AllowedOriginsにこのページのオリジンを追加する必要があります。`,
+      true
+    );
+  }
+});
+// 初期表示分をトリガー
+$prefSelect.dispatchEvent(new Event("change"));
+
+// =====================================================================
+// 町丁目データ読み込み＆属性算出
+// =====================================================================
+let lastComputed = null;
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  if (!cityCode) return;
+
+  $loadBtn.disabled = true;
+  setStatus(`${cityName} の町丁目データを取得中...`);
+  layerGroup.clearLayers();
+
+  try {
+    const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    const computed = computeAttributes(geojson);
+    if (computed.length === 0) throw new Error("町丁目データが空でした");
+
+    lastComputed = computed;
+    renderLayer(computed);
+
+    const boundsLayer = L.geoJSON({ type: "FeatureCollection", features: computed.map((c) => c.feature) });
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    setStatus(`${cityName}: ${computed.length} 町丁目を読み込みました`);
+  } catch (err) {
+    setStatus(
+      `町丁目データの取得に失敗: ${err.message}\n` +
+      `CORSエラーの場合、S3バケットのCORS AllowedOriginsにこのページのオリジンを追加する必要があります。`,
+      true
+    );
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+// =====================================================================
+// 属性スコア算出
+// =====================================================================
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function ringPerimeter(ring) {
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    sum += haversine(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+  }
+  return sum;
+}
+
+// アウターリングのみで周囲長を近似（コンパクト比の算出用）
+function featurePerimeter(feature) {
+  const geom = feature.geometry;
+  if (!geom) return 0;
+  if (geom.type === "Polygon") return ringPerimeter(geom.coordinates[0]);
+  if (geom.type === "MultiPolygon") {
+    return geom.coordinates.reduce((sum, poly) => sum + ringPerimeter(poly[0]), 0);
+  }
+  return 0;
+}
+
+// 0〜1のパーセンタイル順位に正規化（外れ値に強い min-max の代替）
+function percentileRanks(values) {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const ranks = new Array(values.length);
+  order.forEach((originalIndex, rankPos) => {
+    ranks[originalIndex] = values.length > 1 ? rankPos / (values.length - 1) : 0.5;
+  });
+  return ranks;
+}
+
+function computeAttributes(geojson) {
+  // HCODE=8154 は「主な水面」（e-Stat小地域境界データの水面ポリゴン）。
+  // 陸地ではなく町丁目としての実体を持たないため、そもそも攻略対象の土地から除外する。
+  const raw = (geojson.features || [])
+    .filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154")
+    .map((f) => {
+      const p = f.properties;
+      const area = Number(p.AREA || 0); // m^2
+      const jinko = Number(p.JINKO || 0);
+      const setai = Number(p.SETAI || 0);
+      const density = area > 0 ? jinko / (area / 1_000_000) : 0; // 人/km^2
+      const avgHousehold = setai > 0 ? jinko / setai : 0;
+      const perimeter = featurePerimeter(f);
+      const compactness = perimeter > 0 ? Math.min(1, (4 * Math.PI * area) / (perimeter * perimeter)) : 0;
+      return { feature: f, name: p.S_NAME, cityName: p.CITY_NAME || "", area, jinko, setai, density, avgHousehold, compactness };
+    });
+
+  if (raw.length === 0) return [];
+
+  const areaNorm = percentileRanks(raw.map((r) => r.area));
+  const densityNorm = percentileRanks(raw.map((r) => r.density));
+  const compactNorm = percentileRanks(raw.map((r) => r.compactness));
+  const avgHouseholdNorm = percentileRanks(raw.map((r) => r.avgHousehold));
+  const jinkoNorm = percentileRanks(raw.map((r) => r.jinko));
+
+  return raw.map((r, i) => {
+    const aN = areaNorm[i], dN = densityNorm[i], cN = compactNorm[i], hN = avgHouseholdNorm[i], jN = jinkoNorm[i];
+    const scores = {
+      // 「面積大・密度低」だけだと、空港のような人がほぼいない土地と、
+      // 田園調布のような広め区画だが実際には人が住む住宅地を区別できない。
+      // 人口の絶対量が少ないことも要求する(1-jN)ことで、後者が誤って「地」判定になるのを抑える。
+      land: aN * (1 - dN) * (1 - jN),
+      fire: aN * cN,
+      wind: (1 - aN) * dN,
+      // 「中程度の面積」からの乖離ペナルティを直線ではなく二乗にして緩め、
+      // 面積がやや大きめでも世帯当たり人数が多い(一軒家らしい)町丁目を拾いやすくする。
+      water: (1 - Math.pow(Math.abs(aN - 0.5) * 2, 2)) * hN,
+    };
+    const winner = Object.keys(scores).reduce((best, k) => (scores[k] > scores[best] ? k : best), "land");
+    return { ...r, areaNorm: aN, densityNorm: dN, compactNorm: cN, avgHouseholdNorm: hN, scores, winner };
+  });
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function densityRefColor(t) {
+  // 0(白)→1(濃い青) の簡易グラデーション（参考モード用）
+  const c = Math.max(0, Math.min(1, t));
+  const r = Math.round(247 - c * (247 - 8));
+  const g = Math.round(251 - c * (251 - 48));
+  const b = Math.round(255 - c * (255 - 107));
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderLayer(computed) {
+  layerGroup.clearLayers();
+
+  const layer = L.geoJSON(
+    computed.map((c) => c.feature),
+    {
+      style: (feature) => {
+        const c = computed.find((x) => x.feature === feature);
+        if (!c) return { fillColor: "#ccc", fillOpacity: 0.4, color: "#999", weight: 1 };
+        const fillColor = currentMode === "attr" ? ATTR[c.winner].color : densityRefColor(c.densityNorm);
+        const fillOpacity = currentMode === "attr" ? 0.8 : 0.7;
+        return { fillColor, fillOpacity, color: "rgba(0,0,0,0.35)", weight: 1 };
+      },
+      onEachFeature: (feature, lyr) => {
+        const c = computed.find((x) => x.feature === feature);
+        if (!c) return;
+        lyr.bindTooltip(buildTooltip(c), { sticky: true });
+      },
+    }
+  );
+  layerGroup.addLayer(layer);
+
+  renderStats(computed);
+}
+
+function buildTooltip(c) {
+  const scoreRows = Object.keys(ATTR)
+    .map((k) => {
+      const s = c.scores[k];
+      const pct = Math.round(s * 100);
+      const isWinner = k === c.winner;
+      return `<div class="t-score-row">
+        <span class="t-score-label" style="color:${ATTR[k].color}">${isWinner ? "●" : "○"} ${ATTR[k].label}</span>
+        <span class="t-score-track"><span class="t-score-fill" style="width:${pct}%;background:${ATTR[k].color}"></span></span>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="attr-tooltip">
+    <div class="t-name">${c.name} <span class="t-winner" style="color:${ATTR[c.winner].color}">[${ATTR[c.winner].label}]</span></div>
+    <div class="t-row"><span>面積</span><span>${(c.area / 10000).toFixed(1)} ha</span></div>
+    <div class="t-row"><span>人口</span><span>${c.jinko.toLocaleString()} 人</span></div>
+    <div class="t-row"><span>人口密度</span><span>${Math.round(c.density).toLocaleString()} 人/km²</span></div>
+    <div class="t-row"><span>世帯当たり人数</span><span>${c.avgHousehold.toFixed(2)} 人</span></div>
+    <div class="t-row"><span>コンパクト比</span><span>${c.compactness.toFixed(2)}</span></div>
+    <div style="margin-top:4px">${scoreRows}</div>
+  </div>`;
+}
+
+function renderStats(computed) {
+  buildLegend(computed);
+}
+
+// =====================================================================
+// 凡例
+// =====================================================================
+function buildLegend(computed) {
+  const $title = document.getElementById("legend-title");
+  const $items = document.getElementById("legend-items");
+
+  if (currentMode === "density") {
+    $title.textContent = "人口密度（市区町村内の相対順位）";
+    $items.innerHTML = `
+      <div class="legend-item">
+        <span class="legend-swatch" style="background:${densityRefColor(1)}"></span>
+        <span>高密度（駅前・都市部）</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-swatch" style="background:${densityRefColor(0)}"></span>
+        <span>低密度（郊外・山林）</span>
+      </div>
+      <div style="font-size:10px;color:#9ca3af;margin-top:4px">※ 読み込んだ市区町村内での相対順位（パーセンタイル）で色分け</div>
+    `;
+    return;
+  }
+
+  $title.textContent = "土地属性（4種）";
+  let html = Object.values(ATTR)
+    .map((a) => `
+      <div class="legend-item">
+        <span class="legend-swatch" style="background:${a.color}"></span>
+        <span><b>${a.label}</b>属性</span>
+      </div>
+    `)
+    .join("");
+
+  if (computed && computed.length > 0) {
+    const counts = { land: 0, fire: 0, wind: 0, water: 0 };
+    computed.forEach((c) => counts[c.winner]++);
+    const total = computed.length;
+    html += `<div style="border-top:1px solid #eee;margin-top:8px;padding-top:8px">`;
+    html += `<div style="font-size:10px;color:#9ca3af;margin-bottom:4px">この市区町村の内訳（${total}町丁目）</div>`;
+    Object.values(ATTR).forEach((a) => {
+      const pct = total > 0 ? Math.round((counts[a.key] / total) * 100) : 0;
+      html += `
+        <div class="legend-bar-row">
+          <span style="width:14px;font-size:10px;color:${a.color};font-weight:700">${a.label}</span>
+          <span class="legend-bar-track"><span class="legend-bar-fill" style="width:${pct}%;background:${a.color}"></span></span>
+          <span class="legend-bar-pct">${pct}%</span>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  $items.innerHTML = html;
+}
+
+buildLegend();
+</script>
+</body>
+</html>

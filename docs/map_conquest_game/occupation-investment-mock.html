@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - 占領地の二層構造</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 320px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover:not(:disabled) { background: #0d6660; }
+#panel button:disabled { background: #c9c2b6; cursor: not-allowed; }
+
+.stat-row { display: flex; gap: 8px; margin-top: 4px; }
+.stat-box { flex: 1; background: #f8f4ea; border-radius: 8px; padding: 8px 10px; text-align: center; }
+.stat-box .l { font-size: 10px; color: #9ca3af; }
+.stat-box .v { font-size: 17px; font-weight: 800; color: #0f766e; }
+.stat-box .v.low { color: #b91c1c; }
+.stat-box .v.income { color: #16a34a; }
+.stat-box .v.upkeep { color: #b91c1c; }
+
+#status-box {
+  margin-top: 10px; padding: 10px 12px; background: #f8f4ea; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; min-height: 20px;
+}
+#status-box b { color: #1f2937; }
+#status-box.warn { background: #fff1f2; color: #b91c1c; }
+
+#next-turn-btn { background: #b45309; }
+#next-turn-btn:hover:not(:disabled) { background: #92400e; }
+
+#territory-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.terr-item {
+  border: 1px solid #e5e0d3; border-radius: 8px; padding: 8px 10px; background: white;
+}
+.terr-item .t-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.terr-item .t-name { font-size: 12px; font-weight: 700; color: #1f2937; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attr-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 20px; color: white; flex-shrink: 0; }
+.t-bar-track { height: 8px; background: #f0ebe0; border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+.t-bar-fill { height: 100%; transition: width 0.3s; }
+.t-stats-row { display: flex; justify-content: space-between; font-size: 10px; color: #6b7280; margin-bottom: 5px; }
+.t-stats-row b { color: #1f2937; }
+.t-toggle-row { display: flex; gap: 5px; }
+.t-toggle-btn {
+  flex: 1; padding: 5px 4px; font-size: 10px; border-radius: 5px; margin-top: 0;
+  border: 1.5px solid #d9cdb8; background: #f3ede1; color: #6b5638; font-weight: 600; cursor: pointer;
+}
+.t-toggle-btn.active-invest { background: #0f766e; color: white; border-color: #0f766e; }
+.t-toggle-btn.active-decay { background: #fca5a5; color: #7f1d1d; border-color: #ef4444; }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 250px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.6; margin-bottom: 5px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+.legend-note { font-size: 10px; color: #9ca3af; margin-top: 6px; line-height: 1.6; }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">占領地の二層構造（基礎値×投資ボーナス）</div>
+
+  <label>CloudFront ベースURL</label>
+  <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+
+  <label>市区町村</label>
+  <select id="city-select" disabled>
+    <option>都道府県を選んでください</option>
+  </select>
+
+  <button id="load-btn" disabled>この市区町村を読み込む</button>
+
+  <div class="stat-row">
+    <div class="stat-box"><div class="l">維持予算</div><div class="v" id="funds-value">-</div></div>
+    <div class="stat-box"><div class="l">ターン</div><div class="v" id="turn-value">0</div></div>
+    <div class="stat-box"><div class="l">占領数</div><div class="v" id="terr-count">0</div></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="l">収入/ターン</div><div class="v income" id="income-value">-</div></div>
+    <div class="stat-box"><div class="l">維持費/ターン</div><div class="v upkeep" id="upkeep-value">-</div></div>
+    <div class="stat-box"><div class="l">収支</div><div class="v" id="net-value">-</div></div>
+  </div>
+
+  <div id="status-box">都道府県・市区町村を選んで読み込んでください</div>
+
+  <button id="next-turn-btn" disabled>▶ 次のターンへ（投資/減衰を反映）</button>
+
+  <div id="territory-list"></div>
+</div>
+
+<div id="legend">
+  <h4>占領地の二層構造</h4>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0f766e"></span>投資中（守備力が育つ）</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#fca5a5"></span>放置中（守備力が減衰）</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#d9cdb8"></span>未占領（クリックで占領デモ）</div>
+  <div class="legend-note">
+    実効守備力 = 基礎値 ×(1+投資ボーナス)。投資し続けるとボーナスが積み上がり、放置すると徐々に基礎値まで戻る。<br>
+    収入は占領地なら投資中/放置中問わず毎ターン入る（火・風は高収入高維持費、地は低収入低維持費、水は中程度安定）。<br>
+    拡張型: 広く浅く（投資せず数で稼ぐ） / 拠点型: 少数に厚く投資 / ハイブリッド型: 使い分け
+  </div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  投資/減衰の増減率・維持費はこのモック独自の暫定値（要調整）
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+
+const ATTR = {
+  land:  { key: "land",  label: "地", color: "#eab308" },
+  fire:  { key: "fire",  label: "火", color: "#ef4444" },
+  wind:  { key: "wind",  label: "風", color: "#22c55e" },
+  water: { key: "water", label: "水", color: "#3b82f6" },
+};
+const DEFENSE_COST_MULTIPLIER = { fire: 1.3, wind: 1.5, water: 1.0, land: 0.5 };
+const COLOR_UNOCCUPIED = "#d9cdb8";
+
+// 投資/減衰の暫定パラメータ
+const INVEST_STEP = 0.15;      // 投資1ターンあたりのボーナス増加(+15%)
+const DECAY_STEP = 0.08;       // 放置1ターンあたりのボーナス減少(-8%)
+const MAX_BONUS = 1.5;         // ボーナス上限(+150%)
+const UPKEEP_RATE = 0.05;      // 投資継続時の維持費(基礎守備力の5%/ターン)
+
+// 属性ごとの収入率（設計書「インフラ経済システム」の傾斜イメージを暫定係数化）。
+// 占領していれば投資中/放置中を問わず毎ターン入る。基礎守備力に対する割合として計算する。
+// 火(工業)=固定収入で高収入 / 地(農地・森林)=収入は少ない(安全資産) /
+// 風(商業・都市)=通行料が主力で高収入(ただし本モックには競合プレイヤーがいないため取りこぼしは考慮しない) / 水(住宅)=中程度で安定
+const INCOME_RATE = { fire: 0.08, wind: 0.09, water: 0.05, land: 0.03 };
+
+let baseUrl = "";
+const $baseUrlInput = document.getElementById("base-url");
+$baseUrlInput.addEventListener("input", () => { baseUrl = $baseUrlInput.value.trim(); });
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const layerGroup = L.layerGroup().addTo(map);
+
+// =====================================================================
+// UI要素
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  $prefSelect.appendChild(opt);
+});
+
+const $citySelect = document.getElementById("city-select");
+const $loadBtn = document.getElementById("load-btn");
+const $statusBox = document.getElementById("status-box");
+const $fundsValue = document.getElementById("funds-value");
+const $turnValue = document.getElementById("turn-value");
+const $terrCount = document.getElementById("terr-count");
+const $nextTurnBtn = document.getElementById("next-turn-btn");
+const $territoryList = document.getElementById("territory-list");
+
+function setStatus(html, warn) {
+  $statusBox.innerHTML = html;
+  $statusBox.classList.toggle("warn", !!warn);
+}
+
+$prefSelect.addEventListener("change", async () => {
+  const prefCode = $prefSelect.value;
+  $citySelect.disabled = true;
+  $citySelect.innerHTML = "<option>読み込み中...</option>";
+  $loadBtn.disabled = true;
+  try {
+    const url = `${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+    const seen = new Map();
+    for (const f of geojson.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) seen.set(code, name);
+    }
+    const cities = Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+    $citySelect.innerHTML = "";
+    cities.forEach(([code, name]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      $citySelect.appendChild(opt);
+    });
+    $citySelect.disabled = false;
+    $loadBtn.disabled = false;
+  } catch (err) {
+    $citySelect.innerHTML = "<option>取得失敗</option>";
+    setStatus(`<b style="color:#dc2626">市区町村一覧の取得に失敗:</b> ${err.message}`, true);
+  }
+});
+$prefSelect.dispatchEvent(new Event("change"));
+
+// =====================================================================
+// ゲーム状態
+// =====================================================================
+let features = [];
+let funds = 500;
+let turn = 0;
+let lastIncome = 0;
+let lastUpkeep = 0;
+
+renderTerritoryList();
+updateTopRow();
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  if (!cityCode) return;
+
+  $loadBtn.disabled = true;
+  setStatus(`${cityName} の町丁目データを取得中...`);
+  layerGroup.clearLayers();
+  funds = 500;
+  turn = 0;
+
+  try {
+    const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    features = computeFeatures(geojson);
+    if (features.length === 0) throw new Error("町丁目データが空でした");
+
+    renderBaseLayer();
+    const boundsLayer = L.geoJSON(features.map((f) => f.feature));
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    $nextTurnBtn.disabled = false;
+    updateTopRow();
+    renderTerritoryList();
+    setStatus(`<b>${cityName}</b>: ${features.length} 町丁目。町丁目をクリックして占領（デモ）し、「次のターンへ」で投資/放置の推移を見てみてください。`);
+  } catch (err) {
+    setStatus(`<b style="color:#dc2626">町丁目データの取得に失敗:</b> ${err.message}`, true);
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+// =====================================================================
+// 属性・守備力算出（他モックと同ロジック）
+// =====================================================================
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function ringPerimeter(ring) {
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) sum += haversine(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+  return sum;
+}
+function featurePerimeter(feature) {
+  const geom = feature.geometry;
+  if (geom.type === "Polygon") return ringPerimeter(geom.coordinates[0]);
+  if (geom.type === "MultiPolygon") return geom.coordinates.reduce((s, poly) => s + ringPerimeter(poly[0]), 0);
+  return 0;
+}
+function percentileRanks(values) {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const ranks = new Array(values.length);
+  order.forEach((originalIndex, rankPos) => { ranks[originalIndex] = values.length > 1 ? rankPos / (values.length - 1) : 0.5; });
+  return ranks;
+}
+function calcCentroid(feature) {
+  let coords = [];
+  if (feature.geometry.type === "Polygon") coords = feature.geometry.coordinates[0];
+  else if (feature.geometry.type === "MultiPolygon") {
+    let maxLen = 0;
+    feature.geometry.coordinates.forEach((poly) => { if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; } });
+  }
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+  return { lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length };
+}
+
+// HCODE=8154 は水面ポリゴン。攻略対象の陸地ではないので除外する。
+function computeFeatures(geojson) {
+  const raw = (geojson.features || [])
+    .filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154")
+    .map((f) => {
+      const p = f.properties;
+      const area = Number(p.AREA || 0);
+      const jinko = Number(p.JINKO || 0);
+      const setai = Number(p.SETAI || 0);
+      const density = area > 0 ? jinko / (area / 1_000_000) : 0;
+      const avgHousehold = setai > 0 ? jinko / setai : 0;
+      const perimeter = featurePerimeter(f);
+      const compactness = perimeter > 0 ? Math.min(1, (4 * Math.PI * area) / (perimeter * perimeter)) : 0;
+      return { feature: f, name: p.S_NAME, area, jinko, avgHousehold, density, compactness, centroid: calcCentroid(f) };
+    });
+  if (raw.length === 0) return [];
+
+  const areaNorm = percentileRanks(raw.map((r) => r.area));
+  const densityNorm = percentileRanks(raw.map((r) => r.density));
+  const compactNorm = percentileRanks(raw.map((r) => r.compactness));
+  const avgHouseholdNorm = percentileRanks(raw.map((r) => r.avgHousehold));
+  const jinkoNorm = percentileRanks(raw.map((r) => r.jinko));
+
+  return raw.map((r, i) => {
+    const aN = areaNorm[i], dN = densityNorm[i], cN = compactNorm[i], hN = avgHouseholdNorm[i], jN = jinkoNorm[i];
+    const scores = {
+      land: aN * (1 - dN) * (1 - jN),
+      fire: aN * cN,
+      wind: (1 - aN) * dN,
+      water: (1 - Math.pow(Math.abs(aN - 0.5) * 2, 2)) * hN,
+    };
+    const attr = Object.keys(scores).reduce((best, k) => (scores[k] > scores[best] ? k : best), "land");
+    const defenseBase = r.jinko * 0.6 + (r.area / 10000) * 8;
+    const baseDefense = Math.max(20, Math.round(defenseBase * DEFENSE_COST_MULTIPLIER[attr]));
+    return {
+      ...r, attr, baseDefense, layer: null,
+      occupied: false, bonus: 0, investing: false,
+    };
+  });
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function effectiveDefense(f) {
+  return Math.round(f.baseDefense * (1 + f.bonus));
+}
+
+function styleFor(i) {
+  const f = features[i];
+  if (!f.occupied) return { fillColor: COLOR_UNOCCUPIED, fillOpacity: 0.35, color: "#a8937a", weight: 1 };
+  const t = Math.min(1, f.bonus / MAX_BONUS);
+  // ボーナスが厚いほど濃いティール、薄いほど淡いティールになるグラデーション
+  const r = Math.round(190 - t * (190 - 13));
+  const g = Math.round(210 - t * (210 - 110));
+  const b = Math.round(190 - t * (190 - 102));
+  return {
+    fillColor: `rgb(${r},${g},${b})`,
+    fillOpacity: 0.8,
+    color: f.investing ? "#0d5c55" : "#ef4444",
+    weight: f.investing ? 2.5 : 1.5,
+    dashArray: f.investing ? null : "4 3",
+  };
+}
+
+function renderBaseLayer() {
+  features.forEach((f, i) => {
+    const layer = L.geoJSON(f.feature, { style: styleFor(i) }).addTo(layerGroup);
+    layer.bindTooltip(() => tooltipFor(i), { sticky: true });
+    layer.on("click", () => onTileClick(i));
+    f.layer = layer;
+  });
+}
+
+function tooltipFor(i) {
+  const f = features[i];
+  if (!f.occupied) return `${f.name}（未占領）`;
+  return `${f.name}｜基礎${f.baseDefense} ×(1+${Math.round(f.bonus * 100)}%) = 実効${effectiveDefense(f)}`;
+}
+
+function refreshStyle(i) {
+  features[i].layer.setStyle(styleFor(i));
+  features[i].layer.setTooltipContent(tooltipFor(i));
+}
+
+function onTileClick(i) {
+  const f = features[i];
+  if (f.occupied) return;
+  f.occupied = true;
+  f.bonus = 0;
+  f.investing = false;
+  refreshStyle(i);
+  updateTopRow();
+  renderTerritoryList();
+  setStatus(`${f.name} を占領（デモ）。まだ基礎値のみの薄い占領状態です。`);
+}
+
+// =====================================================================
+// 占領地リスト
+// =====================================================================
+function renderTerritoryList() {
+  const owned = features.map((f, i) => ({ f, i })).filter((x) => x.f.occupied);
+  if (owned.length === 0) {
+    $territoryList.innerHTML = `<div style="font-size:11px;color:#9ca3af;padding:6px 2px">まだ占領地がありません。地図上の町丁目をクリックしてください。</div>`;
+    return;
+  }
+  $territoryList.innerHTML = "";
+  owned.forEach(({ f, i }) => {
+    const eff = effectiveDefense(f);
+    const pct = Math.round((f.bonus / MAX_BONUS) * 100);
+    const el = document.createElement("div");
+    el.className = "terr-item";
+    el.innerHTML = `
+      <div class="t-head">
+        <span class="attr-badge" style="background:${ATTR[f.attr].color}">${ATTR[f.attr].label}</span>
+        <span class="t-name">${f.name}</span>
+      </div>
+      <div class="t-bar-track"><div class="t-bar-fill" style="width:${pct}%;background:${f.investing ? "#0f766e" : "#ef4444"}"></div></div>
+      <div class="t-stats-row">
+        <span>基礎 <b>${f.baseDefense}</b></span>
+        <span>ボーナス <b>+${Math.round(f.bonus * 100)}%</b></span>
+        <span>実効 <b>${eff}</b></span>
+      </div>
+      <div class="t-toggle-row">
+        <button class="t-toggle-btn ${f.investing ? "active-invest" : ""}" data-action="invest" data-i="${i}">投資する(維持費${Math.round(f.baseDefense * UPKEEP_RATE)}/turn)</button>
+        <button class="t-toggle-btn ${!f.investing ? "active-decay" : ""}" data-action="hold" data-i="${i}">放置する</button>
+      </div>
+    `;
+    $territoryList.appendChild(el);
+  });
+
+  $territoryList.querySelectorAll(".t-toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.i);
+      features[idx].investing = btn.dataset.action === "invest";
+      renderTerritoryList();
+    });
+  });
+}
+
+// =====================================================================
+// ターン進行
+// =====================================================================
+$nextTurnBtn.addEventListener("click", () => {
+  const owned = features.filter((f) => f.occupied);
+  if (owned.length === 0) { turn++; updateTopRow(); return; }
+
+  // 収入は占領していれば投資中/放置中問わず毎ターン入る
+  const totalIncome = owned.reduce((s, f) => s + Math.round(f.baseDefense * INCOME_RATE[f.attr]), 0);
+  const investing = owned.filter((f) => f.investing);
+  const totalUpkeep = investing.reduce((s, f) => s + Math.round(f.baseDefense * UPKEEP_RATE), 0);
+
+  turn++;
+  funds += totalIncome;
+
+  if (totalUpkeep > funds) {
+    // 資金不足: このターンは全て投資扱いにできず、投資中の町丁目も減衰扱いになる
+    owned.forEach((f) => { f.bonus = Math.max(0, f.bonus - DECAY_STEP); });
+    setStatus(`ターン${turn}: 収入${totalIncome}が入ったが、維持費(${totalUpkeep})の方が大きく支払えなかったため、投資中だった町丁目も含めて全て減衰しました。`, true);
+  } else {
+    funds -= totalUpkeep;
+    owned.forEach((f) => {
+      if (f.investing) f.bonus = Math.min(MAX_BONUS, f.bonus + INVEST_STEP);
+      else f.bonus = Math.max(0, f.bonus - DECAY_STEP);
+    });
+    setStatus(`ターン${turn}: 収入${totalIncome} − 維持費${totalUpkeep}（投資中 ${investing.length}箇所）= 収支${totalIncome - totalUpkeep >= 0 ? "+" : ""}${totalIncome - totalUpkeep}`);
+  }
+
+  lastIncome = totalIncome;
+  lastUpkeep = totalUpkeep;
+  features.forEach((f, i) => { if (f.occupied) refreshStyle(i); });
+  updateTopRow();
+  renderTerritoryList();
+});
+
+function updateTopRow() {
+  $fundsValue.textContent = funds.toLocaleString();
+  $fundsValue.classList.toggle("low", funds < 100);
+  document.getElementById("income-value").textContent = `+${lastIncome.toLocaleString()}`;
+  document.getElementById("upkeep-value").textContent = `-${lastUpkeep.toLocaleString()}`;
+  const net = lastIncome - lastUpkeep;
+  const $net = document.getElementById("net-value");
+  $net.textContent = `${net >= 0 ? "+" : ""}${net.toLocaleString()}`;
+  $net.style.color = net >= 0 ? "#16a34a" : "#b91c1c";
+  $turnValue.textContent = turn;
+  $terrCount.textContent = features.filter((f) => f.occupied).length;
+}
+</script>
+</body>
+</html>

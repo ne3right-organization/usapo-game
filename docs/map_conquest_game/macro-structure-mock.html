@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - 市区町村マクロ構造・動的侵入口</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 320px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover:not(:disabled) { background: #0d6660; }
+#panel button:disabled { background: #c9c2b6; cursor: not-allowed; }
+#panel button.secondary { background: #f3ede1; color: #6b5638; border: 1px solid #d9cdb8; }
+#panel button.secondary:hover:not(:disabled) { background: #e9dfc9; }
+
+.hint { font-size: 10px; color: #9ca3af; margin-top: 4px; line-height: 1.5; }
+
+#progress-wrap { margin-top: 8px; display: none; }
+#progress-wrap.show { display: block; }
+#progress-track { height: 8px; background: #f0ebe0; border-radius: 4px; overflow: hidden; }
+#progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg,#0f766e,#14b8a6); transition: width 0.2s; }
+#progress-label { font-size: 10px; color: #9ca3af; margin-top: 3px; }
+
+#status-box {
+  margin-top: 10px; padding: 10px 12px; background: #f8f4ea; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; min-height: 20px;
+}
+#status-box b { color: #1f2937; }
+#status-box.warn { background: #fff1f2; color: #b91c1c; }
+
+#entry-box {
+  display: none; margin-top: 10px; padding: 10px 12px; background: #eff6ff; border: 1.5px solid #93c5fd;
+  border-radius: 8px; font-size: 12px; color: #1e3a8a; line-height: 1.6;
+}
+#entry-box.show { display: block; }
+#entry-box b { color: #1e3a8a; }
+
+#source-choice { margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
+#source-choice.show { display: flex; }
+#source-choice .choice-label { font-size: 11px; color: #b45309; font-weight: 700; }
+.choice-btn {
+  width: 100%; text-align: left; padding: 7px 10px; font-size: 12px;
+  border-radius: 6px; border: 1.5px solid #f59e0b; background: #fffbeb; color: #92400e;
+  cursor: pointer; font-weight: 600; margin-top: 0;
+}
+.choice-btn:hover { background: #fef3c7; }
+
+#order-list {
+  margin-top: 10px; font-size: 11px; color: #6b7280; line-height: 1.9;
+  max-height: 160px; overflow-y: auto; background: #f8f4ea; border-radius: 8px; padding: 8px 10px;
+}
+#order-list .o-row { display: flex; justify-content: space-between; gap: 6px; }
+#order-list .o-num { color: #0f766e; font-weight: 700; width: 18px; flex-shrink: 0; }
+#order-list .o-name { flex: 1; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#order-list .o-entry { color: #9ca3af; font-size: 10px; }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 250px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.6; margin-bottom: 5px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+.legend-note { font-size: 10px; color: #9ca3af; margin-top: 6px; line-height: 1.6; }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+
+.entry-pin { font-size: 24px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">市区町村マクロ構造・動的侵入口</div>
+
+  <label>CloudFront ベースURL</label>
+  <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+  <div class="hint">devデータの都合上、町丁目まで完全に揃っているのは東京都(13)のみ。他県は市区町村単位の隣接までしか正しく動きません。</div>
+
+  <button id="load-btn" disabled>この都道府県を読み込む</button>
+
+  <div id="progress-wrap">
+    <div id="progress-track"><div id="progress-fill"></div></div>
+    <div id="progress-label"></div>
+  </div>
+
+  <div id="status-box">都道府県を選んで読み込んでください</div>
+
+  <div id="source-choice">
+    <div class="choice-label">▸ どちらの区市町村から侵攻しますか？</div>
+    <div id="source-choice-list"></div>
+  </div>
+
+  <div id="entry-box"></div>
+
+  <div id="order-list"></div>
+</div>
+
+<div id="legend">
+  <h4>凡例</h4>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0f766e"></span>占領済み</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#fecaca"></span>攻略可（守備力：低）</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#7f1d1d"></span>攻略可（守備力：高）</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#d9cdb8"></span>未到達（隣接ロック中）</div>
+  <div class="legend-note">
+    市区町村の守備力は町丁目データを集計した人口・面積から算出（人口密度が高いほど強い＝地方→都心の難易度カーブ）。<br>
+    隣接する市区町村を占領すると、直前にいた区市町村と実際に境界を接する町丁目が「侵入口」として動的に決まる。
+  </div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  市区町村の守備力・隣接判定はこのモック独自の暫定式（要調整）
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+const COLOR_OCCUPIED = "#0f766e";
+const COLOR_LOCKED = "#d9cdb8";
+
+let baseUrl = "";
+const $baseUrlInput = document.getElementById("base-url");
+$baseUrlInput.addEventListener("input", () => { baseUrl = $baseUrlInput.value.trim(); });
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const cityLayerGroup = L.layerGroup().addTo(map);
+let entryMarker = null;
+
+// =====================================================================
+// UI要素
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  if (code === "13") opt.selected = true;
+  $prefSelect.appendChild(opt);
+});
+
+const $loadBtn = document.getElementById("load-btn");
+const $statusBox = document.getElementById("status-box");
+const $progressWrap = document.getElementById("progress-wrap");
+const $progressFill = document.getElementById("progress-fill");
+const $progressLabel = document.getElementById("progress-label");
+const $sourceChoice = document.getElementById("source-choice");
+const $sourceChoiceList = document.getElementById("source-choice-list");
+const $entryBox = document.getElementById("entry-box");
+const $orderList = document.getElementById("order-list");
+
+$loadBtn.disabled = false;
+
+function setStatus(html, warn) {
+  $statusBox.innerHTML = html;
+  $statusBox.classList.toggle("warn", !!warn);
+}
+
+// =====================================================================
+// ジオメトリユーティリティ（他モックと同ロジック）
+// =====================================================================
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function allVerts(feature) {
+  const out = [];
+  const push = (ring) => ring.forEach((c) => out.push(c));
+  if (feature.geometry.type === "Polygon") feature.geometry.coordinates.forEach(push);
+  else if (feature.geometry.type === "MultiPolygon") feature.geometry.coordinates.forEach((poly) => poly.forEach(push));
+  return out;
+}
+function bboxOf(coords) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  coords.forEach(([x, y]) => { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; });
+  return { minX, minY, maxX, maxY };
+}
+function metersBetween(lng1, lat1, lng2, lat2, cosLat) {
+  const dx = (lng2 - lng1) * 111320 * cosLat;
+  const dy = (lat2 - lat1) * 110540;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+function calcCentroid(feature) {
+  let coords = [];
+  if (feature.geometry.type === "Polygon") coords = feature.geometry.coordinates[0];
+  else if (feature.geometry.type === "MultiPolygon") {
+    let maxLen = 0;
+    feature.geometry.coordinates.forEach((poly) => { if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; } });
+  }
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+  return { lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length };
+}
+const ADJ_PAD_DEG = 0.002;   // 市区町村・町丁目境界は長いので候補絞り込みの余白を広めに取る
+const ADJ_THRESHOLD_M = 60;
+
+// =====================================================================
+// ゲーム状態
+// =====================================================================
+let cities = [];        // { cityCode, cityName, feature, centroid, layer, neighbors:Set<i>,
+                         //   townDistricts: [{feature,name,centroid}], totalJinko, totalArea, defense,
+                         //   occupied, order, entryName }
+let conquestOrder = 0;
+let pendingTargetIndex = null;
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const prefName = $prefSelect.options[$prefSelect.selectedIndex]?.textContent || "";
+  $loadBtn.disabled = true;
+  cityLayerGroup.clearLayers();
+  if (entryMarker) { map.removeLayer(entryMarker); entryMarker = null; }
+  $sourceChoice.classList.remove("show");
+  $entryBox.classList.remove("show");
+  $orderList.innerHTML = "";
+  conquestOrder = 0;
+
+  try {
+    setStatus("市区町村の境界を取得中...");
+    const muniRes = await fetch(`${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`);
+    if (!muniRes.ok) throw new Error(`市区町村境界の取得に失敗: HTTP ${muniRes.status}`);
+    const muniGeo = await muniRes.json();
+
+    const seen = new Map();
+    for (const f of muniGeo.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) {
+        seen.set(code, { cityCode: code, cityName: name, feature: f, centroid: calcCentroid(f) });
+      }
+    }
+    cities = Array.from(seen.values());
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+
+    setStatus(`${cities.length} 市区町村の隣接関係を計算中...`);
+    buildCityAdjacency();
+
+    // 町丁目データを並行取得して人口・面積を集計（守備力の算出用、かつ後で侵入口計算に再利用）
+    $progressWrap.classList.add("show");
+    let loaded = 0, failed = 0;
+    const concurrency = 6;
+    const tasks = cities.map((city) => async () => {
+      try {
+        const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${city.cityCode}.geojson`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const g = await res.json();
+          const feats = (g.features || []).filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154");
+          city.townDistricts = feats.map((f) => ({ feature: f, name: f.properties.S_NAME, centroid: calcCentroid(f) }));
+          city.totalJinko = feats.reduce((s, f) => s + Number(f.properties.JINKO || 0), 0);
+          city.totalArea = feats.reduce((s, f) => s + Number(f.properties.AREA || 0), 0);
+        } else {
+          city.townDistricts = []; city.totalJinko = 0; city.totalArea = 0;
+        }
+      } catch {
+        city.townDistricts = []; city.totalJinko = 0; city.totalArea = 0;
+        failed++;
+      }
+      loaded++;
+      const pct = Math.round((loaded / cities.length) * 100);
+      $progressFill.style.width = `${pct}%`;
+      $progressLabel.textContent = `${loaded}/${cities.length} 市区町村（${pct}%）`;
+    });
+    await parallelLimit(tasks, concurrency);
+    $progressWrap.classList.remove("show");
+
+    // 守備力算出: 人口密度が高いほど強い（地方→都心の難易度カーブ）
+    cities.forEach((city) => {
+      const base = (city.totalJinko || 0) * 0.6 + ((city.totalArea || 0) / 10000) * 8;
+      city.defense = Math.max(20, Math.round(base));
+      city.occupied = false;
+      city.order = null;
+      city.entryName = null;
+    });
+
+    pickStartCity();
+    renderCityLayer();
+    const boundsLayer = L.geoJSON(cities.map((c) => c.feature));
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    updateOrderList();
+    setStatus(
+      `<b>${prefName}</b>: ${cities.length} 市区町村を読み込みました（取得失敗 ${failed} 件）。` +
+      `占領済み(<b>${cities[cities.findIndex((c) => c.occupied)].cityName}</b>)に隣接する市区町村をクリックしてください。`
+    );
+  } catch (err) {
+    $progressWrap.classList.remove("show");
+    setStatus(`<b style="color:#dc2626">読み込みに失敗:</b> ${err.message}`, true);
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+async function parallelLimit(tasks, limit) {
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length) {
+      const i = idx++;
+      await tasks[i]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
+}
+
+// =====================================================================
+// 市区町村レベルの隣接判定
+// =====================================================================
+function buildCityAdjacency() {
+  const verts = cities.map((c) => allVerts(c.feature));
+  const boxes = verts.map(bboxOf);
+  const n = cities.length;
+  cities.forEach((c) => { c.neighbors = new Set(); });
+
+  for (let i = 0; i < n; i++) {
+    const bi = boxes[i];
+    const cosLat = Math.cos((cities[i].centroid.lat * Math.PI) / 180);
+    for (let j = i + 1; j < n; j++) {
+      const bj = boxes[j];
+      const overlap =
+        bi.minX - ADJ_PAD_DEG <= bj.maxX && bi.maxX + ADJ_PAD_DEG >= bj.minX &&
+        bi.minY - ADJ_PAD_DEG <= bj.maxY && bi.maxY + ADJ_PAD_DEG >= bj.minY;
+      if (!overlap) continue;
+      let close = false;
+      outer: for (const [x1, y1] of verts[i]) {
+        for (const [x2, y2] of verts[j]) {
+          if (metersBetween(x1, y1, x2, y2, cosLat) < ADJ_THRESHOLD_M) { close = true; break outer; }
+        }
+      }
+      if (close) { cities[i].neighbors.add(j); cities[j].neighbors.add(i); }
+    }
+  }
+}
+
+// 陸続きの隣接が無い離島（利島村など）は、単純に守備力最弱というだけで開始拠点に選ぶと
+// そこから一歩も進めず詰んでしまう。連結成分（陸続きで辿れる範囲）が最大のグループの中から、
+// 守備力最弱の市区町村を開始拠点に選ぶ。
+function largestConnectedComponent() {
+  const n = cities.length;
+  const visited = new Array(n).fill(false);
+  let bestComponent = [];
+  for (let start = 0; start < n; start++) {
+    if (visited[start]) continue;
+    const queue = [start];
+    visited[start] = true;
+    const component = [];
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      component.push(cur);
+      for (const next of cities[cur].neighbors) {
+        if (!visited[next]) { visited[next] = true; queue.push(next); }
+      }
+    }
+    if (component.length > bestComponent.length) bestComponent = component;
+  }
+  return bestComponent;
+}
+
+function pickStartCity() {
+  const component = largestConnectedComponent();
+  const candidates = component.length > 0 ? component : cities.map((_, i) => i);
+  let best = candidates[0];
+  candidates.forEach((i) => { if (cities[i].defense < cities[best].defense) best = i; });
+  cities[best].occupied = true;
+  conquestOrder = 1;
+  cities[best].order = conquestOrder;
+}
+
+function isUnlocked(i) {
+  if (cities[i].occupied) return false;
+  for (const n of cities[i].neighbors) if (cities[n].occupied) return true;
+  return false;
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function defenseHeatColor(city) {
+  const defenses = cities.map((c) => c.defense);
+  const max = Math.max(...defenses, 1);
+  const t = Math.min(1, city.defense / max);
+  // 低守備力=薄い赤、高守備力=濃い暗赤
+  const r = Math.round(254 - t * (254 - 127));
+  const g = Math.round(202 - t * (202 - 29));
+  const b = Math.round(202 - t * (202 - 29));
+  return `rgb(${r},${g},${b})`;
+}
+
+function styleFor(i) {
+  const c = cities[i];
+  if (c.occupied) return { fillColor: COLOR_OCCUPIED, fillOpacity: 0.75, color: "#0d5c55", weight: 2 };
+  if (isUnlocked(i)) return { fillColor: defenseHeatColor(c), fillOpacity: 0.7, color: "rgba(0,0,0,0.35)", weight: 1.3 };
+  return { fillColor: COLOR_LOCKED, fillOpacity: 0.35, color: "#a8937a", weight: 0.7 };
+}
+
+function tooltipFor(i) {
+  const c = cities[i];
+  if (c.occupied) return `${c.cityName}（占領済み #${c.order}）${c.entryName ? "・侵入口:" + c.entryName : ""}`;
+  if (isUnlocked(i)) return `${c.cityName}（攻略可・守備力${c.defense.toLocaleString()}）`;
+  return `${c.cityName}（未到達）`;
+}
+
+function renderCityLayer() {
+  cities.forEach((c, i) => {
+    const layer = L.geoJSON(c.feature, { style: styleFor(i) }).addTo(cityLayerGroup);
+    layer.bindTooltip(() => tooltipFor(i), { sticky: true });
+    layer.on("click", () => onCityClick(i));
+    c.layer = layer;
+  });
+}
+
+function refreshStyle(i) {
+  cities[i].layer.setStyle(styleFor(i));
+  cities[i].layer.setTooltipContent(tooltipFor(i));
+}
+
+// =====================================================================
+// 占領クリック → 侵入元の選択 → 侵入口の動的決定
+// =====================================================================
+function onCityClick(i) {
+  if (cities[i].occupied || !isUnlocked(i)) return;
+
+  const occupiedNeighbors = Array.from(cities[i].neighbors).filter((n) => cities[n].occupied);
+  if (occupiedNeighbors.length === 1) {
+    conquerCity(i, occupiedNeighbors[0]);
+    return;
+  }
+  // 複数の占領済み隣接自治体から侵攻できる場合、どちらから来たか選ばせる
+  pendingTargetIndex = i;
+  $sourceChoice.classList.add("show");
+  $sourceChoiceList.innerHTML = "";
+  occupiedNeighbors.forEach((srcIdx) => {
+    const btn = document.createElement("button");
+    btn.className = "choice-btn";
+    btn.textContent = `${cities[srcIdx].cityName} から侵攻する`;
+    btn.addEventListener("click", () => {
+      $sourceChoice.classList.remove("show");
+      conquerCity(pendingTargetIndex, srcIdx);
+    });
+    $sourceChoiceList.appendChild(btn);
+  });
+  setStatus(`<b>${cities[i].cityName}</b> には複数の占領済み隣接自治体があります。侵攻元を選んでください。`);
+}
+
+// 2つの市区町村の町丁目セット間で、実際に境界を接する（頂点が最も近い）ペアを探す
+function findClosestTownDistrictPair(fromCity, toCity) {
+  const a = fromCity.townDistricts, b = toCity.townDistricts;
+  if (!a || !b || a.length === 0 || b.length === 0) return null;
+
+  const vertsA = a.map((t) => allVerts(t.feature));
+  const vertsB = b.map((t) => allVerts(t.feature));
+  const boxesA = vertsA.map(bboxOf);
+  const boxesB = vertsB.map(bboxOf);
+
+  let best = null, bestDist = Infinity;
+  for (let i = 0; i < a.length; i++) {
+    const bi = boxesA[i];
+    const cosLat = Math.cos((a[i].centroid.lat * Math.PI) / 180);
+    for (let j = 0; j < b.length; j++) {
+      const bj = boxesB[j];
+      const overlap =
+        bi.minX - ADJ_PAD_DEG <= bj.maxX && bi.maxX + ADJ_PAD_DEG >= bj.minX &&
+        bi.minY - ADJ_PAD_DEG <= bj.maxY && bi.maxY + ADJ_PAD_DEG >= bj.minY;
+      if (!overlap) continue;
+      for (const [x1, y1] of vertsA[i]) {
+        for (const [x2, y2] of vertsB[j]) {
+          const d = metersBetween(x1, y1, x2, y2, cosLat);
+          if (d < bestDist) { bestDist = d; best = { fromTown: a[i], toTown: b[j] }; }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function conquerCity(targetIdx, fromIdx) {
+  const target = cities[targetIdx];
+  const from = cities[fromIdx];
+
+  conquestOrder++;
+  target.occupied = true;
+  target.order = conquestOrder;
+
+  const pair = findClosestTownDistrictPair(from, target);
+  if (pair) {
+    target.entryName = pair.toTown.name;
+    showEntryPoint(from, target, pair);
+  } else {
+    target.entryName = "（町丁目データなし・侵入口を特定できず）";
+    setStatus(`<b>${target.cityName}</b> を占領しましたが、町丁目データが無いため侵入口は特定できませんでした。`, true);
+  }
+
+  refreshStyle(targetIdx);
+  cities.forEach((c, i) => { if (!c.occupied && isUnlocked(i)) refreshStyle(i); });
+  updateOrderList();
+}
+
+function showEntryPoint(fromCity, toCity, pair) {
+  if (entryMarker) map.removeLayer(entryMarker);
+  const c = pair.toTown.centroid;
+  entryMarker = L.marker([c.lat, c.lng], {
+    icon: L.divIcon({ html: '<div class="entry-pin">📍</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 26] }),
+    zIndexOffset: 1000,
+  }).addTo(map);
+  map.panTo([c.lat, c.lng]);
+
+  $entryBox.classList.add("show");
+  $entryBox.innerHTML = `
+    <b>${fromCity.cityName}</b> の <b>${pair.fromTown.name}</b> から国境を越え、
+    <b>${toCity.cityName}</b> に侵入。<br>
+    実際に境界を接する町丁目 <b>${pair.toTown.name}</b> が、動的に侵入口として決定されました。
+  `;
+  setStatus(`<b>${toCity.cityName}</b> を占領。侵入口: <b>${pair.toTown.name}</b>`);
+}
+
+// =====================================================================
+// 占領順リスト
+// =====================================================================
+function updateOrderList() {
+  const owned = cities.filter((c) => c.occupied).sort((a, b) => a.order - b.order);
+  $orderList.innerHTML = "";
+  owned.forEach((c) => {
+    const row = document.createElement("div");
+    row.className = "o-row";
+    row.innerHTML = `
+      <span class="o-num">#${c.order}</span>
+      <span class="o-name">${c.cityName}</span>
+      <span class="o-entry">${c.entryName ? "→" + c.entryName : "(開始拠点)"}</span>
+    `;
+    $orderList.appendChild(row);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - カード獲得演出</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 300px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover:not(:disabled) { background: #0d6660; }
+#panel button:disabled { background: #c9c2b6; cursor: not-allowed; }
+
+#status-box {
+  margin-top: 10px; padding: 10px 12px; background: #f8f4ea; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; min-height: 20px;
+}
+#status-box b { color: #1f2937; }
+
+.section-title {
+  font-size: 11px; color: #6b7280; margin-top: 14px; margin-bottom: 6px;
+  display: flex; justify-content: space-between;
+}
+.section-title b { color: #1f2937; }
+
+#attr-card-grid, #access-card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.mini-card {
+  border: 1.5px solid #e5e0d3; border-radius: 8px; padding: 7px 8px; background: white;
+  transition: all 0.2s;
+}
+.mini-card.locked { background: #f3f4f6; opacity: 0.5; }
+.mini-card.locked .cname { color: #9ca3af; }
+.mini-card.owned { border-color: #0f766e; background: #f0fdf4; }
+.mini-card .cname { font-size: 11px; font-weight: 700; color: #1f2937; }
+.mini-card .cmeta { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; font-size: 10px; color: #6b7280; }
+.card-attr-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.mini-card.just-unlocked { animation: pop 0.5s ease; }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(250,204,21,0.35); } 100% { transform: scale(1); } }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 240px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.6; margin-bottom: 5px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+.legend-note { font-size: 10px; color: #9ca3af; margin-top: 6px; line-height: 1.5; }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+
+/* ===== カード獲得演出 ===== */
+#reveal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 2000;
+  background: rgba(15,23,42,0.78); align-items: center; justify-content: center; flex-direction: column;
+}
+#reveal-overlay.show { display: flex; }
+#reveal-title { color: white; font-size: 15px; margin-bottom: 20px; letter-spacing: 0.05em; }
+#reveal-cards { display: flex; gap: 20px; perspective: 1000px; }
+
+.reveal-card {
+  width: 150px; height: 210px; position: relative; transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.4,0.2,0.2,1);
+  cursor: pointer;
+}
+.reveal-card.flipped { transform: rotateY(180deg); }
+.reveal-face {
+  position: absolute; inset: 0; backface-visibility: hidden; border-radius: 14px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+.reveal-back {
+  background: linear-gradient(135deg,#1f2937,#374151);
+  border: 2px solid #4b5563;
+}
+.reveal-back .mark { font-size: 40px; color: #6b7280; }
+.reveal-front {
+  transform: rotateY(180deg);
+  background: white; border: 3px solid; padding: 14px 10px; text-align: center;
+}
+.reveal-front .attr-icon { font-size: 30px; margin-bottom: 8px; }
+.reveal-front .rname { font-size: 13px; font-weight: 800; color: #1f2937; margin-bottom: 6px; line-height: 1.3; }
+.reveal-front .rkind { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; color: white; margin-bottom: 8px; }
+.reveal-front .rdesc { font-size: 10px; color: #6b7280; line-height: 1.5; }
+.reveal-front .rpower { font-size: 16px; font-weight: 800; margin-top: 6px; }
+.new-badge {
+  position: absolute; top: -10px; right: -10px; background: #facc15; color: #78350f;
+  font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3); opacity: 0; transform: scale(0.5);
+  transition: all 0.3s 0.5s;
+}
+.reveal-card.flipped .new-badge { opacity: 1; transform: scale(1); }
+
+#reveal-close {
+  margin-top: 26px; background: #0f766e; color: white; border: none;
+  padding: 10px 32px; border-radius: 10px; font-weight: 700; cursor: pointer;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s;
+}
+#reveal-close.show { opacity: 1; pointer-events: auto; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%) translateY(20px);
+  background: #1f2937; color: white; padding: 10px 18px; border-radius: 10px;
+  font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.3); z-index: 2100;
+  opacity: 0; transition: all 0.3s; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">カード獲得演出（占領→カード獲得のみ検証）</div>
+
+  <label>CloudFront ベースURL</label>
+  <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+
+  <label>市区町村</label>
+  <select id="city-select" disabled>
+    <option>都道府県を選んでください</option>
+  </select>
+
+  <button id="load-btn" disabled>この市区町村を読み込む</button>
+
+  <div id="status-box">都道府県・市区町村を選んで読み込んでください</div>
+
+  <div class="section-title"><span>属性カード</span><b id="attr-owned-count">0/12</b></div>
+  <div id="attr-card-grid"></div>
+
+  <div class="section-title"><span>アクセス系カード</span><b id="access-owned-count">0/3</b></div>
+  <div id="access-card-grid"></div>
+</div>
+
+<div id="legend">
+  <h4>凡例</h4>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0f766e"></span>占領済み（クリックで再演出テスト可）</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>地　<span class="legend-swatch" style="background:#ef4444"></span>火　<span class="legend-swatch" style="background:#22c55e"></span>風　<span class="legend-swatch" style="background:#3b82f6"></span>水</div>
+  <div class="legend-note">町丁目をクリックすると即座に「占領（デモ）」扱いになり、対応するカードの獲得演出が出ます。戦闘判定は行いません。名前に「空港」「島」「港」を含む町丁目はアクセス系カードも同時に出ます（このモックのみの簡易判定）。</div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  カード獲得トリガーはこのモック独自の暫定ルール（要調整）
+</div>
+
+<div id="reveal-overlay">
+  <div id="reveal-title">🎴 カード獲得！</div>
+  <div id="reveal-cards"></div>
+  <button id="reveal-close">閉じる</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+
+const ATTR = {
+  land:  { key: "land",  label: "地", color: "#eab308", icon: "🌾" },
+  fire:  { key: "fire",  label: "火", color: "#ef4444", icon: "🔥" },
+  wind:  { key: "wind",  label: "風", color: "#22c55e", icon: "🌪️" },
+  water: { key: "water", label: "水", color: "#3b82f6", icon: "💧" },
+};
+const COLOR_OCCUPIED = "#0f766e";
+
+// 属性カード（各属性2種、攻略で順番に解放される）
+const ATTACK_CARD_POOL = [
+  { id: "c1",  name: "火炎の一撃",   attr: "fire",  power: 180 },
+  { id: "c2",  name: "噴煙の砲台",   attr: "fire",  power: 140 },
+  { id: "c3",  name: "奔流の刃",     attr: "water", power: 170 },
+  { id: "c4",  name: "水脈の守り手", attr: "water", power: 130 },
+  { id: "c5",  name: "大地の重槌",   attr: "land",  power: 160 },
+  { id: "c6",  name: "古木の番人",   attr: "land",  power: 120 },
+  { id: "c7",  name: "疾風の一閃",   attr: "wind",  power: 175 },
+  { id: "c8",  name: "旋風の斥候",   attr: "wind",  power: 110 },
+];
+const NEUTRAL_CARDS = [
+  { id: "c9",  name: "旅の杖",       attr: "neutral", power: 90  },
+  { id: "c10", name: "伊能の羅針盤", attr: "neutral", power: 100 },
+  { id: "c11", name: "商人の資金術", attr: "neutral", power: 80  },
+  { id: "c12", name: "測量隊の号令", attr: "neutral", power: 95  },
+];
+const ALL_ATTACK_CARDS = [...ATTACK_CARD_POOL, ...NEUTRAL_CARDS];
+const NEUTRAL_DOT = "#9ca3af";
+
+// アクセス系カード（設計書「カードシステム」1.アクセス系）
+const ACCESS_CARD_POOL = [
+  { id: "a1", name: "離島の渡し船", kind: "island", icon: "🏝️", desc: "対岸・離島への航路が開通する", trigger: /島/ },
+  { id: "a2", name: "港町のフェリー券", kind: "ferry", icon: "⛴️", desc: "港町を起点にフェリーで移動できる", trigger: /港/ },
+  { id: "a3", name: "空港ワープパス", kind: "plane", icon: "✈️", desc: "空港同士を一気にワープできる", trigger: /空港/ },
+];
+const ACCESS_COLOR = "#7c3aed";
+
+let baseUrl = "";
+const $baseUrlInput = document.getElementById("base-url");
+$baseUrlInput.addEventListener("input", () => { baseUrl = $baseUrlInput.value.trim(); });
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const layerGroup = L.layerGroup().addTo(map);
+
+// =====================================================================
+// UI要素
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  $prefSelect.appendChild(opt);
+});
+
+const $citySelect = document.getElementById("city-select");
+const $loadBtn = document.getElementById("load-btn");
+const $statusBox = document.getElementById("status-box");
+const $attrGrid = document.getElementById("attr-card-grid");
+const $accessGrid = document.getElementById("access-card-grid");
+const $attrOwnedCount = document.getElementById("attr-owned-count");
+const $accessOwnedCount = document.getElementById("access-owned-count");
+
+function setStatus(html) { $statusBox.innerHTML = html; }
+
+$prefSelect.addEventListener("change", async () => {
+  const prefCode = $prefSelect.value;
+  $citySelect.disabled = true;
+  $citySelect.innerHTML = "<option>読み込み中...</option>";
+  $loadBtn.disabled = true;
+  try {
+    const url = `${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+    const seen = new Map();
+    for (const f of geojson.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) seen.set(code, name);
+    }
+    const cities = Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+    $citySelect.innerHTML = "";
+    cities.forEach(([code, name]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      $citySelect.appendChild(opt);
+    });
+    $citySelect.disabled = false;
+    $loadBtn.disabled = false;
+  } catch (err) {
+    $citySelect.innerHTML = "<option>取得失敗</option>";
+    setStatus(`<b style="color:#dc2626">市区町村一覧の取得に失敗:</b> ${err.message}`);
+  }
+});
+$prefSelect.dispatchEvent(new Event("change"));
+
+// =====================================================================
+// ゲーム状態
+// =====================================================================
+let features = [];
+let ownedAttackIds = new Set();
+let ownedAccessIds = new Set();
+
+renderCardGrids(true);
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  if (!cityCode) return;
+
+  $loadBtn.disabled = true;
+  setStatus(`${cityName} の町丁目データを取得中...`);
+  layerGroup.clearLayers();
+
+  try {
+    const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    features = computeFeatures(geojson);
+    if (features.length === 0) throw new Error("町丁目データが空でした");
+
+    renderBaseLayer();
+    const boundsLayer = L.geoJSON(features.map((f) => f.feature));
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    setStatus(`<b>${cityName}</b>: ${features.length} 町丁目。町丁目をクリックすると占領（デモ）してカードを獲得します。`);
+  } catch (err) {
+    setStatus(`<b style="color:#dc2626">町丁目データの取得に失敗:</b> ${err.message}`);
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+// =====================================================================
+// 属性算出（他モックと同ロジック）
+// =====================================================================
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function ringPerimeter(ring) {
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) sum += haversine(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+  return sum;
+}
+function featurePerimeter(feature) {
+  const geom = feature.geometry;
+  if (geom.type === "Polygon") return ringPerimeter(geom.coordinates[0]);
+  if (geom.type === "MultiPolygon") return geom.coordinates.reduce((s, poly) => s + ringPerimeter(poly[0]), 0);
+  return 0;
+}
+function percentileRanks(values) {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const ranks = new Array(values.length);
+  order.forEach((originalIndex, rankPos) => { ranks[originalIndex] = values.length > 1 ? rankPos / (values.length - 1) : 0.5; });
+  return ranks;
+}
+function calcCentroid(feature) {
+  let coords = [];
+  if (feature.geometry.type === "Polygon") coords = feature.geometry.coordinates[0];
+  else if (feature.geometry.type === "MultiPolygon") {
+    let maxLen = 0;
+    feature.geometry.coordinates.forEach((poly) => { if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; } });
+  }
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+  return { lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length };
+}
+
+// HCODE=8154 は水面ポリゴン。攻略対象の陸地ではないので除外する。
+function computeFeatures(geojson) {
+  const raw = (geojson.features || [])
+    .filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154")
+    .map((f) => {
+      const p = f.properties;
+      const area = Number(p.AREA || 0);
+      const jinko = Number(p.JINKO || 0);
+      const setai = Number(p.SETAI || 0);
+      const density = area > 0 ? jinko / (area / 1_000_000) : 0;
+      const avgHousehold = setai > 0 ? jinko / setai : 0;
+      const perimeter = featurePerimeter(f);
+      const compactness = perimeter > 0 ? Math.min(1, (4 * Math.PI * area) / (perimeter * perimeter)) : 0;
+      return { feature: f, name: p.S_NAME, area, jinko, avgHousehold, density, compactness, centroid: calcCentroid(f) };
+    });
+  if (raw.length === 0) return [];
+
+  const areaNorm = percentileRanks(raw.map((r) => r.area));
+  const densityNorm = percentileRanks(raw.map((r) => r.density));
+  const compactNorm = percentileRanks(raw.map((r) => r.compactness));
+  const avgHouseholdNorm = percentileRanks(raw.map((r) => r.avgHousehold));
+  const jinkoNorm = percentileRanks(raw.map((r) => r.jinko));
+
+  return raw.map((r, i) => {
+    const aN = areaNorm[i], dN = densityNorm[i], cN = compactNorm[i], hN = avgHouseholdNorm[i], jN = jinkoNorm[i];
+    const scores = {
+      // 人口の絶対量が少ないことも要求し、空港のような無人の大規模地物と、
+      // 田園調布のような広め区画の住宅地(実際には人が住む)を区別する。
+      land: aN * (1 - dN) * (1 - jN),
+      fire: aN * cN,
+      wind: (1 - aN) * dN,
+      // 「中程度の面積」ペナルティを二乗にして緩め、やや広めの一軒家住宅地も拾いやすくする。
+      water: (1 - Math.pow(Math.abs(aN - 0.5) * 2, 2)) * hN,
+    };
+    const attr = Object.keys(scores).reduce((best, k) => (scores[k] > scores[best] ? k : best), "land");
+    return { ...r, attr, layer: null, occupied: false };
+  });
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function styleFor(i) {
+  const f = features[i];
+  if (f.occupied) return { fillColor: COLOR_OCCUPIED, fillOpacity: 0.75, color: "#0d5c55", weight: 1.5 };
+  return { fillColor: ATTR[f.attr].color, fillOpacity: 0.62, color: "rgba(0,0,0,0.3)", weight: 1 };
+}
+
+function renderBaseLayer() {
+  features.forEach((f, i) => {
+    const layer = L.geoJSON(f.feature, { style: styleFor(i) }).addTo(layerGroup);
+    layer.bindTooltip(`${f.name}${f.occupied ? "（占領済み・クリックで再演出）" : "（クリックで占領デモ）"}`, { sticky: true });
+    layer.on("click", () => onTileClick(i));
+    f.layer = layer;
+  });
+}
+
+function refreshStyle(i) {
+  features[i].layer.setStyle(styleFor(i));
+  features[i].layer.setTooltipContent(`${features[i].name}${features[i].occupied ? "（占領済み・クリックで再演出）" : "（クリックで占領デモ）"}`);
+}
+
+// =====================================================================
+// カードグリッド描画
+// =====================================================================
+function renderCardGrids(initial) {
+  $attrGrid.innerHTML = "";
+  ALL_ATTACK_CARDS.forEach((card) => {
+    const owned = ownedAttackIds.has(card.id);
+    const dotColor = card.attr === "neutral" ? NEUTRAL_DOT : ATTR[card.attr].color;
+    const el = document.createElement("div");
+    el.className = "mini-card" + (owned ? " owned" : " locked");
+    el.innerHTML = owned
+      ? `<div class="cname">${card.name}</div><div class="cmeta"><span><span class="card-attr-dot" style="background:${dotColor}"></span>${card.attr === "neutral" ? "無属性" : ATTR[card.attr].label}</span><span>ATK${card.power}</span></div>`
+      : `<div class="cname">🔒 ???</div><div class="cmeta"><span><span class="card-attr-dot" style="background:${dotColor}"></span>${card.attr === "neutral" ? "無属性" : ATTR[card.attr].label}</span><span>未所持</span></div>`;
+    $attrGrid.appendChild(el);
+  });
+
+  $accessGrid.innerHTML = "";
+  ACCESS_CARD_POOL.forEach((card) => {
+    const owned = ownedAccessIds.has(card.id);
+    const el = document.createElement("div");
+    el.className = "mini-card" + (owned ? " owned" : " locked");
+    el.innerHTML = owned
+      ? `<div class="cname">${card.icon} ${card.name}</div><div class="cmeta"><span>${card.desc}</span></div>`
+      : `<div class="cname">🔒 ???</div><div class="cmeta"><span>未所持</span></div>`;
+    $accessGrid.appendChild(el);
+  });
+
+  $attrOwnedCount.textContent = `${ownedAttackIds.size}/${ALL_ATTACK_CARDS.length}`;
+  $accessOwnedCount.textContent = `${ownedAccessIds.size}/${ACCESS_CARD_POOL.length}`;
+}
+
+// =====================================================================
+// 占領（デモ）→カード獲得判定
+// =====================================================================
+function onTileClick(i) {
+  const f = features[i];
+  f.occupied = true;
+  refreshStyle(i);
+
+  const newCards = [];
+
+  // 属性カード: その属性でまだ持っていない最初のカードを1枚付与
+  const candidate = ATTACK_CARD_POOL.find((c) => c.attr === f.attr && !ownedAttackIds.has(c.id));
+  if (candidate) {
+    ownedAttackIds.add(candidate.id);
+    newCards.push({ type: "attack", card: candidate });
+  }
+
+  // アクセス系カード: 町丁目名のパターンでこのモック限定の簡易判定
+  const accessCandidate = ACCESS_CARD_POOL.find((c) => c.trigger.test(f.name) && !ownedAccessIds.has(c.id));
+  if (accessCandidate) {
+    ownedAccessIds.add(accessCandidate.id);
+    newCards.push({ type: "access", card: accessCandidate });
+  }
+
+  renderCardGrids();
+
+  if (newCards.length > 0) {
+    showReveal(f.name, newCards);
+  } else {
+    showToast(`${f.name} を占領。獲得できる新規カードはありませんでした（該当カードは所持済み）`);
+  }
+}
+
+// =====================================================================
+// カード獲得演出
+// =====================================================================
+const $revealOverlay = document.getElementById("reveal-overlay");
+const $revealCards = document.getElementById("reveal-cards");
+const $revealClose = document.getElementById("reveal-close");
+const $toast = document.getElementById("toast");
+
+function showReveal(tileName, newCards) {
+  $revealCards.innerHTML = "";
+  $revealClose.classList.remove("show");
+
+  const cardEls = newCards.map(({ type, card }) => {
+    const el = document.createElement("div");
+    el.className = "reveal-card";
+    const color = type === "attack"
+      ? (card.attr === "neutral" ? NEUTRAL_DOT : ATTR[card.attr].color)
+      : ACCESS_COLOR;
+    const icon = type === "attack" ? (card.attr === "neutral" ? "⭐" : ATTR[card.attr].icon) : card.icon;
+    const kindLabel = type === "attack" ? "属性カード" : "アクセス系カード";
+    const bodyExtra = type === "attack"
+      ? `<div class="rpower" style="color:${color}">ATK ${card.power}</div>`
+      : `<div class="rdesc">${card.desc}</div>`;
+
+    el.innerHTML = `
+      <div class="reveal-face reveal-back"><span class="mark">?</span></div>
+      <div class="reveal-face reveal-front" style="border-color:${color}">
+        <span class="new-badge">NEW!</span>
+        <div class="attr-icon">${icon}</div>
+        <div class="rname">${card.name}</div>
+        <div class="rkind" style="background:${color}">${kindLabel}</div>
+        ${bodyExtra}
+      </div>
+    `;
+    return el;
+  });
+
+  cardEls.forEach((el) => $revealCards.appendChild(el));
+  document.getElementById("reveal-title").textContent = `🎴 ${tileName} を占領！ カード獲得！`;
+  $revealOverlay.classList.add("show");
+
+  cardEls.forEach((el, idx) => {
+    setTimeout(() => el.classList.add("flipped"), 300 + idx * 350);
+  });
+  setTimeout(() => $revealClose.classList.add("show"), 300 + cardEls.length * 350 + 400);
+}
+
+$revealClose.addEventListener("click", () => {
+  $revealOverlay.classList.remove("show");
+});
+
+let toastTimer = null;
+function showToast(msg) {
+  $toast.textContent = msg;
+  $toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $toast.classList.remove("show"), 2600);
+}
+</script>
+</body>
+</html>
