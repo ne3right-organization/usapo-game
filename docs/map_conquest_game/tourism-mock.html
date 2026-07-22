@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - 観光要素（季節倍率）</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 320px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover:not(:disabled) { background: #0d6660; }
+#panel button:disabled { background: #c9c2b6; cursor: not-allowed; }
+
+.stat-row { display: flex; gap: 8px; margin-top: 4px; }
+.stat-box { flex: 1; background: #f8f4ea; border-radius: 8px; padding: 8px 10px; text-align: center; }
+.stat-box .l { font-size: 10px; color: #9ca3af; }
+.stat-box .v { font-size: 17px; font-weight: 800; color: #0f766e; }
+.stat-box .v.low { color: #b91c1c; }
+.stat-box .v.income { color: #16a34a; }
+.stat-box .v.upkeep { color: #b91c1c; }
+
+#tourism-toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #fff7ed; border: 1.5px solid #fdba74; border-radius: 8px; padding: 8px 12px; margin-top: 10px;
+}
+#tourism-toggle-row .l { font-size: 12px; color: #9a3412; font-weight: 700; }
+#tourism-toggle-row .hint { font-size: 10px; color: #c2733a; }
+.switch-btn {
+  padding: 5px 14px; font-size: 11px; border-radius: 20px; margin-top: 0;
+  border: 1.5px solid #fdba74; background: white; color: #c2733a; font-weight: 700; cursor: pointer;
+}
+.switch-btn.on { background: #f97316; color: white; border-color: #f97316; }
+
+#season-row { display: flex; gap: 4px; margin-top: 8px; }
+.season-btn {
+  flex: 1; padding: 8px 2px; font-size: 11px; border-radius: 8px; margin-top: 0;
+  border: 1.5px solid #d9cdb8; background: #f3ede1; color: #6b5638; font-weight: 700; cursor: default;
+  text-align: center; opacity: 0.5;
+}
+.season-btn.current { opacity: 1; box-shadow: 0 0 0 2px rgba(15,118,110,0.25); }
+.season-btn .mult { display: block; font-size: 9px; font-weight: 600; margin-top: 2px; }
+
+#status-box {
+  margin-top: 10px; padding: 10px 12px; background: #f8f4ea; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; min-height: 20px;
+}
+#status-box b { color: #1f2937; }
+#status-box.warn { background: #fff1f2; color: #b91c1c; }
+
+#next-turn-btn { background: #b45309; }
+#next-turn-btn:hover:not(:disabled) { background: #92400e; }
+
+#territory-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.terr-item {
+  border: 1px solid #e5e0d3; border-radius: 8px; padding: 8px 10px; background: white;
+}
+.terr-item .t-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.terr-item .t-name { font-size: 12px; font-weight: 700; color: #1f2937; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attr-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 20px; color: white; flex-shrink: 0; }
+.t-stats-row { display: flex; justify-content: space-between; font-size: 10px; color: #6b7280; margin-bottom: 5px; }
+.t-stats-row b { color: #1f2937; }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 250px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.6; margin-bottom: 5px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+.legend-note { font-size: 10px; color: #9ca3af; margin-top: 6px; line-height: 1.6; }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">観光要素（観光地フラグ・季節倍率）</div>
+
+  <label>CloudFront ベースURL</label>
+  <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+
+  <label>市区町村</label>
+  <select id="city-select" disabled>
+    <option>都道府県を選んでください</option>
+  </select>
+
+  <button id="load-btn" disabled>この市区町村を読み込む</button>
+
+  <div id="tourism-toggle-row">
+    <div>
+      <div class="l">この市区町村は観光地</div>
+      <div class="hint">設計書どおり市区町村単位で一括適用</div>
+    </div>
+    <button class="switch-btn" id="tourism-toggle">OFF</button>
+  </div>
+
+  <div id="season-row">
+    <div class="season-btn" data-season="spring">春<span class="mult">×1.0</span></div>
+    <div class="season-btn" data-season="summer">夏<span class="mult">×1.6</span></div>
+    <div class="season-btn" data-season="autumn">秋<span class="mult">×1.2</span></div>
+    <div class="season-btn" data-season="winter">冬<span class="mult">×0.7</span></div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-box"><div class="l">維持予算</div><div class="v" id="funds-value">-</div></div>
+    <div class="stat-box"><div class="l">ターン</div><div class="v" id="turn-value">0</div></div>
+    <div class="stat-box"><div class="l">占領数</div><div class="v" id="terr-count">0</div></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="l">基本収入/ターン</div><div class="v" id="base-income-value">-</div></div>
+    <div class="stat-box"><div class="l">観光倍率</div><div class="v" id="mult-value">×1.0</div></div>
+    <div class="stat-box"><div class="l">実収入/ターン</div><div class="v income" id="income-value">-</div></div>
+  </div>
+
+  <div id="status-box">都道府県・市区町村を選んで読み込んでください</div>
+
+  <button id="next-turn-btn" disabled>▶ 次のターンへ（季節が進む）</button>
+
+  <div id="territory-list"></div>
+</div>
+
+<div id="legend">
+  <h4>観光要素</h4>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0f766e"></span>占領済み町丁目</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#d9cdb8"></span>未占領（クリックで占領デモ）</div>
+  <div class="legend-note">
+    観光地フラグは4属性(火水地風)とは別レイヤーで市区町村単位に重ねる（設計書どおり町丁目単位の判定はしない）。<br>
+    観光地ONの場合のみ、季節倍率が収入全体にかかる（春×1.0・夏×1.6・秋×1.2・冬×0.7）。ターンが進むごとに季節も巡る。<br>
+    観光地判定・季節倍率とも実データとの連動はまだ無く、固定値の段階的実装（設計書の想定どおり）。
+  </div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  観光地判定・季節倍率はこのモック独自の仮値（実観光統計とは未連動）
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+
+const ATTR = {
+  land:  { key: "land",  label: "地", color: "#eab308" },
+  fire:  { key: "fire",  label: "火", color: "#ef4444" },
+  wind:  { key: "wind",  label: "風", color: "#22c55e" },
+  water: { key: "water", label: "水", color: "#3b82f6" },
+};
+const DEFENSE_COST_MULTIPLIER = { fire: 1.3, wind: 1.5, water: 1.0, land: 0.5 };
+const INCOME_RATE = { fire: 0.08, wind: 0.09, water: 0.05, land: 0.03 };
+const COLOR_UNOCCUPIED = "#d9cdb8";
+const COLOR_OCCUPIED = "#0f766e";
+
+// 季節倍率（設計書「観光要素」: まずは固定の季節倍率から始める、の段階的実装）
+const SEASONS = ["spring", "summer", "autumn", "winter"];
+const SEASON_LABEL = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
+const SEASON_MULTIPLIER = { spring: 1.0, summer: 1.6, autumn: 1.2, winter: 0.7 };
+
+let baseUrl = "";
+const $baseUrlInput = document.getElementById("base-url");
+$baseUrlInput.addEventListener("input", () => { baseUrl = $baseUrlInput.value.trim(); });
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const layerGroup = L.layerGroup().addTo(map);
+
+// =====================================================================
+// UI要素
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  $prefSelect.appendChild(opt);
+});
+
+const $citySelect = document.getElementById("city-select");
+const $loadBtn = document.getElementById("load-btn");
+const $statusBox = document.getElementById("status-box");
+const $fundsValue = document.getElementById("funds-value");
+const $turnValue = document.getElementById("turn-value");
+const $terrCount = document.getElementById("terr-count");
+const $baseIncomeValue = document.getElementById("base-income-value");
+const $multValue = document.getElementById("mult-value");
+const $incomeValue = document.getElementById("income-value");
+const $nextTurnBtn = document.getElementById("next-turn-btn");
+const $territoryList = document.getElementById("territory-list");
+const $tourismToggle = document.getElementById("tourism-toggle");
+
+function setStatus(html, warn) {
+  $statusBox.innerHTML = html;
+  $statusBox.classList.toggle("warn", !!warn);
+}
+
+$prefSelect.addEventListener("change", async () => {
+  const prefCode = $prefSelect.value;
+  $citySelect.disabled = true;
+  $citySelect.innerHTML = "<option>読み込み中...</option>";
+  $loadBtn.disabled = true;
+  try {
+    const url = `${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+    const seen = new Map();
+    for (const f of geojson.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) seen.set(code, name);
+    }
+    const cities = Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+    $citySelect.innerHTML = "";
+    cities.forEach(([code, name]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      $citySelect.appendChild(opt);
+    });
+    $citySelect.disabled = false;
+    $loadBtn.disabled = false;
+  } catch (err) {
+    $citySelect.innerHTML = "<option>取得失敗</option>";
+    setStatus(`<b style="color:#dc2626">市区町村一覧の取得に失敗:</b> ${err.message}`, true);
+  }
+});
+$prefSelect.dispatchEvent(new Event("change"));
+
+// =====================================================================
+// ゲーム状態
+// =====================================================================
+let features = [];
+let funds = 500;
+let turn = 0;
+let seasonIndex = 0;
+let isTourism = false;
+let lastBaseIncome = 0;
+
+renderTerritoryList();
+updateTopRow();
+renderSeasonRow();
+
+$tourismToggle.addEventListener("click", () => {
+  isTourism = !isTourism;
+  $tourismToggle.textContent = isTourism ? "ON" : "OFF";
+  $tourismToggle.classList.toggle("on", isTourism);
+  updateTopRow();
+});
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  if (!cityCode) return;
+
+  $loadBtn.disabled = true;
+  setStatus(`${cityName} の町丁目データを取得中...`);
+  layerGroup.clearLayers();
+  funds = 500;
+  turn = 0;
+  seasonIndex = 0;
+
+  try {
+    const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    features = computeFeatures(geojson);
+    if (features.length === 0) throw new Error("町丁目データが空でした");
+
+    renderBaseLayer();
+    const boundsLayer = L.geoJSON(features.map((f) => f.feature));
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    $nextTurnBtn.disabled = false;
+    renderSeasonRow();
+    updateTopRow();
+    renderTerritoryList();
+    setStatus(`<b>${cityName}</b>: ${features.length} 町丁目。町丁目をクリックして占領（デモ）し、観光地ONと季節の組み合わせで収入がどう変わるか見てみてください。`);
+  } catch (err) {
+    setStatus(`<b style="color:#dc2626">町丁目データの取得に失敗:</b> ${err.message}`, true);
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+// =====================================================================
+// 属性・守備力算出（他モックと同ロジック）
+// =====================================================================
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function ringPerimeter(ring) {
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) sum += haversine(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+  return sum;
+}
+function featurePerimeter(feature) {
+  const geom = feature.geometry;
+  if (geom.type === "Polygon") return ringPerimeter(geom.coordinates[0]);
+  if (geom.type === "MultiPolygon") return geom.coordinates.reduce((s, poly) => s + ringPerimeter(poly[0]), 0);
+  return 0;
+}
+function percentileRanks(values) {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const ranks = new Array(values.length);
+  order.forEach((originalIndex, rankPos) => { ranks[originalIndex] = values.length > 1 ? rankPos / (values.length - 1) : 0.5; });
+  return ranks;
+}
+function calcCentroid(feature) {
+  let coords = [];
+  if (feature.geometry.type === "Polygon") coords = feature.geometry.coordinates[0];
+  else if (feature.geometry.type === "MultiPolygon") {
+    let maxLen = 0;
+    feature.geometry.coordinates.forEach((poly) => { if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; } });
+  }
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+  return { lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length };
+}
+
+// HCODE=8154 は水面ポリゴン。攻略対象の陸地ではないので除外する。
+function computeFeatures(geojson) {
+  const raw = (geojson.features || [])
+    .filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154")
+    .map((f) => {
+      const p = f.properties;
+      const area = Number(p.AREA || 0);
+      const jinko = Number(p.JINKO || 0);
+      const setai = Number(p.SETAI || 0);
+      const density = area > 0 ? jinko / (area / 1_000_000) : 0;
+      const avgHousehold = setai > 0 ? jinko / setai : 0;
+      const perimeter = featurePerimeter(f);
+      const compactness = perimeter > 0 ? Math.min(1, (4 * Math.PI * area) / (perimeter * perimeter)) : 0;
+      return { feature: f, name: p.S_NAME, area, jinko, avgHousehold, density, compactness, centroid: calcCentroid(f) };
+    });
+  if (raw.length === 0) return [];
+
+  const areaNorm = percentileRanks(raw.map((r) => r.area));
+  const densityNorm = percentileRanks(raw.map((r) => r.density));
+  const compactNorm = percentileRanks(raw.map((r) => r.compactness));
+  const avgHouseholdNorm = percentileRanks(raw.map((r) => r.avgHousehold));
+  const jinkoNorm = percentileRanks(raw.map((r) => r.jinko));
+
+  return raw.map((r, i) => {
+    const aN = areaNorm[i], dN = densityNorm[i], cN = compactNorm[i], hN = avgHouseholdNorm[i], jN = jinkoNorm[i];
+    const scores = {
+      land: aN * (1 - dN) * (1 - jN),
+      fire: aN * cN,
+      wind: (1 - aN) * dN,
+      water: (1 - Math.pow(Math.abs(aN - 0.5) * 2, 2)) * hN,
+    };
+    const attr = Object.keys(scores).reduce((best, k) => (scores[k] > scores[best] ? k : best), "land");
+    const defenseBase = r.jinko * 0.6 + (r.area / 10000) * 8;
+    const baseDefense = Math.max(20, Math.round(defenseBase * DEFENSE_COST_MULTIPLIER[attr]));
+    return { ...r, attr, baseDefense, layer: null, occupied: false };
+  });
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function styleFor(i) {
+  const f = features[i];
+  if (f.occupied) return { fillColor: COLOR_OCCUPIED, fillOpacity: 0.75, color: "#0d5c55", weight: 1.5 };
+  return { fillColor: COLOR_UNOCCUPIED, fillOpacity: 0.35, color: "#a8937a", weight: 1 };
+}
+
+function renderBaseLayer() {
+  features.forEach((f, i) => {
+    const layer = L.geoJSON(f.feature, { style: styleFor(i) }).addTo(layerGroup);
+    layer.bindTooltip(() => `${f.name}${f.occupied ? "（占領済み）" : "（未占領）"}｜基礎守備力${f.baseDefense}`, { sticky: true });
+    layer.on("click", () => onTileClick(i));
+    f.layer = layer;
+  });
+}
+
+function refreshStyle(i) {
+  features[i].layer.setStyle(styleFor(i));
+}
+
+function onTileClick(i) {
+  const f = features[i];
+  if (f.occupied) return;
+  f.occupied = true;
+  refreshStyle(i);
+  updateTopRow();
+  renderTerritoryList();
+  setStatus(`${f.name} を占領（デモ）。`);
+}
+
+// =====================================================================
+// 占領地リスト
+// =====================================================================
+function renderTerritoryList() {
+  const owned = features.filter((f) => f.occupied);
+  if (owned.length === 0) {
+    $territoryList.innerHTML = `<div style="font-size:11px;color:#9ca3af;padding:6px 2px">まだ占領地がありません。地図上の町丁目をクリックしてください。</div>`;
+    return;
+  }
+  $territoryList.innerHTML = "";
+  owned.forEach((f) => {
+    const baseIncome = Math.round(f.baseDefense * INCOME_RATE[f.attr]);
+    const mult = isTourism ? SEASON_MULTIPLIER[SEASONS[seasonIndex]] : 1;
+    const actualIncome = Math.round(baseIncome * mult);
+    const el = document.createElement("div");
+    el.className = "terr-item";
+    el.innerHTML = `
+      <div class="t-head">
+        <span class="attr-badge" style="background:${ATTR[f.attr].color}">${ATTR[f.attr].label}</span>
+        <span class="t-name">${f.name}</span>
+      </div>
+      <div class="t-stats-row">
+        <span>基本収入 <b>${baseIncome}</b></span>
+        <span>×${mult.toFixed(1)}</span>
+        <span>実収入 <b>${actualIncome}</b></span>
+      </div>
+    `;
+    $territoryList.appendChild(el);
+  });
+}
+
+// =====================================================================
+// 季節表示
+// =====================================================================
+function renderSeasonRow() {
+  document.querySelectorAll(".season-btn").forEach((btn) => {
+    btn.classList.toggle("current", btn.dataset.season === SEASONS[seasonIndex]);
+  });
+}
+
+// =====================================================================
+// ターン進行（季節が1つ進む）
+// =====================================================================
+document.getElementById("next-turn-btn").addEventListener("click", () => {
+  const owned = features.filter((f) => f.occupied);
+
+  const baseIncome = owned.reduce((s, f) => s + Math.round(f.baseDefense * INCOME_RATE[f.attr]), 0);
+  const mult = isTourism ? SEASON_MULTIPLIER[SEASONS[seasonIndex]] : 1;
+  const actualIncome = Math.round(baseIncome * mult);
+
+  turn++;
+  funds += actualIncome;
+  lastBaseIncome = baseIncome;
+
+  const seasonLabel = SEASON_LABEL[SEASONS[seasonIndex]];
+  if (isTourism) {
+    setStatus(`ターン${turn}（${seasonLabel}）: 観光地ボーナス適用中。基本収入${baseIncome} ×${mult.toFixed(1)} = 実収入${actualIncome}`);
+  } else {
+    setStatus(`ターン${turn}（${seasonLabel}）: 観光地OFFのため季節の影響なし。収入${actualIncome}`);
+  }
+
+  seasonIndex = (seasonIndex + 1) % SEASONS.length;
+  renderSeasonRow();
+  updateTopRow();
+  renderTerritoryList();
+});
+
+function updateTopRow() {
+  $fundsValue.textContent = funds.toLocaleString();
+  $fundsValue.classList.toggle("low", funds < 100);
+  $turnValue.textContent = turn;
+  $terrCount.textContent = features.filter((f) => f.occupied).length;
+
+  const owned = features.filter((f) => f.occupied);
+  const baseIncome = owned.reduce((s, f) => s + Math.round(f.baseDefense * INCOME_RATE[f.attr]), 0);
+  const mult = isTourism ? SEASON_MULTIPLIER[SEASONS[seasonIndex]] : 1;
+  $baseIncomeValue.textContent = `+${baseIncome.toLocaleString()}`;
+  $multValue.textContent = `×${mult.toFixed(1)}`;
+  $incomeValue.textContent = `+${Math.round(baseIncome * mult).toLocaleString()}`;
+}
+</script>
+</body>
+</html>

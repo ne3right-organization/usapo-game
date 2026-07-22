@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - 移動手段の進化（アクセス系カード）</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; cursor: default; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 300px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover:not(:disabled) { background: #0d6660; }
+#panel button:disabled { background: #c9c2b6; cursor: not-allowed; }
+#panel button.secondary { background: #f3ede1; color: #6b5638; border: 1px solid #d9cdb8; }
+#panel button.secondary:hover:not(:disabled) { background: #e9dfc9; }
+
+#card-toggles { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.card-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1.5px solid #e5e0d3; border-radius: 8px; padding: 8px 10px; cursor: pointer;
+  background: white; transition: all 0.15s;
+}
+.card-toggle.on { border-color: #7c3aed; background: #f5f3ff; }
+.card-toggle .cname { font-size: 12px; font-weight: 700; color: #1f2937; }
+.card-toggle .cdesc { font-size: 10px; color: #9ca3af; }
+.card-toggle .cswitch {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  border: 1.5px solid #d9cdb8; color: #6b5638; background: #f3ede1; flex-shrink: 0;
+}
+.card-toggle.on .cswitch { background: #7c3aed; color: white; border-color: #7c3aed; }
+
+#status-box {
+  margin-top: 10px; padding: 10px 12px; background: #f8f4ea; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; min-height: 20px;
+}
+#status-box b { color: #1f2937; }
+
+#dice-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+#dice-face {
+  width: 46px; height: 46px; border-radius: 8px; background: #1f2937; color: white;
+  display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800;
+  flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+#dice-remain { font-size: 12px; color: #6b7280; }
+
+#choice-box { margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
+#choice-box.show { display: flex; }
+#choice-box .choice-label { font-size: 11px; color: #b45309; font-weight: 700; }
+.choice-btn {
+  width: 100%; text-align: left; padding: 7px 10px; font-size: 12px;
+  border-radius: 6px; border: 1.5px solid #f59e0b; background: #fffbeb; color: #92400e;
+  cursor: pointer; font-weight: 600; margin-top: 0; display: flex; justify-content: space-between; gap: 6px;
+}
+.choice-btn:hover { background: #fef3c7; }
+.choice-btn.special { border-color: #7c3aed; background: #f5f3ff; color: #5b21b6; }
+
+#trail-log {
+  margin-top: 10px; font-size: 11px; color: #6b7280; line-height: 1.7;
+  max-height: 130px; overflow-y: auto; background: #f8f4ea; border-radius: 8px; padding: 8px 10px;
+}
+#trail-log .step { color: #1f2937; }
+#trail-log .step.special { color: #7c3aed; font-weight: 700; }
+#trail-log .arrow { color: #d1d5db; margin: 0 3px; }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 240px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.6; margin-bottom: 5px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+.legend-line { width: 18px; height: 0; border-top: 2px dashed #7c3aed; flex-shrink: 0; }
+.legend-note { font-size: 10px; color: #9ca3af; margin-top: 6px; line-height: 1.6; }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+
+.pawn-icon { font-size: 22px; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4)); }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">移動手段の進化（アクセス系カード）</div>
+
+  <label>CloudFront ベースURL</label>
+  <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+
+  <label>市区町村</label>
+  <select id="city-select" disabled>
+    <option>都道府県を選んでください</option>
+  </select>
+
+  <button id="load-btn" disabled>この市区町村を読み込む</button>
+
+  <div id="card-toggles">
+    <div class="card-toggle" data-card="island">
+      <div><div class="cname">🏝️ 離島の渡し船</div><div class="cdesc">「島」を含む町丁目同士を8km以内で接続</div></div>
+      <div class="cswitch">未所持</div>
+    </div>
+    <div class="card-toggle" data-card="ferry">
+      <div><div class="cname">⛴️ 港町のフェリー券</div><div class="cdesc">「港」を含む町丁目同士を5km以内で接続</div></div>
+      <div class="cswitch">未所持</div>
+    </div>
+    <div class="card-toggle" data-card="plane">
+      <div><div class="cname">✈️ 空港ワープパス</div><div class="cdesc">「空港」を含む町丁目同士を距離無制限で接続</div></div>
+      <div class="cswitch">未所持</div>
+    </div>
+  </div>
+
+  <div id="status-box">都道府県・市区町村を選んで読み込んでください</div>
+
+  <div id="dice-row" style="display:none">
+    <div id="dice-face">-</div>
+    <div>
+      <button id="roll-btn" style="margin-top:0" disabled>サイコロを振る</button>
+      <div id="dice-remain"></div>
+    </div>
+  </div>
+
+  <div id="choice-box">
+    <div class="choice-label">▸ 分岐点：進む方向を選んでください</div>
+    <div id="choice-list"></div>
+  </div>
+
+  <div id="trail-log"></div>
+
+  <button id="reset-btn" class="secondary" style="display:none">開始地点を選び直す</button>
+</div>
+
+<div id="legend">
+  <h4>凡例</h4>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0f766e"></span>開始地点</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#fdba74"></span>歩いたルート（足跡）</div>
+  <div class="legend-item"><span class="legend-line"></span>カードで開通した特殊ルート</div>
+  <div class="legend-note">
+    カードをONにすると、名前パターンに合致する町丁目同士が紫の点線で直接つながる（このモック限定の簡易判定。実装では国土数値情報の空港・港湾・離島データに置き換える想定）。<br>
+    分岐点でこのルートを選ぶと「隣接していない町丁目に1マスでワープ」できる。
+  </div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  カード接続の判定条件はこのモック限定の名前パターン簡易実装
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+
+const COLOR_DEFAULT = "#f3f4f6";
+const COLOR_START = "#0f766e";
+const COLOR_TRAIL = "#fdba74";
+const COLOR_CANDIDATE = "#fde68a";
+const COLOR_CANDIDATE_STROKE = "#f59e0b";
+const SPECIAL_LINE_COLOR = "#7c3aed";
+
+// カード種別ごとの接続ルール（このモック限定の簡易判定。実装では実データに置き換える前提）
+const CARD_RULES = {
+  island: { pattern: /島/, maxDistanceM: 8000 },
+  ferry:  { pattern: /(?<!空)港/, maxDistanceM: 5000 }, // 「空港」の「港」には誤反応しないよう除外
+  plane:  { pattern: /空港/, maxDistanceM: Infinity },
+};
+let ownedCards = { island: false, ferry: false, plane: false };
+
+let baseUrl = "";
+const $baseUrlInput = document.getElementById("base-url");
+$baseUrlInput.addEventListener("input", () => { baseUrl = $baseUrlInput.value.trim(); });
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const layerGroup = L.layerGroup().addTo(map);
+const specialLineGroup = L.layerGroup().addTo(map);
+let pawnMarker = null;
+
+// =====================================================================
+// UI: 都道府県／市区町村セレクト
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  $prefSelect.appendChild(opt);
+});
+
+const $citySelect = document.getElementById("city-select");
+const $loadBtn = document.getElementById("load-btn");
+const $statusBox = document.getElementById("status-box");
+const $diceRow = document.getElementById("dice-row");
+const $diceFace = document.getElementById("dice-face");
+const $rollBtn = document.getElementById("roll-btn");
+const $diceRemain = document.getElementById("dice-remain");
+const $choiceBox = document.getElementById("choice-box");
+const $choiceList = document.getElementById("choice-list");
+const $trailLog = document.getElementById("trail-log");
+const $resetBtn = document.getElementById("reset-btn");
+
+function setStatus(html) { $statusBox.innerHTML = html; }
+
+document.querySelectorAll(".card-toggle").forEach((el) => {
+  el.addEventListener("click", () => {
+    const key = el.dataset.card;
+    ownedCards[key] = !ownedCards[key];
+    el.classList.toggle("on", ownedCards[key]);
+    el.querySelector(".cswitch").textContent = ownedCards[key] ? "所持中" : "未所持";
+    if (features.length > 0) {
+      buildSpecialEdges();
+      renderSpecialLines();
+      setStatus(`カード構成を変更しました。${activeCardSummary()}`);
+    }
+  });
+});
+
+function activeCardSummary() {
+  const on = Object.keys(ownedCards).filter((k) => ownedCards[k]);
+  if (on.length === 0) return "アクセス系カードは未所持です（通常の徒歩移動のみ）。";
+  const names = { island: "離島の渡し船", ferry: "港町のフェリー券", plane: "空港ワープパス" };
+  return `所持中: ${on.map((k) => names[k]).join(" / ")}`;
+}
+
+$prefSelect.addEventListener("change", async () => {
+  const prefCode = $prefSelect.value;
+  $citySelect.disabled = true;
+  $citySelect.innerHTML = "<option>読み込み中...</option>";
+  $loadBtn.disabled = true;
+  try {
+    const url = `${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+    const seen = new Map();
+    for (const f of geojson.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) seen.set(code, name);
+    }
+    const cities = Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+    $citySelect.innerHTML = "";
+    cities.forEach(([code, name]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      $citySelect.appendChild(opt);
+    });
+    $citySelect.disabled = false;
+    $loadBtn.disabled = false;
+  } catch (err) {
+    $citySelect.innerHTML = "<option>取得失敗</option>";
+    setStatus(`<b style="color:#dc2626">市区町村一覧の取得に失敗:</b> ${err.message}`);
+  }
+});
+$prefSelect.dispatchEvent(new Event("change"));
+
+// =====================================================================
+// ゲーム状態
+// =====================================================================
+let features = [];
+let startIndex = null;
+let currentIndex = null;
+let visited = new Set();
+let totalSteps = 0;
+let moveState = null;
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  if (!cityCode) return;
+
+  $loadBtn.disabled = true;
+  setStatus(`${cityName} の町丁目データを取得中...`);
+  resetGame();
+  layerGroup.clearLayers();
+  specialLineGroup.clearLayers();
+
+  try {
+    const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    buildFeatures(geojson);
+    if (features.length === 0) throw new Error("町丁目データが空でした");
+
+    buildAdjacency();
+    buildSpecialEdges();
+    renderBaseLayer();
+    renderSpecialLines();
+
+    const boundsLayer = L.geoJSON(features.map((f) => f.feature));
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    setStatus(`<b>${cityName}</b>: ${features.length} 町丁目を読み込みました。${activeCardSummary()}<br>地図上の町丁目をクリックして開始地点を選んでください。`);
+  } catch (err) {
+    setStatus(`<b style="color:#dc2626">町丁目データの取得に失敗:</b> ${err.message}`);
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+function resetGame() {
+  features = [];
+  startIndex = null;
+  currentIndex = null;
+  visited = new Set();
+  totalSteps = 0;
+  moveState = null;
+  if (pawnMarker) { map.removeLayer(pawnMarker); pawnMarker = null; }
+  $diceRow.style.display = "none";
+  $choiceBox.classList.remove("show");
+  $resetBtn.style.display = "none";
+  $trailLog.innerHTML = "";
+  $rollBtn.disabled = true;
+}
+
+// HCODE=8154 は水面ポリゴン。攻略対象の陸地ではないので移動グラフから除外する。
+function buildFeatures(geojson) {
+  features = (geojson.features || [])
+    .filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154")
+    .map((f) => ({
+      feature: f,
+      name: f.properties.S_NAME,
+      layer: null,
+      centroid: calcCentroid(f),
+      neighbors: new Set(),      // 通常の徒歩隣接
+      specialLinks: new Map(),   // idx -> カード種別（このタイルから伸びるカード限定ルート）
+    }));
+}
+
+function calcCentroid(feature) {
+  let coords = [];
+  if (feature.geometry.type === "Polygon") coords = feature.geometry.coordinates[0];
+  else if (feature.geometry.type === "MultiPolygon") {
+    let maxLen = 0;
+    feature.geometry.coordinates.forEach((poly) => { if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; } });
+  }
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+  return { lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length };
+}
+
+// =====================================================================
+// 通常の隣接判定（頂点近接による簡易推定）
+// =====================================================================
+function allVerts(feature) {
+  const out = [];
+  const push = (ring) => ring.forEach((c) => out.push(c));
+  if (feature.geometry.type === "Polygon") feature.geometry.coordinates.forEach(push);
+  else if (feature.geometry.type === "MultiPolygon") feature.geometry.coordinates.forEach((poly) => poly.forEach(push));
+  return out;
+}
+function bboxOf(coords) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  coords.forEach(([x, y]) => { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; });
+  return { minX, minY, maxX, maxY };
+}
+function metersBetween(lng1, lat1, lng2, lat2, cosLat) {
+  const dx = (lng2 - lng1) * 111320 * cosLat;
+  const dy = (lat2 - lat1) * 110540;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+function haversineM(lng1, lat1, lng2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+const ADJ_PAD_DEG = 0.0006;
+const ADJ_THRESHOLD_M = 40;
+
+function buildAdjacency() {
+  const verts = features.map((f) => allVerts(f.feature));
+  const boxes = verts.map(bboxOf);
+  const n = features.length;
+  for (let i = 0; i < n; i++) {
+    const bi = boxes[i];
+    const cosLat = Math.cos((features[i].centroid.lat * Math.PI) / 180);
+    for (let j = i + 1; j < n; j++) {
+      const bj = boxes[j];
+      const overlap =
+        bi.minX - ADJ_PAD_DEG <= bj.maxX && bi.maxX + ADJ_PAD_DEG >= bj.minX &&
+        bi.minY - ADJ_PAD_DEG <= bj.maxY && bi.maxY + ADJ_PAD_DEG >= bj.minY;
+      if (!overlap) continue;
+      let close = false;
+      outer: for (const [x1, y1] of verts[i]) {
+        for (const [x2, y2] of verts[j]) {
+          if (metersBetween(x1, y1, x2, y2, cosLat) < ADJ_THRESHOLD_M) { close = true; break outer; }
+        }
+      }
+      if (close) { features[i].neighbors.add(j); features[j].neighbors.add(i); }
+    }
+  }
+}
+
+// =====================================================================
+// カード特殊ルート（名前パターン一致 × 距離条件、このモック限定の簡易判定）
+// =====================================================================
+function buildSpecialEdges() {
+  features.forEach((f) => { f.specialLinks = new Map(); });
+
+  Object.keys(CARD_RULES).forEach((cardKey) => {
+    if (!ownedCards[cardKey]) return;
+    const rule = CARD_RULES[cardKey];
+    const matched = features.map((f, i) => ({ f, i })).filter(({ f }) => rule.pattern.test(f.name));
+    for (let a = 0; a < matched.length; a++) {
+      for (let b = a + 1; b < matched.length; b++) {
+        const { f: fa, i: ia } = matched[a];
+        const { f: fb, i: ib } = matched[b];
+        if (fa.neighbors.has(ib)) continue; // 徒歩で既に隣接しているなら特殊ルート扱いにしない
+        const d = haversineM(fa.centroid.lng, fa.centroid.lat, fb.centroid.lng, fb.centroid.lat);
+        if (d <= rule.maxDistanceM) {
+          fa.specialLinks.set(ib, cardKey);
+          fb.specialLinks.set(ia, cardKey);
+        }
+      }
+    }
+  });
+}
+
+function renderSpecialLines() {
+  specialLineGroup.clearLayers();
+  const drawn = new Set();
+  features.forEach((f, i) => {
+    f.specialLinks.forEach((cardKey, j) => {
+      const key = i < j ? `${i}-${j}` : `${j}-${i}`;
+      if (drawn.has(key)) return;
+      drawn.add(key);
+      const other = features[j];
+      L.polyline(
+        [[f.centroid.lat, f.centroid.lng], [other.centroid.lat, other.centroid.lng]],
+        { color: SPECIAL_LINE_COLOR, weight: 2, dashArray: "6 5", opacity: 0.75 }
+      ).addTo(specialLineGroup);
+    });
+  });
+}
+
+function pickAllCandidates(i) {
+  const result = new Map(); // idx -> "normal" | cardKey
+  features[i].neighbors.forEach((n) => result.set(n, "normal"));
+  features[i].specialLinks.forEach((cardKey, n) => result.set(n, cardKey));
+  return result;
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function styleFor(i) {
+  if (i === startIndex) return { fillColor: COLOR_START, fillOpacity: 0.75, color: "#0d5c55", weight: 2 };
+  if (visited.has(i)) return { fillColor: COLOR_TRAIL, fillOpacity: 0.7, color: "#ea9a3e", weight: 1.5 };
+  return { fillColor: COLOR_DEFAULT, fillOpacity: 0.55, color: "#9ca3af", weight: 1 };
+}
+
+function renderBaseLayer() {
+  features.forEach((f, i) => {
+    const layer = L.geoJSON(f.feature, { style: styleFor(i) }).addTo(layerGroup);
+    layer.bindTooltip(f.name, { sticky: true });
+    layer.on("click", () => onTileClick(i));
+    f.layer = layer;
+  });
+}
+
+function refreshStyle(i) {
+  features[i].layer.setStyle(styleFor(i));
+}
+
+function setPawn(i) {
+  const c = features[i].centroid;
+  if (pawnMarker) map.removeLayer(pawnMarker);
+  pawnMarker = L.marker([c.lat, c.lng], {
+    icon: L.divIcon({ html: '<div class="pawn-icon">🚶</div>', className: "", iconSize: [24, 24], iconAnchor: [12, 20] }),
+    zIndexOffset: 1000,
+  }).addTo(map);
+}
+
+// =====================================================================
+// クリック処理
+// =====================================================================
+function onTileClick(i) {
+  if (startIndex === null) {
+    startGameAt(i);
+    return;
+  }
+  if (moveState && moveState.candidateMap && moveState.candidateMap.has(i)) {
+    chooseDirection(i);
+  }
+}
+
+function startGameAt(i) {
+  startIndex = i;
+  currentIndex = i;
+  visited = new Set([i]);
+  totalSteps = 0;
+  refreshStyle(i);
+  setPawn(i);
+  $diceRow.style.display = "flex";
+  $rollBtn.disabled = false;
+  $resetBtn.style.display = "block";
+  appendLog(`🏁 ${features[i].name} を拠点に設定`);
+  setStatus(`現在地: <b>${features[i].name}</b>。サイコロを振って移動しましょう。`);
+}
+
+$resetBtn.addEventListener("click", () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  resetGame();
+  renderBaseLayer();
+  setStatus(`<b>${cityName}</b> の町丁目をクリックして開始地点を選んでください。`);
+});
+
+// =====================================================================
+// サイコロ移動
+// =====================================================================
+$rollBtn.addEventListener("click", () => {
+  if (moveState) return;
+  $rollBtn.disabled = true;
+  let ticks = 0;
+  const flicker = setInterval(() => {
+    $diceFace.textContent = String(1 + Math.floor(Math.random() * 6));
+    ticks++;
+    if (ticks > 10) {
+      clearInterval(flicker);
+      const value = 1 + Math.floor(Math.random() * 6);
+      $diceFace.textContent = String(value);
+      beginMove(value);
+    }
+  }, 60);
+});
+
+function beginMove(steps) {
+  moveState = { remaining: steps, prevIndex: null };
+  appendLog(`🎲 ${steps} が出た`);
+  advanceMove();
+}
+
+function advanceMove() {
+  $diceRemain.textContent = `残り ${moveState.remaining} 歩`;
+  if (moveState.remaining === 0) { finishMove(); return; }
+
+  const candidateMap = pickAllCandidates(currentIndex);
+  let candidates = Array.from(candidateMap.keys());
+  if (moveState.prevIndex !== null && candidates.length > 1) {
+    candidates = candidates.filter((c) => c !== moveState.prevIndex);
+  }
+
+  if (candidates.length === 0) {
+    appendLog(`🛑 ${features[currentIndex].name} で行き止まり`);
+    finishMove();
+    return;
+  }
+
+  if (candidates.length === 1) {
+    stepTo(candidates[0], candidateMap.get(candidates[0]));
+    return;
+  }
+
+  moveState.candidateMap = new Map(candidates.map((c) => [c, candidateMap.get(c)]));
+  showChoices(moveState.candidateMap);
+}
+
+const CARD_LABEL = { island: "🏝️渡し船", ferry: "⛴️フェリー", plane: "✈️空路" };
+
+function showChoices(candidateMap) {
+  $choiceBox.classList.add("show");
+  $choiceList.innerHTML = "";
+  candidateMap.forEach((kind, idx) => {
+    const isSpecial = kind !== "normal";
+    if (isSpecial) features[idx].layer.setStyle({ fillColor: "#ddd6fe", fillOpacity: 0.85, color: SPECIAL_LINE_COLOR, weight: 2.5 });
+    else features[idx].layer.setStyle({ fillColor: COLOR_CANDIDATE, fillOpacity: 0.85, color: COLOR_CANDIDATE_STROKE, weight: 2.5 });
+
+    const btn = document.createElement("button");
+    btn.className = "choice-btn" + (isSpecial ? " special" : "");
+    btn.innerHTML = `<span>→ ${features[idx].name}</span>${isSpecial ? `<span>${CARD_LABEL[kind]}</span>` : ""}`;
+    btn.addEventListener("click", () => {
+      moveState.candidateMap.forEach((_, c) => { if (c !== idx) refreshStyle(c); });
+      $choiceBox.classList.remove("show");
+      $choiceList.innerHTML = "";
+      stepTo(idx, kind);
+    });
+    $choiceList.appendChild(btn);
+  });
+}
+
+function chooseDirection(idx) {
+  const kind = moveState.candidateMap.get(idx);
+  moveState.candidateMap.forEach((_, c) => { if (c !== idx) refreshStyle(c); });
+  $choiceBox.classList.remove("show");
+  $choiceList.innerHTML = "";
+  stepTo(idx, kind);
+}
+
+function stepTo(idx, kind) {
+  moveState.prevIndex = currentIndex;
+  currentIndex = idx;
+  moveState.remaining -= 1;
+  totalSteps += 1;
+  visited.add(idx);
+  refreshStyle(idx);
+  setPawn(idx);
+  const isSpecial = kind !== "normal";
+  appendLog(`${isSpecial ? CARD_LABEL[kind] + "で" : ""}${features[idx].name}`, true, isSpecial);
+  setTimeout(advanceMove, 260);
+}
+
+function finishMove() {
+  $diceRemain.textContent = "";
+  $rollBtn.disabled = false;
+  moveState = null;
+  setStatus(`現在地: <b>${features[currentIndex].name}</b>。サイコロを振って次の移動をしましょう。`);
+}
+
+// =====================================================================
+// ログ
+// =====================================================================
+function appendLog(text, isStep, isSpecial) {
+  const span = document.createElement("span");
+  span.className = "step" + (isSpecial ? " special" : "");
+  span.textContent = text;
+  if ($trailLog.childNodes.length > 0) {
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    arrow.textContent = isStep ? "→" : "｜";
+    $trailLog.appendChild(arrow);
+  }
+  $trailLog.appendChild(span);
+  $trailLog.scrollTop = $trailLog.scrollHeight;
+}
+</script>
+</body>
+</html>

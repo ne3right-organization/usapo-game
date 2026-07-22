@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地図制覇ゲーム モック - 統合ループ（移動+戦闘）</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #fdf8f0; }
+#map { width: 100vw; height: 100vh; }
+
+#panel {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 300px; max-height: calc(100vh - 20px); overflow-y: auto;
+}
+#panel h1 { font-size: 14px; color: #3c2a14; margin-bottom: 2px; }
+#panel .subtitle { font-size: 11px; color: #a8937a; margin-bottom: 10px; }
+#panel label { display: block; font-size: 11px; color: #6b7280; margin: 8px 0 3px; }
+#panel select, #panel button {
+  width: 100%; padding: 7px 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid #d9cdb8; outline: none; background: white;
+}
+#panel button {
+  background: #0f766e; color: white; border: none; cursor: pointer;
+  font-weight: 600; margin-top: 8px; transition: background 0.15s;
+}
+#panel button:hover:not(:disabled) { background: #0d6660; }
+#panel button:disabled { background: #c9c2b6; cursor: not-allowed; }
+#panel button.secondary { background: #f3ede1; color: #6b5638; border: 1px solid #d9cdb8; }
+#panel button.secondary:hover:not(:disabled) { background: #e9dfc9; }
+#panel button.danger { background: #b91c1c; }
+#panel button.danger:hover:not(:disabled) { background: #991616; }
+#panel button.turn { background: #b45309; }
+#panel button.turn:hover:not(:disabled) { background: #92400e; }
+
+#funds-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #f8f4ea; border-radius: 8px; padding: 8px 12px; margin-top: 4px;
+}
+#funds-row .l { font-size: 11px; color: #9ca3af; }
+#funds-row .v { font-size: 18px; font-weight: 800; color: #0f766e; }
+#funds-row .v.low { color: #b91c1c; }
+
+#turn-row {
+  display: flex; align-items: center; justify-content: space-between; margin-top: 6px;
+  font-size: 11px; color: #9ca3af;
+}
+#turn-row b { color: #1f2937; font-size: 13px; }
+
+#status-box {
+  margin-top: 10px; padding: 10px 12px; background: #f8f4ea; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; min-height: 20px;
+}
+#status-box b { color: #1f2937; }
+
+#dice-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+#dice-face {
+  width: 46px; height: 46px; border-radius: 8px; background: #1f2937; color: white;
+  display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800;
+  flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+#dice-remain { font-size: 12px; color: #6b7280; }
+
+#choice-box { margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
+#choice-box.show { display: flex; }
+#choice-box .choice-label { font-size: 11px; color: #b45309; font-weight: 700; }
+.choice-btn {
+  width: 100%; text-align: left; padding: 7px 10px; font-size: 12px;
+  border-radius: 6px; border: 1.5px solid #f59e0b; background: #fffbeb; color: #92400e;
+  cursor: pointer; font-weight: 600; margin-top: 0; display: flex; justify-content: space-between; gap: 6px;
+}
+.choice-btn:hover { background: #fef3c7; }
+.choice-btn .cb-hint { font-weight: 800; }
+.choice-btn .cb-hint.enemy { color: #b91c1c; }
+.choice-btn .cb-hint.owned { color: #0f766e; }
+
+#encounter-box {
+  display: none; margin-top: 10px; padding: 10px 12px; background: #fff1f2; border: 1.5px solid #fca5a5;
+  border-radius: 8px;
+}
+#encounter-box.show { display: block; }
+#encounter-box .enc-title { font-size: 13px; font-weight: 800; color: #b91c1c; margin-bottom: 6px; }
+#encounter-box .name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+#encounter-box .name { font-size: 14px; font-weight: 800; color: #1f2937; }
+.attr-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; color: white; flex-shrink: 0; }
+#encounter-box .stat-line { display: flex; justify-content: space-between; font-size: 12px; color: #4b5563; padding: 2px 0; }
+#encounter-box .stat-line b { color: #1f2937; }
+
+#prob-bar-wrap { margin-top: 8px; }
+#prob-bar-track { height: 14px; background: #f3f4f6; border-radius: 7px; overflow: hidden; }
+#prob-bar-fill { height: 100%; background: linear-gradient(90deg,#22c55e,#16a34a); transition: width 0.3s; }
+#prob-label { font-size: 11px; color: #6b7280; margin-top: 3px; display: flex; justify-content: space-between; }
+#prob-label b { font-size: 15px; color: #0f766e; }
+
+#deck-section { margin-top: 12px; }
+#deck-section .deck-title { display: flex; justify-content: space-between; align-items: baseline; }
+#deck-section .deck-title span { font-size: 11px; color: #6b7280; }
+#deck-count.full { color: #0f766e; }
+#card-pool { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
+.card-item {
+  border: 1.5px solid #e5e0d3; border-radius: 8px; padding: 7px 8px; cursor: pointer;
+  background: white; transition: all 0.12s; user-select: none;
+}
+.card-item:hover { border-color: #0f766e; }
+.card-item.selected { border-color: #0f766e; background: #f0fdf4; box-shadow: inset 0 0 0 1px #0f766e; }
+.card-item.locked { cursor: not-allowed; background: #f3f4f6; opacity: 0.55; }
+.card-item.locked:hover { border-color: #e5e0d3; }
+.card-item.locked .cname { color: #9ca3af; }
+.card-item .cname { font-size: 11px; font-weight: 700; color: #1f2937; }
+.card-item .cmeta { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; }
+.card-item .cpower { font-size: 11px; color: #6b7280; }
+.card-attr-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+#trail-log {
+  margin-top: 10px; font-size: 11px; color: #6b7280; line-height: 1.7;
+  max-height: 90px; overflow-y: auto; background: #f8f4ea; border-radius: 8px; padding: 8px 10px;
+}
+#trail-log .step { color: #1f2937; }
+#trail-log .arrow { color: #d1d5db; margin: 0 3px; }
+
+#battle-overlay {
+  display: none; position: fixed; inset: 0; z-index: 2000;
+  background: rgba(15,23,42,0.72); align-items: center; justify-content: center;
+}
+#battle-overlay.show { display: flex; }
+.battle-card {
+  background: white; border-radius: 18px; padding: 32px 36px; text-align: center;
+  width: 340px; box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+.battle-card h2 { font-size: 16px; color: #3c2a14; margin-bottom: 14px; }
+#battle-dice {
+  width: 70px; height: 70px; margin: 0 auto 14px; border-radius: 14px;
+  background: #1f2937; color: white; display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 800; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+#battle-result { font-size: 20px; font-weight: 800; margin: 10px 0; min-height: 26px; }
+#battle-result.win { color: #16a34a; }
+#battle-result.lose { color: #b91c1c; }
+#battle-detail { font-size: 12px; color: #6b7280; line-height: 1.7; text-align: left; background: #f8f4ea; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+#battle-close { margin-top: 16px; background: #0f766e; color: white; border: none; padding: 10px 28px; border-radius: 10px; font-weight: 700; cursor: pointer; width: 100%; display: none; }
+
+.pawn-icon { font-size: 22px; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4)); }
+
+#legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  width: 220px;
+}
+#legend h4 { font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #4b5563; line-height: 1.6; margin-bottom: 5px; }
+.legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+
+#source {
+  position: absolute; bottom: 6px; right: 10px; z-index: 1000;
+  font-size: 10px; color: #9ca3af; background: rgba(255,255,255,0.85);
+  padding: 3px 9px; border-radius: 5px; max-width: 320px; text-align: right;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h1>地図制覇ゲーム モック</h1>
+  <div class="subtitle">統合ループ（移動フェーズ→戦闘フェーズ）</div>
+
+  <label>CloudFront ベースURL</label>
+  <input type="text" id="base-url" placeholder="https://xxxxx.cloudfront.net" />
+
+  <label>都道府県</label>
+  <select id="pref-select"></select>
+
+  <label>市区町村</label>
+  <select id="city-select" disabled>
+    <option>都道府県を選んでください</option>
+  </select>
+
+  <button id="load-btn" disabled>この市区町村を読み込む</button>
+
+  <div id="funds-row">
+    <span class="l">維持予算（資金）</span>
+    <span class="v" id="funds-value">-</span>
+  </div>
+  <div id="turn-row">
+    <span>ターン <b id="turn-count">0</b></span>
+    <span id="occupied-count-label">占領 0 町丁目</span>
+  </div>
+
+  <div id="status-box">都道府県・市区町村を選んで読み込んでください</div>
+
+  <div id="dice-row" style="display:none">
+    <div id="dice-face">-</div>
+    <div>
+      <button id="roll-btn" style="margin-top:0" disabled>サイコロを振る</button>
+      <div id="dice-remain"></div>
+    </div>
+  </div>
+
+  <div id="choice-box">
+    <div class="choice-label">▸ 分岐点：進む方向を選んでください</div>
+    <div id="choice-list"></div>
+  </div>
+
+  <div id="encounter-box">
+    <div class="enc-title">⚔️ 遭遇！ 未攻略の町丁目に到達しました</div>
+    <div class="name-row">
+      <span class="name" id="enc-name"></span>
+      <span class="attr-badge" id="enc-attr-badge"></span>
+    </div>
+    <div class="stat-line"><span>面積</span><b id="enc-area">-</b></div>
+    <div class="stat-line"><span>人口</span><b id="enc-jinko">-</b></div>
+    <div class="stat-line"><span>守備力</span><b id="enc-defense">-</b></div>
+    <div class="stat-line"><span>攻撃力（現在のデッキ）</span><b id="enc-attack">-</b></div>
+    <div id="prob-bar-wrap">
+      <div id="prob-bar-track"><div id="prob-bar-fill" style="width:0%"></div></div>
+      <div id="prob-label"><span>事前勝率</span><b id="prob-value">-</b></div>
+    </div>
+    <button id="challenge-btn" disabled>挑戦する</button>
+    <button id="retreat-btn" class="secondary">撤退する（このターンを終える）</button>
+  </div>
+
+  <button id="next-turn-btn" class="turn" style="display:none">▶ 次のターンへ</button>
+
+  <div id="deck-section">
+    <div class="deck-title">
+      <span>デッキ（所持カードから5枚選択・いつでも組み替え可）</span>
+      <span>選択中 <span id="deck-count">0</span>/5</span>
+    </div>
+    <div id="card-pool"></div>
+  </div>
+
+  <div id="trail-log"></div>
+</div>
+
+<div id="legend">
+  <h4>凡例</h4>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0f766e"></span>占領済み</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#eab308"></span>地属性</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#ef4444"></span>火属性</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#22c55e"></span>風属性</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#3b82f6"></span>水属性</div>
+  <div style="font-size:10px;color:#9ca3af;margin-top:6px">🚶 = 現在地。サイコロを振って移動し、未攻略地に着地すると戦闘になります</div>
+</div>
+
+<div id="source">
+  出典: 国土数値情報・国勢調査（2020年）小地域集計<br>
+  移動・戦闘の計算式はこのモック独自の暫定式（要調整）
+</div>
+
+<div id="battle-overlay">
+  <div class="battle-card">
+    <h2 id="battle-title">戦闘中...</h2>
+    <div id="battle-dice">-</div>
+    <div id="battle-result"></div>
+    <div id="battle-detail"></div>
+    <button id="battle-close">閉じる</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =====================================================================
+// 定数
+// =====================================================================
+const PREF_NAMES = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
+  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
+  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
+  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+];
+
+const ATTR = {
+  land:  { key: "land",  label: "地", color: "#eab308" },
+  fire:  { key: "fire",  label: "火", color: "#ef4444" },
+  wind:  { key: "wind",  label: "風", color: "#22c55e" },
+  water: { key: "water", label: "水", color: "#3b82f6" },
+};
+const COLOR_OCCUPIED = "#0f766e";
+
+const DEFENSE_COST_MULTIPLIER = { fire: 1.3, wind: 1.5, water: 1.0, land: 0.5 };
+
+const CARD_POOL = [
+  { id: "c1",  name: "火炎の一撃",       attr: "fire",    power: 180 },
+  { id: "c2",  name: "噴煙の砲台",       attr: "fire",    power: 140 },
+  { id: "c3",  name: "奔流の刃",         attr: "water",   power: 170 },
+  { id: "c4",  name: "水脈の守り手",     attr: "water",   power: 130 },
+  { id: "c5",  name: "大地の重槌",       attr: "land",    power: 160 },
+  { id: "c6",  name: "古木の番人",       attr: "land",    power: 120 },
+  { id: "c7",  name: "疾風の一閃",       attr: "wind",    power: 175 },
+  { id: "c8",  name: "旋風の斥候",       attr: "wind",    power: 110 },
+  { id: "c9",  name: "旅の杖",           attr: "neutral", power: 90  },
+  { id: "c10", name: "伊能の羅針盤",     attr: "neutral", power: 100 },
+  { id: "c11", name: "商人の資金術",     attr: "neutral", power: 80  },
+  { id: "c12", name: "測量隊の号令",     attr: "neutral", power: 95  },
+];
+const NEUTRAL_DOT = "#9ca3af";
+const STARTER_CARD_IDS = new Set(["c6", "c9", "c10", "c11", "c12"]);
+const ownedCardIds = new Set(STARTER_CARD_IDS);
+
+let baseUrl = "";
+const $baseUrlInput = document.getElementById("base-url");
+$baseUrlInput.addEventListener("input", () => { baseUrl = $baseUrlInput.value.trim(); });
+
+// =====================================================================
+// Leaflet マップ初期化
+// =====================================================================
+const map = L.map("map", { center: [36.5, 137.0], zoom: 6, preferCanvas: true, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  opacity: 0.5,
+}).addTo(map);
+const layerGroup = L.layerGroup().addTo(map);
+let pawnMarker = null;
+
+// =====================================================================
+// UI要素
+// =====================================================================
+const $prefSelect = document.getElementById("pref-select");
+PREF_NAMES.forEach((name, i) => {
+  const code = String(i + 1).padStart(2, "0");
+  const opt = document.createElement("option");
+  opt.value = code;
+  opt.textContent = `${code} ${name}`;
+  $prefSelect.appendChild(opt);
+});
+
+const $citySelect = document.getElementById("city-select");
+const $loadBtn = document.getElementById("load-btn");
+const $statusBox = document.getElementById("status-box");
+const $fundsValue = document.getElementById("funds-value");
+const $turnCount = document.getElementById("turn-count");
+const $occupiedLabel = document.getElementById("occupied-count-label");
+const $diceRow = document.getElementById("dice-row");
+const $diceFace = document.getElementById("dice-face");
+const $rollBtn = document.getElementById("roll-btn");
+const $diceRemain = document.getElementById("dice-remain");
+const $choiceBox = document.getElementById("choice-box");
+const $choiceList = document.getElementById("choice-list");
+const $encounterBox = document.getElementById("encounter-box");
+const $encName = document.getElementById("enc-name");
+const $encAttrBadge = document.getElementById("enc-attr-badge");
+const $encArea = document.getElementById("enc-area");
+const $encJinko = document.getElementById("enc-jinko");
+const $encDefense = document.getElementById("enc-defense");
+const $encAttack = document.getElementById("enc-attack");
+const $probBarFill = document.getElementById("prob-bar-fill");
+const $probValue = document.getElementById("prob-value");
+const $challengeBtn = document.getElementById("challenge-btn");
+const $retreatBtn = document.getElementById("retreat-btn");
+const $nextTurnBtn = document.getElementById("next-turn-btn");
+const $deckCount = document.getElementById("deck-count");
+const $cardPool = document.getElementById("card-pool");
+const $trailLog = document.getElementById("trail-log");
+
+function setStatus(html) { $statusBox.innerHTML = html; }
+
+$prefSelect.addEventListener("change", async () => {
+  const prefCode = $prefSelect.value;
+  $citySelect.disabled = true;
+  $citySelect.innerHTML = "<option>読み込み中...</option>";
+  $loadBtn.disabled = true;
+  try {
+    const url = `${baseUrl}/geojson/municipality/2020/${prefCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+    const seen = new Map();
+    for (const f of geojson.features || []) {
+      const code = f.properties?.cityCode;
+      const name = f.properties?.cityName;
+      if (code && name && !seen.has(code)) seen.set(code, name);
+    }
+    const cities = Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    if (cities.length === 0) throw new Error("市区町村が見つかりませんでした");
+    $citySelect.innerHTML = "";
+    cities.forEach(([code, name]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      $citySelect.appendChild(opt);
+    });
+    $citySelect.disabled = false;
+    $loadBtn.disabled = false;
+  } catch (err) {
+    $citySelect.innerHTML = "<option>取得失敗</option>";
+    setStatus(`<b style="color:#dc2626">市区町村一覧の取得に失敗:</b> ${err.message}`);
+  }
+});
+$prefSelect.dispatchEvent(new Event("change"));
+
+// =====================================================================
+// ゲーム状態
+// =====================================================================
+let features = [];
+let funds = 1000;
+let deck = new Set();
+let turnCount = 0;
+let position = null;      // 現在地index
+let turnState = "loading"; // loading | idle | stepping | encounter | battling | turn-end
+let moveState = null;      // { remaining, prevIndex }
+
+renderCardPool();
+updateFunds(0);
+
+$loadBtn.addEventListener("click", async () => {
+  const prefCode = $prefSelect.value;
+  const cityCode = $citySelect.value;
+  const cityName = $citySelect.options[$citySelect.selectedIndex]?.textContent || "";
+  if (!cityCode) return;
+
+  $loadBtn.disabled = true;
+  setStatus(`${cityName} の町丁目データを取得中...`);
+  resetGame();
+  layerGroup.clearLayers();
+
+  try {
+    const url = `${baseUrl}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geojson = await res.json();
+
+    features = computeFeatures(geojson);
+    if (features.length === 0) throw new Error("町丁目データが空でした");
+
+    buildAdjacency();
+    pickStartTile();
+    renderBaseLayer();
+    setPawn(position);
+
+    const boundsLayer = L.geoJSON(features.map((f) => f.feature));
+    map.fitBounds(boundsLayer.getBounds(), { padding: [20, 20] });
+
+    $diceRow.style.display = "flex";
+    turnState = "idle";
+    updateRollAvailability();
+    updateTurnUI();
+    appendLog(`🏁 ${features[position].name} を拠点に設定（守備力最弱の町丁目）`);
+    setStatus(`<b>${cityName}</b>: ${features.length} 町丁目。デッキを組んでサイコロを振ってください。`);
+  } catch (err) {
+    setStatus(`<b style="color:#dc2626">町丁目データの取得に失敗:</b> ${err.message}`);
+  } finally {
+    $loadBtn.disabled = false;
+  }
+});
+
+function resetGame() {
+  features = [];
+  funds = 1000;
+  turnCount = 0;
+  position = null;
+  turnState = "loading";
+  moveState = null;
+  if (pawnMarker) { map.removeLayer(pawnMarker); pawnMarker = null; }
+  $diceRow.style.display = "none";
+  $choiceBox.classList.remove("show");
+  $encounterBox.classList.remove("show");
+  $nextTurnBtn.style.display = "none";
+  $trailLog.innerHTML = "";
+  updateFunds(0);
+  updateTurnUI();
+}
+
+// =====================================================================
+// 属性・守備力算出
+// =====================================================================
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function ringPerimeter(ring) {
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) sum += haversine(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+  return sum;
+}
+function featurePerimeter(feature) {
+  const geom = feature.geometry;
+  if (geom.type === "Polygon") return ringPerimeter(geom.coordinates[0]);
+  if (geom.type === "MultiPolygon") return geom.coordinates.reduce((s, poly) => s + ringPerimeter(poly[0]), 0);
+  return 0;
+}
+function percentileRanks(values) {
+  const order = values.map((_, i) => i).sort((a, b) => values[a] - values[b]);
+  const ranks = new Array(values.length);
+  order.forEach((originalIndex, rankPos) => { ranks[originalIndex] = values.length > 1 ? rankPos / (values.length - 1) : 0.5; });
+  return ranks;
+}
+function calcCentroid(feature) {
+  let coords = [];
+  if (feature.geometry.type === "Polygon") coords = feature.geometry.coordinates[0];
+  else if (feature.geometry.type === "MultiPolygon") {
+    let maxLen = 0;
+    feature.geometry.coordinates.forEach((poly) => { if (poly[0].length > maxLen) { maxLen = poly[0].length; coords = poly[0]; } });
+  }
+  const lats = coords.map((c) => c[1]);
+  const lngs = coords.map((c) => c[0]);
+  return { lat: lats.reduce((a, b) => a + b, 0) / lats.length, lng: lngs.reduce((a, b) => a + b, 0) / lngs.length };
+}
+
+// HCODE=8154 は水面ポリゴン。攻略対象の陸地ではないので除外する。
+function computeFeatures(geojson) {
+  const raw = (geojson.features || [])
+    .filter((f) => f.geometry && f.properties?.S_NAME && f.properties?.HCODE !== "8154")
+    .map((f) => {
+      const p = f.properties;
+      const area = Number(p.AREA || 0);
+      const jinko = Number(p.JINKO || 0);
+      const setai = Number(p.SETAI || 0);
+      const density = area > 0 ? jinko / (area / 1_000_000) : 0;
+      const avgHousehold = setai > 0 ? jinko / setai : 0;
+      const perimeter = featurePerimeter(f);
+      const compactness = perimeter > 0 ? Math.min(1, (4 * Math.PI * area) / (perimeter * perimeter)) : 0;
+      return { feature: f, name: p.S_NAME, area, jinko, setai, density, avgHousehold, compactness, centroid: calcCentroid(f) };
+    });
+  if (raw.length === 0) return [];
+
+  const areaNorm = percentileRanks(raw.map((r) => r.area));
+  const densityNorm = percentileRanks(raw.map((r) => r.density));
+  const compactNorm = percentileRanks(raw.map((r) => r.compactness));
+  const avgHouseholdNorm = percentileRanks(raw.map((r) => r.avgHousehold));
+  const jinkoNorm = percentileRanks(raw.map((r) => r.jinko));
+
+  return raw.map((r, i) => {
+    const aN = areaNorm[i], dN = densityNorm[i], cN = compactNorm[i], hN = avgHouseholdNorm[i], jN = jinkoNorm[i];
+    const scores = {
+      // 人口の絶対量が少ないことも要求し、空港のような無人の大規模地物と、
+      // 田園調布のような広め区画の住宅地(実際には人が住む)を区別する。
+      land: aN * (1 - dN) * (1 - jN),
+      fire: aN * cN,
+      wind: (1 - aN) * dN,
+      // 「中程度の面積」ペナルティを二乗にして緩め、やや広めの一軒家住宅地も拾いやすくする。
+      water: (1 - Math.pow(Math.abs(aN - 0.5) * 2, 2)) * hN,
+    };
+    const attr = Object.keys(scores).reduce((best, k) => (scores[k] > scores[best] ? k : best), "land");
+    const defenseBase = r.jinko * 0.6 + (r.area / 10000) * 8;
+    const defense = Math.max(20, Math.round(defenseBase * DEFENSE_COST_MULTIPLIER[attr]));
+    return { ...r, attr, defense, neighbors: new Set(), layer: null, occupied: false };
+  });
+}
+
+// =====================================================================
+// 隣接判定（頂点近接による簡易推定）
+// =====================================================================
+function allVerts(feature) {
+  const out = [];
+  const push = (ring) => ring.forEach((c) => out.push(c));
+  if (feature.geometry.type === "Polygon") feature.geometry.coordinates.forEach(push);
+  else if (feature.geometry.type === "MultiPolygon") feature.geometry.coordinates.forEach((poly) => poly.forEach(push));
+  return out;
+}
+function bboxOf(coords) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  coords.forEach(([x, y]) => { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; });
+  return { minX, minY, maxX, maxY };
+}
+function metersBetween(lng1, lat1, lng2, lat2, cosLat) {
+  const dx = (lng2 - lng1) * 111320 * cosLat;
+  const dy = (lat2 - lat1) * 110540;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+const ADJ_PAD_DEG = 0.0006;
+const ADJ_THRESHOLD_M = 40;
+
+function buildAdjacency() {
+  const verts = features.map((f) => allVerts(f.feature));
+  const boxes = verts.map(bboxOf);
+  const n = features.length;
+  for (let i = 0; i < n; i++) {
+    const bi = boxes[i];
+    const cosLat = Math.cos((features[i].centroid.lat * Math.PI) / 180);
+    for (let j = i + 1; j < n; j++) {
+      const bj = boxes[j];
+      const overlap =
+        bi.minX - ADJ_PAD_DEG <= bj.maxX && bi.maxX + ADJ_PAD_DEG >= bj.minX &&
+        bi.minY - ADJ_PAD_DEG <= bj.maxY && bi.maxY + ADJ_PAD_DEG >= bj.minY;
+      if (!overlap) continue;
+      let close = false;
+      outer: for (const [x1, y1] of verts[i]) {
+        for (const [x2, y2] of verts[j]) {
+          if (metersBetween(x1, y1, x2, y2, cosLat) < ADJ_THRESHOLD_M) { close = true; break outer; }
+        }
+      }
+      if (close) { features[i].neighbors.add(j); features[j].neighbors.add(i); }
+    }
+  }
+}
+
+// 開始拠点は守備力が最も低い町丁目にする（人口最大だと初手から高難度に囲まれるため）。
+function pickStartTile() {
+  let best = 0;
+  features.forEach((f, i) => { if (f.defense < features[best].defense) best = i; });
+  features[best].occupied = true;
+  position = best;
+}
+
+// =====================================================================
+// 描画
+// =====================================================================
+function styleFor(i) {
+  const f = features[i];
+  if (f.occupied) return { fillColor: COLOR_OCCUPIED, fillOpacity: 0.78, color: "#0d5c55", weight: 1.5 };
+  return { fillColor: ATTR[f.attr].color, fillOpacity: 0.6, color: "rgba(0,0,0,0.3)", weight: 1 };
+}
+
+function renderBaseLayer() {
+  features.forEach((f, i) => {
+    const layer = L.geoJSON(f.feature, { style: styleFor(i) }).addTo(layerGroup);
+    layer.bindTooltip(`${f.name}${f.occupied ? "（占領済み）" : "（未攻略）"}`, { sticky: true });
+    f.layer = layer;
+  });
+}
+
+function refreshStyle(i) {
+  features[i].layer.setStyle(styleFor(i));
+  features[i].layer.setTooltipContent(`${features[i].name}${features[i].occupied ? "（占領済み）" : "（未攻略）"}`);
+}
+
+function setPawn(i) {
+  const c = features[i].centroid;
+  if (pawnMarker) map.removeLayer(pawnMarker);
+  pawnMarker = L.marker([c.lat, c.lng], {
+    icon: L.divIcon({ html: '<div class="pawn-icon">🚶</div>', className: "", iconSize: [24, 24], iconAnchor: [12, 20] }),
+    zIndexOffset: 1000,
+  }).addTo(map);
+  map.panTo([c.lat, c.lng]);
+}
+
+// =====================================================================
+// デッキ（カード選択・いつでも組み替え可）
+// =====================================================================
+function renderCardPool() {
+  $cardPool.innerHTML = "";
+  CARD_POOL.forEach((card) => {
+    const owned = ownedCardIds.has(card.id);
+    const el = document.createElement("div");
+    el.className = "card-item" + (owned ? "" : " locked");
+    const dotColor = card.attr === "neutral" ? NEUTRAL_DOT : ATTR[card.attr].color;
+    if (owned) {
+      el.innerHTML = `
+        <div class="cname">${card.name}</div>
+        <div class="cmeta">
+          <span><span class="card-attr-dot" style="background:${dotColor}"></span>${card.attr === "neutral" ? "無属性" : ATTR[card.attr].label}</span>
+          <span class="cpower">ATK ${card.power}</span>
+        </div>`;
+      el.addEventListener("click", () => toggleCard(card.id, el));
+    } else {
+      el.innerHTML = `
+        <div class="cname">🔒 ${card.name}</div>
+        <div class="cmeta">
+          <span><span class="card-attr-dot" style="background:${dotColor}"></span>${card.attr === "neutral" ? "無属性" : ATTR[card.attr].label}</span>
+          <span class="cpower">未所持</span>
+        </div>`;
+    }
+    $cardPool.appendChild(el);
+  });
+}
+
+function toggleCard(id, el) {
+  if (!ownedCardIds.has(id)) return;
+  if (deck.has(id)) { deck.delete(id); el.classList.remove("selected"); }
+  else { if (deck.size >= 5) return; deck.add(id); el.classList.add("selected"); }
+  $deckCount.textContent = deck.size;
+  $deckCount.className = deck.size === 5 ? "full" : "";
+  updateRollAvailability();
+  if (turnState === "encounter") showEncounter(pendingEncounterIndex);
+}
+
+function computeAttackPower(tileAttr) {
+  let total = 0;
+  deck.forEach((id) => {
+    const card = CARD_POOL.find((c) => c.id === id);
+    if (!card) return;
+    total += card.attr === tileAttr ? Math.round(card.power * 1.25) : card.power;
+  });
+  return total;
+}
+function clampProb(p) { return Math.max(0.05, Math.min(0.95, p)); }
+
+function updateRollAvailability() {
+  $rollBtn.disabled = turnState !== "idle" || deck.size !== 5;
+}
+
+// =====================================================================
+// ターン制御
+// =====================================================================
+function updateTurnUI() {
+  $turnCount.textContent = turnCount;
+  $occupiedLabel.textContent = `占領 ${features.filter((f) => f.occupied).length} 町丁目`;
+}
+
+function updateFunds(delta) {
+  funds = Math.max(0, funds + delta);
+  document.getElementById("funds-value").textContent = funds.toLocaleString();
+  document.getElementById("funds-value").classList.toggle("low", funds < 200);
+}
+
+function appendLog(text, isStep) {
+  const span = document.createElement("span");
+  span.className = "step";
+  span.textContent = text;
+  if ($trailLog.childNodes.length > 0) {
+    const arrow = document.createElement("span");
+    arrow.className = "arrow";
+    arrow.textContent = isStep ? "→" : "｜";
+    $trailLog.appendChild(arrow);
+  }
+  $trailLog.appendChild(span);
+  $trailLog.scrollTop = $trailLog.scrollHeight;
+}
+
+// =====================================================================
+// サイコロ移動
+// =====================================================================
+$rollBtn.addEventListener("click", () => {
+  if (turnState !== "idle" || deck.size !== 5) return;
+  turnState = "stepping";
+  updateRollAvailability();
+  turnCount++;
+  updateTurnUI();
+  appendLog(`▶ ターン${turnCount}`);
+
+  let ticks = 0;
+  const flicker = setInterval(() => {
+    $diceFace.textContent = String(1 + Math.floor(Math.random() * 6));
+    ticks++;
+    if (ticks > 10) {
+      clearInterval(flicker);
+      const value = 1 + Math.floor(Math.random() * 6);
+      $diceFace.textContent = String(value);
+      moveState = { remaining: value, prevIndex: null };
+      appendLog(`🎲 ${value}`);
+      advanceMove();
+    }
+  }, 60);
+});
+
+function advanceMove() {
+  $diceRemain.textContent = `残り ${moveState.remaining} 歩`;
+  if (moveState.remaining === 0) { endTurn("移動終了。"); return; }
+
+  const cur = features[position];
+  let candidates = Array.from(cur.neighbors);
+  if (moveState.prevIndex !== null && candidates.length > 1) {
+    candidates = candidates.filter((c) => c !== moveState.prevIndex);
+  }
+  if (candidates.length === 0) { endTurn(`${cur.name} で行き止まり。`); return; }
+
+  if (candidates.length === 1) { resolveStep(candidates[0]); return; }
+
+  showChoices(candidates);
+}
+
+function showChoices(candidates) {
+  $choiceBox.classList.add("show");
+  $choiceList.innerHTML = "";
+  candidates.forEach((idx) => {
+    const f = features[idx];
+    const btn = document.createElement("button");
+    btn.className = "choice-btn";
+    let hint;
+    if (f.occupied) {
+      hint = `<span class="cb-hint owned">自領</span>`;
+    } else {
+      const attack = computeAttackPower(f.attr);
+      const prob = deck.size === 5 ? clampProb(attack / (attack + f.defense)) : null;
+      hint = `<span class="cb-hint enemy">${prob !== null ? Math.round(prob * 100) + "%" : "?"}</span>`;
+    }
+    btn.innerHTML = `<span>→ ${f.name}</span>${hint}`;
+    btn.addEventListener("click", () => {
+      $choiceBox.classList.remove("show");
+      $choiceList.innerHTML = "";
+      resolveStep(idx);
+    });
+    $choiceList.appendChild(btn);
+  });
+}
+
+function resolveStep(idx) {
+  const target = features[idx];
+  if (target.occupied) {
+    moveState.prevIndex = position;
+    position = idx;
+    moveState.remaining -= 1;
+    setPawn(idx);
+    appendLog(target.name, true);
+    setTimeout(advanceMove, 220);
+    return;
+  }
+  // 未攻略地に着地: このターンの残り歩数は消費し、戦闘に入る
+  moveState.remaining = 0;
+  moveState.prevIndex = position;
+  appendLog(`⚔️ ${target.name}`, true);
+  enterEncounter(idx);
+}
+
+let pendingEncounterIndex = null;
+
+function enterEncounter(idx) {
+  turnState = "encounter";
+  pendingEncounterIndex = idx;
+  $diceRemain.textContent = "";
+  showEncounter(idx);
+}
+
+function showEncounter(idx) {
+  const f = features[idx];
+  $encounterBox.classList.add("show");
+  $encName.textContent = f.name;
+  $encAttrBadge.textContent = ATTR[f.attr].label;
+  $encAttrBadge.style.background = ATTR[f.attr].color;
+  $encArea.textContent = `${(f.area / 10000).toFixed(1)} ha`;
+  $encJinko.textContent = `${f.jinko.toLocaleString()} 人`;
+  $encDefense.textContent = f.defense.toLocaleString();
+
+  const attack = computeAttackPower(f.attr);
+  $encAttack.textContent = deck.size === 5 ? attack.toLocaleString() : "- (5枚選択してください)";
+  const prob = deck.size === 5 ? clampProb(attack / (attack + f.defense)) : 0;
+  $probBarFill.style.width = `${Math.round(prob * 100)}%`;
+  $probValue.textContent = deck.size === 5 ? `${Math.round(prob * 100)}%` : "-";
+  $challengeBtn.disabled = deck.size !== 5;
+
+  setStatus(`<b>${f.name}</b> に遭遇。デッキを確認して挑戦するか撤退するか選んでください。`);
+}
+
+$retreatBtn.addEventListener("click", () => {
+  $encounterBox.classList.remove("show");
+  pendingEncounterIndex = null;
+  endTurn("撤退した。");
+});
+
+// =====================================================================
+// 戦闘演出
+// =====================================================================
+const $overlay = document.getElementById("battle-overlay");
+const $battleTitle = document.getElementById("battle-title");
+const $battleDice = document.getElementById("battle-dice");
+const $battleResult = document.getElementById("battle-result");
+const $battleDetail = document.getElementById("battle-detail");
+const $battleClose = document.getElementById("battle-close");
+
+$challengeBtn.addEventListener("click", () => {
+  if (pendingEncounterIndex === null || deck.size !== 5) return;
+  const idx = pendingEncounterIndex;
+  const f = features[idx];
+  const attack = computeAttackPower(f.attr);
+  const baseProb = clampProb(attack / (attack + f.defense));
+
+  turnState = "battling";
+  $encounterBox.classList.remove("show");
+  $overlay.classList.add("show");
+  $battleTitle.textContent = `${f.name} に侵攻中...`;
+  $battleResult.textContent = "";
+  $battleResult.className = "";
+  $battleDetail.textContent = "";
+  $battleClose.style.display = "none";
+  $battleDice.textContent = "-";
+
+  let ticks = 0;
+  const flicker = setInterval(() => {
+    $battleDice.textContent = String(1 + Math.floor(Math.random() * 6));
+    ticks++;
+    if (ticks > 10) {
+      clearInterval(flicker);
+      const diceValue = 1 + Math.floor(Math.random() * 6);
+      $battleDice.textContent = String(diceValue);
+      resolveBattle(f, idx, attack, baseProb, diceValue);
+    }
+  }, 70);
+});
+
+function resolveBattle(f, idx, attack, baseProb, diceValue) {
+  const modifier = (diceValue - 3.5) * 0.06;
+  const finalProb = clampProb(baseProb + modifier);
+  const win = Math.random() < finalProb;
+
+  $battleResult.textContent = win ? "🎉 勝利！占領した" : "撤退...敗北";
+  $battleResult.className = win ? "win" : "lose";
+
+  let detail = `攻撃力 ${attack} ／ 守備力 ${f.defense}<br>`;
+  detail += `事前勝率 ${Math.round(baseProb * 100)}% → サイコロ(${diceValue})補正後 ${Math.round(finalProb * 100)}%<br>`;
+
+  if (win) {
+    const reward = Math.round(f.defense * 0.15);
+    updateFunds(reward);
+    f.occupied = true;
+    detail += `占領ボーナス: +${reward} 資金`;
+  } else {
+    const penalty = Math.round(f.defense * 0.12);
+    updateFunds(-penalty);
+    detail += `敗北ペナルティ: -${penalty} 資金（維持予算の消耗）`;
+  }
+  $battleDetail.innerHTML = detail;
+  $battleClose.style.display = "block";
+
+  $battleClose.onclick = () => {
+    $overlay.classList.remove("show");
+    refreshStyle(idx);
+    pendingEncounterIndex = null;
+    if (win) {
+      position = idx;
+      setPawn(idx);
+      appendLog(`🏳️ 占領`, true);
+      endTurn(`${f.name} を占領した。`);
+    } else {
+      endTurn(`${f.name} への侵攻に失敗した。`);
+    }
+  };
+}
+
+// =====================================================================
+// ターン終了
+// =====================================================================
+function endTurn(message) {
+  moveState = null;
+  turnState = "turn-end";
+  updateTurnUI();
+  $diceRemain.textContent = "";
+  $nextTurnBtn.style.display = "block";
+  setStatus(`${message} 次のターンへ進んでください。`);
+}
+
+$nextTurnBtn.addEventListener("click", () => {
+  $nextTurnBtn.style.display = "none";
+  turnState = "idle";
+  updateRollAvailability();
+  setStatus(`現在地: <b>${features[position].name}</b>。サイコロを振って移動しましょう。`);
+});
+</script>
+</body>
+</html>
