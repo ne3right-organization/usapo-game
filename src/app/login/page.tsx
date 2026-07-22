@@ -2,25 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AuthError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-
-// Supabase側のエラーメッセージ(英語)をそのまま出さず、日本語で分かりやすく案内する
-function describeAuthError(error: AuthError): string {
-  const code = "code" in error ? error.code : undefined;
-  if (code === "over_email_send_rate_limit" || error.status === 429) {
-    return "メール送信の上限に達しました。1時間ほど時間をおいてから、もう一度お試しください。";
-  }
-  if (code === "email_address_invalid") {
-    return "そのメールアドレスは利用できません。別のメールアドレスをお試しください。";
-  }
-  return `送信に失敗しました: ${error.message}`;
-}
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "redirecting" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -30,26 +16,24 @@ export default function LoginPage() {
     });
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (status === "sending") return;
-    setStatus("sending");
+  const handleGoogleLogin = async () => {
+    if (status === "redirecting") return;
+    setStatus("redirecting");
     setErrorMsg("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 
     if (error) {
       setStatus("error");
-      setErrorMsg(describeAuthError(error));
-      return;
+      setErrorMsg(error.message);
     }
-    setStatus("sent");
+    // 成功時はGoogleのログイン画面にリダイレクトされるのでここでは何もしない
   };
 
   return (
@@ -60,30 +44,33 @@ export default function LoginPage() {
           プレイ履歴・ランキングを利用するにはログインが必要です
         </p>
 
-        {status === "sent" ? (
-          <p className="text-sm text-[#3c2a14]">
-            {email} 宛にログイン用のリンクを送りました。メールを確認してください。
-          </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="border border-gray-300 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-600"
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={status === "redirecting"}
+          className="w-full flex items-center justify-center gap-2 border border-gray-300 rounded-xl py-2.5 text-sm font-semibold text-[#3c2a14] hover:bg-gray-50 disabled:opacity-60 transition-colors"
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+            <path
+              fill="#4285F4"
+              d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.85 2.09-1.8 2.73v2.27h2.92c1.7-1.57 2.68-3.88 2.68-6.64z"
             />
-            <button
-              type="submit"
-              disabled={status === "sending"}
-              className="bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-sm font-semibold rounded-xl py-2.5 transition-colors"
-            >
-              {status === "sending" ? "送信中..." : "ログインリンクを送る"}
-            </button>
-            {status === "error" && <p className="text-xs text-red-600">{errorMsg}</p>}
-          </form>
-        )}
+            <path
+              fill="#34A853"
+              d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.27c-.81.54-1.85.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M3.97 10.7A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.29-1.7V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3.01-2.34z"
+            />
+            <path
+              fill="#EA4335"
+              d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58z"
+            />
+          </svg>
+          {status === "redirecting" ? "リダイレクト中..." : "Googleでログイン"}
+        </button>
+        {status === "error" && <p className="text-xs text-red-600 mt-3">{errorMsg}</p>}
       </div>
     </main>
   );

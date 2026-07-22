@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Supabaseのマジックリンク/OAuthリダイレクト先。認可コードをセッションに交換する
+// SupabaseのOAuth(Google)リダイレクト先。認可コードをセッションに交換する
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");

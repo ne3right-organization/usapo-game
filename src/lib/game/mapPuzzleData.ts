@@ -430,6 +430,7 @@ export async function fetchModeRanking(
   limit = 20
 ): Promise<RankingPage> {
   const supabase = createClient();
+  await requireUserId(); // ランキング閲覧も要ログイン(元実装のCognito版と同様)
 
   let query = supabase
     .from("game_map_puzzle_best")
@@ -455,6 +456,7 @@ export async function fetchAreaRanking(
   limit = 20
 ): Promise<RankingPage> {
   const supabase = createClient();
+  await requireUserId(); // ランキング閲覧も要ログイン(元実装のCognito版と同様)
 
   let query = supabase
     .from("game_map_puzzle_best")
