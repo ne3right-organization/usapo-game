@@ -60,6 +60,28 @@ export default function MapPuzzlePage() {
           </div>
         </div>
 
+        {/* 履歴・プロフィール・ランキングリンク */}
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-6">
+          <Link
+            href="/game/map-puzzle/history"
+            className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2"
+          >
+            📜 プレイ履歴
+          </Link>
+          <Link
+            href="/game/map-puzzle/profile"
+            className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2"
+          >
+            👤 マイプロフィール
+          </Link>
+          <Link
+            href="/game/map-puzzle/ranking"
+            className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2"
+          >
+            🏆 ランキング
+          </Link>
+        </div>
+
         {/* 難易度選択 */}
         <p className="text-xs text-[#a8937a] mb-4 text-center tracking-widest">
           むずかしさを選んでね

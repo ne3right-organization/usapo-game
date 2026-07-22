@@ -49,11 +49,12 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
   - `src/app/login/page.tsx` + `src/app/auth/callback/route.ts`: マジックリンク認証（実プロジェクトで送信確認済み）
   - `src/app/game/map-puzzle/nickname/page.tsx`: ニックネーム編集
   - `MapPuzzleGame.tsx`にチャレンジ送信(`submitChallenge`)・途中保存(`saveProgress`)を再接続、`[difficulty]/page.tsx`にサーバー側途中保存の再開フローを再接続（未ログインでもエラーを握りつぶしてゲストplayできるようフォールバック済み。実機確認済み）
-- [ ] **残り3画面が未実装**（データ層は用意済みなので実装自体は比較的軽いはず）:
-  - [ ] `/game/map-puzzle/history`（プレイ履歴一覧）
-  - [ ] `/game/map-puzzle/profile`, `/game/map-puzzle/profile/[userId]`（プロフィール・ベストスコア一覧）
-  - [ ] `/game/map-puzzle/ranking`, `/game/map-puzzle/ranking/area`（モード内・エリア別ランキング）
-  - [ ] トップページ等への `NicknameBadge` 相当の導線
+- [x] 履歴・プロフィール・ランキング画面を実装:
+  - `/game/map-puzzle/history`（プレイ履歴一覧、カーソルページネーション）
+  - `/game/map-puzzle/profile`, `/game/map-puzzle/profile/[userId]`（共通コンポーネント`GameProfileView`。他人のプロフィールはnickname未登録だと非公開）
+  - `/game/map-puzzle/ranking`, `/game/map-puzzle/ranking/area`（共通コンポーネント`RankingList`。モード内・エリア別、どちらも要ログイン＝元実装のCognito版と同様の仕様）
+  - ルート`/`とゲームハブページに`AuthStatus`（ログイン状態表示）、履歴・プロフィール・ランキングへの導線を追加
+  - **注意点**: `fetchModeRanking`/`fetchAreaRanking`は明示的に`requireUserId()`を呼ぶようにしている。呼ばないと未ログイン時に生の`permission denied for table ...`というPostgresエラーがそのまま画面に出てしまう不具合があったため(anonロールの権限を剥奪済みなのが原因)。今後同様の「ログイン必須の一覧系」データ取得関数を追加する際は、実際にログアウト状態でも動作確認すること
 - [ ] 一時停止対策のcron設定
 - [ ] 既存ユーザーの移行実施
 
