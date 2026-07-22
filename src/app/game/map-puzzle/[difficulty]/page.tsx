@@ -6,6 +6,7 @@ import { notFound, useRouter } from "next/navigation";
 import type { Difficulty } from "@/components/game/map-puzzle/MapPuzzleGame";
 import { progressStorageKey } from "@/components/game/map-puzzle/MapPuzzleGame";
 import type { AreaInfo } from "@/components/game/map-puzzle/MapAreaSelector";
+import { fetchSavedProgress, discardProgress, type SavedProgressRecord } from "@/lib/game/mapPuzzleData";
 
 const MapPuzzleGame = dynamic(
   () => import("@/components/game/map-puzzle/MapPuzzleGame"),
@@ -126,18 +127,29 @@ function clearResumeCandidates(difficulty: Difficulty): void {
 interface ResumePromptProps {
   themeColor: string;
   areaLabel: string;
+  title?: string;
+  description?: string;
+  resumeLabel?: string;
+  resetLabel?: string;
   onResume: () => void;
   onReset: () => void;
 }
 
-function ResumePrompt({ themeColor, areaLabel, onResume, onReset }: ResumePromptProps) {
+function ResumePrompt({
+  themeColor,
+  areaLabel,
+  title = "中断中のパズルがあります",
+  description = "このタブを離れる前の状態が一時的に残っています（タブを閉じると消えます）",
+  resumeLabel = "再開する",
+  resetLabel = "リセットする",
+  onResume,
+  onReset,
+}: ResumePromptProps) {
   return (
     <div className="fixed inset-0 z-[1100] flex flex-col items-center justify-center gap-6 bg-[#fdf8f0] px-6 text-center">
       <div>
-        <p className="text-base font-semibold text-[#3c2a14] mb-2">中断中のパズルがあります</p>
-        <p className="text-xs text-[#a8937a] mb-3">
-          このタブを離れる前の状態が一時的に残っています（タブを閉じると消えます）
-        </p>
+        <p className="text-base font-semibold text-[#3c2a14] mb-2">{title}</p>
+        <p className="text-xs text-[#a8937a] mb-3">{description}</p>
         <p className="text-sm text-[#78716c]">「{areaLabel}」の途中から再開しますか?</p>
       </div>
       <div className="w-full max-w-xs flex flex-col gap-3">
@@ -147,14 +159,14 @@ function ResumePrompt({ themeColor, areaLabel, onResume, onReset }: ResumePrompt
           className="w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-colors duration-150"
           style={{ background: themeColor }}
         >
-          再開する
+          {resumeLabel}
         </button>
         <button
           type="button"
           onClick={onReset}
           className="w-full py-3.5 rounded-xl text-sm font-semibold text-[#78716c] border border-gray-300 bg-white transition-colors duration-150 hover:bg-gray-50"
         >
-          リセットする
+          {resetLabel}
         </button>
       </div>
     </div>
@@ -209,9 +221,16 @@ export default function MapPuzzleGamePage({ params }: Props) {
 
   // ゲーム開始状態（null のうちは「未確定」＝中断チェック待ち or エリア選択待ち）
   const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
+  // サーバーの途中保存から再開する場合の復元データ
+  const [initialProgress, setInitialProgress] = useState<SavedProgressRecord | null>(null);
 
   // 同一タブの中断中パズル（未チェック: undefined / なし: null / あり: ResumeCandidate）
   const [resumeCandidate, setResumeCandidate] = useState<ResumeCandidate | null | undefined>(undefined);
+
+  // エリアが確定した（が gameConfig はまだ未確定）状態。サーバーの途中保存チェック対象
+  const [pendingArea, setPendingArea] = useState<GameConfig | null>(null);
+  // サーバー途中保存チェック結果（未チェック: undefined / なし: null / あり: SavedProgressRecord）
+  const [serverProgress, setServerProgress] = useState<SavedProgressRecord | null | undefined>(undefined);
 
   useEffect(() => {
     // sessionStorage はブラウザ専用APIのため、difficulty変更のたびにここで同期的に読むしかない
@@ -222,11 +241,45 @@ export default function MapPuzzleGamePage({ params }: Props) {
     } else {
       setResumeCandidate(null);
       if (difficulty === "beginner") {
-        setGameConfig(defaultBeginnerConfig);
+        setPendingArea(defaultBeginnerConfig);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [difficulty]);
+
+  // エリアが確定したらサーバーの途中保存を確認する（同一タブの中断中パズルが優先されるため未確定の場合のみ）。
+  // 未ログインの場合は fetchSavedProgress が例外を投げるので、ゲスト扱い（途中保存なし）として続行する
+  useEffect(() => {
+    if (!pendingArea) return;
+    let cancelled = false;
+    // pendingArea が変わるたびに前回の結果をリセットしてから非同期チェックし直す必要がある
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setServerProgress(undefined);
+    fetchSavedProgress({
+      difficulty,
+      prefCode: pendingArea.prefCode,
+      prefName: pendingArea.prefName,
+      cityCode: pendingArea.cityCode,
+      cityName: pendingArea.cityName,
+    })
+      .then((record) => {
+        if (!cancelled) setServerProgress(record);
+      })
+      .catch(() => {
+        if (!cancelled) setServerProgress(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingArea, difficulty]);
+
+  // サーバーに途中保存が無かった場合はそのまま開始する（非同期チェック結果を受けての遷移のため）
+  useEffect(() => {
+    if (pendingArea && serverProgress === null && !gameConfig) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGameConfig(pendingArea);
+    }
+  }, [pendingArea, serverProgress, gameConfig]);
 
   // 中断チェック中
   if (resumeCandidate === undefined) {
@@ -247,7 +300,7 @@ export default function MapPuzzleGamePage({ params }: Props) {
           clearResumeCandidates(difficulty);
           setResumeCandidate(null);
           if (difficulty === "beginner") {
-            setGameConfig(defaultBeginnerConfig);
+            setPendingArea(defaultBeginnerConfig);
           }
         }}
       />
@@ -255,15 +308,53 @@ export default function MapPuzzleGamePage({ params }: Props) {
   }
 
   // intermediate / advanced はエリア選択待ち
-  if (!gameConfig) {
+  if (!pendingArea && !gameConfig) {
     return (
       <MapAreaSelector
         difficulty={difficulty as "intermediate" | "advanced"}
         title={meta.title}
         onBack={() => router.push("/game/map-puzzle")}
-        onConfirm={(url, label, area: AreaInfo) => setGameConfig({ geojsonUrl: url, areaLabel: label, ...area })}
+        onConfirm={(url, label, area: AreaInfo) => setPendingArea({ geojsonUrl: url, areaLabel: label, ...area })}
       />
     );
+  }
+
+  // サーバーの途中保存チェック中
+  if (pendingArea && !gameConfig && serverProgress === undefined) {
+    return <LoadingScreen themeColor={meta.themeColor} />;
+  }
+
+  // サーバーに保存された途中経過がある場合は再開確認を表示
+  if (pendingArea && !gameConfig && serverProgress) {
+    const area = pendingArea;
+    return (
+      <ResumePrompt
+        themeColor={meta.themeColor}
+        areaLabel={area.areaLabel}
+        title="保存された途中経過があります"
+        description="「保存して中断」で記録した続きです（別の端末・ブラウザからでも再開できます）"
+        resumeLabel="続きから再開する"
+        resetLabel="最初から始める"
+        onResume={() => {
+          setInitialProgress(serverProgress);
+          setGameConfig(area);
+        }}
+        onReset={() => {
+          discardProgress({
+            difficulty,
+            prefCode: area.prefCode,
+            prefName: area.prefName,
+            cityCode: area.cityCode,
+            cityName: area.cityName,
+          }).catch(console.error);
+          setGameConfig(area);
+        }}
+      />
+    );
+  }
+
+  if (!gameConfig) {
+    return <LoadingScreen themeColor={meta.themeColor} />;
   }
 
   return (
@@ -277,7 +368,12 @@ export default function MapPuzzleGamePage({ params }: Props) {
       prefName={gameConfig.prefName}
       cityCode={gameConfig.cityCode}
       cityName={gameConfig.cityName}
-      onRetry={() => setGameKey((k) => k + 1)}
+      initialProgress={initialProgress}
+      onRetry={() => {
+        setInitialProgress(null);
+        setGameKey((k) => k + 1);
+      }}
+      onSaveAndExit={() => router.push("/game/map-puzzle")}
     />
   );
 }

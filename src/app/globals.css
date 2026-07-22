@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
+/* このアプリの各ページは常にベージュ系の背景(#fdf8f0)を前提にデザインしており、
+   ダークモード対応は無いため、bodyの背景も固定にしておく
+   (白/ダーク背景のままだと、ページ本体のmin-h-fullが実際のビューポート高さまで
+   伸びない場合に、下部にbody地の色がすき間として見えてしまう) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fdf8f0;
+  --foreground: #3c2a14;
 }
 
 @theme inline {
@@ -12,11 +16,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {

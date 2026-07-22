@@ -35,9 +35,25 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 ## 次にやること
 
 - [x] Next.jsプロジェクトの雛形作成
-- [x] Vercelプロジェクトの作成・連携（dev/preview/productionの環境変数分離まで完了）
-- [ ] Supabaseプロジェクトの作成（Auth + DBスキーマ設計）
+- [x] Vercelプロジェクトの作成・連携（dev/preview/productionともprd CloudFrontに統一。dev CloudFrontは廃止方針）
 - [x] geojson（S3+CloudFront）への接続方法の実装（`fetch()`で読むだけ。地図パズルとして実装済み）
+- [x] **Supabaseプロジェクトの作成**（プロジェクト名`usapo-game`、リージョン ap-northeast-1(東京)、Free plan、project ref `pctmohjcdtizoyalacts`）
+  - `supabase db push`でマイグレーション適用済み: `game_profiles` / `game_map_puzzle_challenges` / `game_map_puzzle_progress` / `game_map_puzzle_best` の4テーブル + RLS + 集計トリガー
+  - **重要**: Supabaseダッシュボードの「Automatically expose new tables」をOFFにしていても、SQLマイグレーション経由で作ったテーブルには`anon`ロールにデフォルト権限が付与される挙動を確認した（ダッシュボードのトグルはStudio UI経由の作成にしか効かない模様）。`20260722000000_revoke_anon_grants.sql`で明示的に`revoke all ... from anon`して対処済み。**今後新しいテーブルを追加する際も、この挙動を前提に毎回明示的なGRANT/REVOKEをマイグレーションに書くこと**（トグル設定を信用しない）
+  - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`（Publishable key）をVercel(Production/Preview/Development)と`.env.local`に設定済み
+  - Dockerが動いていなかったため、ローカル`supabase db reset`での事前検証はできておらず本番プロジェクトに直接`db push`した。マイグレーションSQL自体は目視レビュー済み、pushも成功・grant/RLSの実機確認も完了
+  - ログイン方式はマジックリンク（パスワードレス）を採用。X(Twitter)/Google等のOAuth追加も検討したが、実装済みのマジックリンクのまま進める方針に確定
+  - 認証メールの送信はSupabaseのデフォルト共有SMTP（レート制限が低い）。利用者が増えてきたら独自SMTP（Resend等）への切り替えを検討
+- [x] プレイ履歴・プロフィール・ランキング機能のデータ層・認証・チャレンジ送信を実装（元実装 team-kokuusa-platform-frontend の Cognito+AppSync 版を Supabase に置き換えて移植）:
+  - `src/lib/game/mapPuzzleData.ts`: データアクセス層（履歴送信・進行保存・プロフィール・ランキング）。supabase-js直叩き、RLSでアクセス制御
+  - `src/app/login/page.tsx` + `src/app/auth/callback/route.ts`: マジックリンク認証（実プロジェクトで送信確認済み）
+  - `src/app/game/map-puzzle/nickname/page.tsx`: ニックネーム編集
+  - `MapPuzzleGame.tsx`にチャレンジ送信(`submitChallenge`)・途中保存(`saveProgress`)を再接続、`[difficulty]/page.tsx`にサーバー側途中保存の再開フローを再接続（未ログインでもエラーを握りつぶしてゲストplayできるようフォールバック済み。実機確認済み）
+- [ ] **残り3画面が未実装**（データ層は用意済みなので実装自体は比較的軽いはず）:
+  - [ ] `/game/map-puzzle/history`（プレイ履歴一覧）
+  - [ ] `/game/map-puzzle/profile`, `/game/map-puzzle/profile/[userId]`（プロフィール・ベストスコア一覧）
+  - [ ] `/game/map-puzzle/ranking`, `/game/map-puzzle/ranking/area`（モード内・エリア別ランキング）
+  - [ ] トップページ等への `NicknameBadge` 相当の導線
 - [ ] 一時停止対策のcron設定
 - [ ] 既存ユーザーの移行実施
 

@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type L from "leaflet";
+import { submitChallenge, saveProgress, type SavedProgressRecord } from "@/lib/game/mapPuzzleData";
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,11 @@ export interface MapPuzzleGameProps {
   prefName: string;
   cityCode?: string;
   cityName?: string;
+  // サーバーの途中保存から再開する場合に渡す（無ければ sessionStorage を見る）
+  initialProgress?: SavedProgressRecord | null;
   onRetry?: () => void;
+  // 「保存して中断」実行後に呼ばれる（ゲーム画面を抜ける処理は呼び出し側に任せる）
+  onSaveAndExit?: () => void;
 }
 
 interface GeoJsonGeometryPolygon {
@@ -267,7 +272,9 @@ export default function MapPuzzleGame({
   prefName,
   cityCode,
   cityName,
+  initialProgress,
   onRetry,
+  onSaveAndExit,
 }: MapPuzzleGameProps) {
   const themeColor = THEME_COLORS[difficulty];
   const diffLabel = DIFFICULTY_LABELS[difficulty];
@@ -284,6 +291,10 @@ export default function MapPuzzleGame({
   const [flashType, setFlashType] = useState<"snap" | "miss" | null>(null);
   const [gaveUp, setGaveUp] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
+  const [comment, setComment] = useState("");
+  const [challengeSubmitState, setChallengeSubmitState] = useState<"idle" | "submitting" | "done" | "error">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
+  const challengeSubmittedRef = useRef(false);
   // 人口0スキップ（上級のみ）: スキップ済みピース数と、未配置の人口0ピース残数
   const skippedCountRef = useRef(0);
   const [zeroPopRemaining, setZeroPopRemaining] = useState(0);
@@ -492,7 +503,8 @@ export default function MapPuzzleGame({
         });
       }
 
-      // 誤操作によるリロード・離脱からの復帰用に sessionStorage を見る
+      // 保存済み進行状況の復元。サーバーの途中保存（initialProgress）があればそちらを優先し、
+      // 無ければ誤操作によるリロード・離脱からの復帰用に sessionStorage を見る
       let restoredElapsedSec = 0;
       const applyRestored = (placedIds: number[], savedMissCount: number, savedElapsedSec: number) => {
         const placedIdSet = new Set(placedIds);
@@ -521,14 +533,18 @@ export default function MapPuzzleGame({
         setElapsedSec(restoredElapsedSec);
       };
 
-      try {
-        const raw = sessionStorage.getItem(progressStorageKey(difficulty, geojsonUrl));
-        if (raw) {
-          const saved = JSON.parse(raw) as SavedProgress;
-          applyRestored(saved.placedIds, saved.missCount ?? 0, saved.elapsedSec ?? 0);
+      if (initialProgress) {
+        applyRestored(initialProgress.placedIds, initialProgress.missCount, initialProgress.elapsedSeconds);
+      } else {
+        try {
+          const raw = sessionStorage.getItem(progressStorageKey(difficulty, geojsonUrl));
+          if (raw) {
+            const saved = JSON.parse(raw) as SavedProgress;
+            applyRestored(saved.placedIds, saved.missCount ?? 0, saved.elapsedSec ?? 0);
+          }
+        } catch {
+          // 保存データが壊れている場合は無視して最初から開始する
         }
-      } catch {
-        // 保存データが壊れている場合は無視して最初から開始する
       }
 
       // タイマー開始
@@ -818,6 +834,64 @@ export default function MapPuzzleGame({
     }
   }, [onRetry]);
 
+  // ─── 保存して中断 ──────────────────────────────────────────────────────────
+  const handleSaveAndExit = useCallback(async () => {
+    if (saveState === "saving") return;
+    const placedIds = piecesRef.current.filter((p) => p.placed).map((p) => p.id);
+    if (placedIds.length === 0) {
+      onSaveAndExit?.();
+      return;
+    }
+    setSaveState("saving");
+    try {
+      await saveProgress({
+        difficulty,
+        prefCode,
+        prefName,
+        cityCode,
+        cityName,
+        placedIds,
+        missCount: missCountRef.current,
+        elapsedSeconds: elapsedSec,
+      });
+      try {
+        sessionStorage.removeItem(progressStorageKey(difficulty, geojsonUrl));
+      } catch {
+        // 保存領域が使えない環境は無視
+      }
+      if (timerRef.current) clearInterval(timerRef.current);
+      setSaveState("idle");
+      onSaveAndExit?.();
+    } catch (err) {
+      console.error("❌ 途中保存に失敗しました:", err);
+      setSaveState("error");
+      alert("途中保存に失敗しました。ログイン状態・通信環境をご確認のうえもう一度お試しください。");
+    }
+  }, [saveState, difficulty, prefCode, prefName, cityCode, cityName, elapsedSec, geojsonUrl, onSaveAndExit]);
+
+  // ─── チャレンジ結果の送信（正常クリア時のみ。ギブアップは履歴に残さない）─────────
+  const submitChallengeIfNeeded = useCallback(() => {
+    if (gaveUp || !score || challengeSubmittedRef.current) return;
+    challengeSubmittedRef.current = true;
+    setChallengeSubmitState("submitting");
+    submitChallenge({
+      difficulty,
+      prefCode,
+      prefName,
+      cityCode,
+      cityName,
+      totalPieces: score.scoredTotal,
+      missCount: missCountRef.current,
+      elapsedSeconds: score.elapsedSec,
+      comment: comment.trim() || undefined,
+    })
+      .then(() => setChallengeSubmitState("done"))
+      .catch((err) => {
+        console.error("❌ チャレンジ結果の送信に失敗しました:", err);
+        setChallengeSubmitState("error");
+      });
+  }, [gaveUp, score, difficulty, prefCode, prefName, cityCode, cityName, comment]);
+
   // ─── レンダリング ──────────────────────────────────────────────────────────
 
   return (
@@ -966,6 +1040,25 @@ export default function MapPuzzleGame({
                 title="人口0のエリアをまとめて自動配置します（得点対象外）"
               >
                 🏔️ 人口0地区をスキップ（{zeroPopRemaining}）
+              </button>
+            )}
+            {onSaveAndExit && (
+              <button
+                onClick={handleSaveAndExit}
+                disabled={saveState === "saving"}
+                style={{
+                  background: "white",
+                  border: `1px solid ${themeColor}4d`,
+                  color: themeColor,
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  cursor: saveState === "saving" ? "default" : "pointer",
+                  fontSize: "12px",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                  opacity: saveState === "saving" ? 0.6 : 1,
+                }}
+              >
+                {saveState === "saving" ? "保存中..." : "💾 保存して中断"}
               </button>
             )}
             <button
@@ -1345,13 +1438,34 @@ export default function MapPuzzleGame({
                         <span>{formatTime(score.elapsedSec)}</span>
                       </div>
                     </div>
+                    <textarea
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value.slice(0, 200))}
+                      placeholder="感想を書く（任意）"
+                      rows={2}
+                      maxLength={200}
+                      style={{
+                        marginTop: "14px",
+                        width: "100%",
+                        resize: "none",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "10px",
+                        padding: "10px 12px",
+                        fontSize: "13px",
+                        color: "#3c2a14",
+                        boxSizing: "border-box",
+                      }}
+                    />
                   </>
                 )}
               </>
             )}
             <button
               type="button"
-              onClick={() => setShowResultModal(false)}
+              onClick={() => {
+                submitChallengeIfNeeded();
+                setShowResultModal(false);
+              }}
               style={{
                 marginTop: "24px",
                 width: "100%",
@@ -1370,7 +1484,10 @@ export default function MapPuzzleGame({
             </button>
             <button
               type="button"
-              onClick={handleRetry}
+              onClick={() => {
+                submitChallengeIfNeeded();
+                handleRetry();
+              }}
               style={{
                 background: themeColor,
                 color: "white",
@@ -1385,6 +1502,11 @@ export default function MapPuzzleGame({
             >
               もう一度プレイ
             </button>
+            {challengeSubmitState === "error" && (
+              <p style={{ marginTop: "10px", fontSize: "12px", color: "#dc2626" }}>
+                結果の送信に失敗しました（記録は反映されていません）
+              </p>
+            )}
           </div>
         </div>
       )}
