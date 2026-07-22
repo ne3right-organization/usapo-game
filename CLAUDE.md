@@ -28,6 +28,38 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 
 1週間アクセスがないとプロジェクトが一時停止する。運用開始後は、Vercel CronまたはGitHub Actionsのscheduled workflowで定期的に軽いヘルスチェック（`select 1`など）を投げて一時停止を回避する。
 
+## システム構成（各サービスの参照情報）
+
+キー・シークレットの類はここには書かない（`.env.local`はgitignore済みなので、個人の控えとして残す場合はそちら）。「どこで何が設定されているか」の参照のみ記録する。
+
+### Vercel
+- プロジェクト: `usapo-game`（スコープ: `usapo-game`）
+- 本番URL: https://usapo-game.vercel.app
+- 環境変数（Production/Preview/Development の3系統）: `NEXT_PUBLIC_CLOUDFRONT_URL`（全環境prd CloudFrontに統一）/ `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- GitHub連携済み（`develop`ブランチへのpushでPreviewが自動デプロイされる）。Custom Environments（ブランチ単位の名前付き環境）はHobbyプランでは使えないため、Previewは「Production Branch以外の全ブランチ」に一律適用される仕様
+- **Production反映は現状CLIの手動`vercel deploy --prod`のみ**。`main`ブランチは初期コミットのままでほぼ更新しておらず、Production Branchの実体とは同期していない点に注意（本来はgit連携でmainへのマージ＝本番反映にするのが望ましいが、今のところ手動運用）
+
+### Supabase
+- プロジェクト名: `usapo-game`、project ref: `pctmohjcdtizoyalacts`、リージョン: ap-northeast-1(東京)、Free plan
+- ダッシュボード: https://supabase.com/dashboard/project/pctmohjcdtizoyalacts
+- DBスキーマは`supabase/migrations/`配下で管理し`supabase db push`で反映（ローカルDockerが無い環境だったため`db reset`によるローカル検証は未実施、本番プロジェクトに直接push）
+- 認証: **Google OAuthのみ**（Authentication → Providers → Google に設定済み）。Client Secretは保存後Supabase側では再表示できないため、確認・再発行が必要な場合はGoogle Cloud Console側で行う
+  - 当初マジックリンク（メールリンク）を実装したが、(a) Free tier既定の共有SMTPは1時間2通という強いレート制限がある、(b) 同じくFree tier+デフォルトSMTPではメールテンプレートのカスタマイズ自体が不可、(c) リンク方式はGmail等の自動先読みや、送信時と別のブラウザ/デバイスで開いた場合に失敗する、という3点が重なり、Google OAuthのみに切り替えた
+  - 独自SMTP（Resendなど）を設定すればメールログイン（マジックリンク/OTP）も選択肢に戻る。ドメイン検証が絡むので本番ドメイン（`game.usapo.net`）設定と合わせて検討するのが自然
+
+### Google OAuth
+- Google Cloud Console側にOAuthクライアント（ウェブアプリケーション）を作成済み
+- 承認済みリダイレクトURI: `https://pctmohjcdtizoyalacts.supabase.co/auth/v1/callback`
+- Client ID/SecretはSupabaseダッシュボード側に設定済み（上記参照）
+
+### CloudFront / S3（geojson配信、AWS）
+- dev/prd 2つのAWSアカウントとも `team-kokuusa-platform-infra` リポジトリ（`C:\Users\user\develop\taihi\team-kokuusa-platform-infra`、CloudFormation）で管理
+- usapo-gameは全環境prd CloudFront（`dbr7d89af0fox.cloudfront.net`）に統一。CORS許可ドメインは同リポジトリの`infra-s3-stack.yaml`の`FrontendDomains`パラメータに追加済み（`usapo-game.vercel.app` / `game.usapo.net`(予定・未設定) / `*-usapo-game.vercel.app`(Preview用) / `dev.usapo.net`）
+
+### GitHub
+- リポジトリ: `git@github.com:ne3right-organization/usapo-game.git`（公開）
+- 作業は`develop`ブランチにコミット・push。`main`は現状ほぼ初期状態（上記Vercelの注意点も参照）
+
 ## 既存データの移行方針
 
 現行データは本体側のAppSync/DynamoDBに、Cognito認証のユーザーに紐づく形で存在する。認証基盤がSupabaseに変わるため、自動移行ではなく手動での移行を想定している。具体的な移行手順・対象者の情報は、このリポジトリの外（社内の運用ドキュメント）で管理する。
@@ -42,11 +74,10 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
   - **重要**: Supabaseダッシュボードの「Automatically expose new tables」をOFFにしていても、SQLマイグレーション経由で作ったテーブルには`anon`ロールにデフォルト権限が付与される挙動を確認した（ダッシュボードのトグルはStudio UI経由の作成にしか効かない模様）。`20260722000000_revoke_anon_grants.sql`で明示的に`revoke all ... from anon`して対処済み。**今後新しいテーブルを追加する際も、この挙動を前提に毎回明示的なGRANT/REVOKEをマイグレーションに書くこと**（トグル設定を信用しない）
   - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`（Publishable key）をVercel(Production/Preview/Development)と`.env.local`に設定済み
   - Dockerが動いていなかったため、ローカル`supabase db reset`での事前検証はできておらず本番プロジェクトに直接`db push`した。マイグレーションSQL自体は目視レビュー済み、pushも成功・grant/RLSの実機確認も完了
-  - ログイン方式はマジックリンク（パスワードレス）を採用。X(Twitter)/Google等のOAuth追加も検討したが、実装済みのマジックリンクのまま進める方針に確定
-  - 認証メールの送信はSupabaseのデフォルト共有SMTP（レート制限が低い）。利用者が増えてきたら独自SMTP（Resend等）への切り替えを検討
+  - ログイン方式はGoogle OAuthのみ（詳細は「システム構成」参照。当初マジックリンクを実装したがFree tierの制約により切り替えた）
 - [x] プレイ履歴・プロフィール・ランキング機能のデータ層・認証・チャレンジ送信を実装（元実装 team-kokuusa-platform-frontend の Cognito+AppSync 版を Supabase に置き換えて移植）:
   - `src/lib/game/mapPuzzleData.ts`: データアクセス層（履歴送信・進行保存・プロフィール・ランキング）。supabase-js直叩き、RLSでアクセス制御
-  - `src/app/login/page.tsx` + `src/app/auth/callback/route.ts`: マジックリンク認証（実プロジェクトで送信確認済み）
+  - `src/app/login/page.tsx` + `src/app/auth/callback/route.ts`: Google OAuthログイン（リダイレクトの実機確認済み。実際のGoogleアカウントでの完走はユーザー側で確認予定）
   - `src/app/game/map-puzzle/nickname/page.tsx`: ニックネーム編集
   - `MapPuzzleGame.tsx`にチャレンジ送信(`submitChallenge`)・途中保存(`saveProgress`)を再接続、`[difficulty]/page.tsx`にサーバー側途中保存の再開フローを再接続（未ログインでもエラーを握りつぶしてゲストplayできるようフォールバック済み。実機確認済み）
 - [x] 履歴・プロフィール・ランキング画面を実装:
