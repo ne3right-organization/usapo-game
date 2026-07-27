@@ -89,6 +89,35 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - [ ] 一時停止対策のcron設定
 - [ ] 既存ユーザーの移行実施
 
+## 市区町村図鑑クイズ（2026-07-24 実装、MVP範囲）
+
+設計書: `docs/市区町村図鑑クイズ_設計ドキュメント.md`（ただし「7. データモデル」はDynamoDB想定のたたき台のため無視し、実際は以下の通りSupabase/Postgresで作り直した）。地図パズルと同一サイト内の新ミニゲームとして`/game/zukan-quiz`配下に実装。MVPは「ふつう」難易度のみ・4択クイズ・1セッション5問・正解した市区町村の図鑑登録（都道府県別コンプリート率表示まで）。
+
+- **データソース**: ポリゴンは既存と同じCloudFront配信geojson（`/geojson/municipality/2020/{prefCode}.geojson`。`prefCode/cityCode/cityName`のみでシルエット描画用に十分）。人口・世帯数は新規に`stat.usapo.net`（国勢調査統計API、`GET /statistics/census/2020/population/{prefCode}/{cityCode}.json`、`areas[]`の`hyosyo===1`要素が市区計）を利用。設計書にある「静岡県を除く」は現時点では実データ上は解消済み（両APIとも静岡県のデータが存在することを実機確認済み）
+  - stat.usapo.netには面積データが無く、CloudFrontのgeojsonにも市区町村レベルの面積プロパティが無いため、人口密度・世帯数増減率のヒントはMVPスコープ外（人口・世帯数のみ表示、ユーザー確認済み）
+- **正答を隠す設計**: 出題(ポリゴン取得・統計値取得・ダミー選択肢生成)は新規Route Handler `src/app/api/zukan-quiz/route.ts`が担当し、`src/lib/game/zukanQuizData.ts`（`server-only`パッケージでクライアントからの誤importを防止）が実処理を行う。クライアントへ返すシルエットは**プロパティを剥がした座標のみ**で、正答自体は`game_zukan_quiz_sessions`テーブル（INSERTのみ許可、SELECT/UPDATEはanon/authenticatedどちらにも許可しない）にサーバー側で保存する。回答判定は`claim_zukan_quiz_answer`関数(security definer)をクライアントから直接RPC呼び出しし、正誤判定と図鑑(`game_zukan_collections`)への登録までDB側で完結させる(地図パズルのスコア再計算トリガーと同じ「クライアントの自己申告を信用しない」設計)
+  - `game_zukan_collections`はauthenticatedにSELECTのみ許可し、INSERT/UPDATEは一切許可していない（許可すると、クイズを解かずに直接カードを自己付与できてしまうため）。書き込みは`claim_zukan_quiz_answer`経由のみ
+  - マイグレーション: `20260724000000_zukan_quiz_schema.sql` / `20260724000001_zukan_quiz_revoke_grants.sql`（実機確認したところ今回も新テーブルにanonへの暗黙GRANTが付いていたため明示的にREVOKEし直した。既存の教訓通りの再発） / `20260724000002_zukan_quiz_sessions_insert_policy.sql`（RLS有効化とINSERTポリシー自体を書き忘れていたのを実機確認で発見・修正） / `20260725000000_zukan_quiz_answer_variable_conflict_fix.sql`（ログイン中に正解した時だけ`column reference "pref_code" is ambiguous`エラーが発生する不具合を修正。原因は`RETURNS TABLE(pref_code text, ...)`の戻り値列名がPL/pgSQL変数としても存在し、`INSERT ... ON CONFLICT (pref_code, city_code)`の対象列リストが式として解釈されるため同名のテーブル列と衝突していたこと。`#variable_conflict use_column`で解決。**今後`RETURNS TABLE`を使う関数で、戻り値の列名がINSERT/UPDATE対象テーブルの列名と一致する場合は同じ問題が起きうるので注意**）
+- **ダミー選択肢生成ロジック（決定した基準）**: 同一都道府県内から人口が対象の概ね1/3〜3倍のレンジの自治体を優先候補にし、3件に満たなければレンジを1/10〜10倍→無制限の順に広げる。それでも足りなければ別の都道府県からも補充する。地理的近さは「同一都道府県」を代理指標として使い、重心間の距離計算などは行っていない
+
+### トリビアヒント・正答率（2026-07-26 追加、ユーザーからのフィードバック対応）
+
+実際に遊んでみた結果「シルエットだけだと絶対無理」というフィードバックを受け、正答前のヒントとして「主な産業」「名物・特産品」を追加した。あわせて「正答率も要素として入れてほしい」という要望で、自治体ごとの全ユーザー横断の出題数・正解数も追加した。
+
+- **出題対象をトリビア登録済み自治体に限定**（ユーザー確認済み）。データが無い自治体は出題プールに入らない
+  - 当初はSupabaseの`game_zukan_municipality_trivia`テーブルに直接データ投入する方式（産業・名物の2項目、出典URL付き、12自治体分をWikipedia→自治体公式サイトの順で調査）で試験導入したが、**2026-07-27にトリビアのデータソースを本体側(team-kokuusa-platform-frontend, AWS Amplify)の管理画面経由に切り替えた**。理由は「geojsonと同じくCloudFrontで配信し、本体側の管理画面から編集できる方が良い」というユーザー判断（詳細設計は本体側リポジトリの`docs/municipality-trivia-management-design.md`参照。このリポジトリには実装しない）
+  - 現在の出題ロジック(`src/lib/game/zukanQuizData.ts`の`fetchTriviaCandidates`)は、47都道府県分の`{NEXT_PUBLIC_CLOUDFRONT_URL}/municipality-trivia/{prefCode}.json`を並行fetchし(トリビア未公開の都道府県は404を返すだけで正常)、まとめて出題候補プールにする。Supabaseの`game_zukan_municipality_trivia`テーブルは`20260727000000_zukan_quiz_drop_municipality_trivia.sql`で削除済み
+  - トリビア項目は本体側の設計変更に伴い8種類に拡張された: `industry`(主な産業) / `specialty`(名物・特産品) / `historicalEvent`(歴史上有名な出来事) / `touristSpot`(観光スポット) / `notablePerson`(ゆかりの人物) / `festival`(祭り・イベント) / `natureFeature`(自然・地形の特徴) / `localCuisine`(郷土料理・ご当地グルメ)。**出典URLは廃止**（本体側で「運用コストに見合わない」と判断されたため）。1項目以上あれば出題対象になる
+  - トリビアJSONは本体側の管理画面から随時追加・編集される運用中のデータのため、統計API(1週間)より大幅に短い5分キャッシュ(`TRIVIA_REVALIDATE_SECONDS`)にしている
+  - ダミー選択肢生成ロジック自体は変更なし(トリビアの有無を問わず同一都道府県内から人口が近いものを選ぶ)
+  - セッション内で同じ自治体が再出題されないよう、クライアント(`ZukanQuizGame.tsx`)が出題済みの`"prefCode:cityCode"`一覧を`/api/zukan-quiz`に毎回送り、Route Handler側で候補から除外している(トリビア公開自治体数が少ないうちは対策しないと同一セッション内で重複が起きやすいため)
+  - **表示するヒントは8項目のうちランダムに最大3件のみ**（ユーザー指示、2026-07-27）。`zukanQuizData.ts`の`pickTriviaSubset`が出題生成時(サーバー側)に選び、選ばれなかった項目は`null`にしてクライアントへ渡す(全部見せると簡単すぎるため)
+  - **人口・世帯数は出題時(回答前)に表示するよう変更**（ユーザー指示、2026-07-27。当初は回答後の答え合わせとして表示していた）。`ZukanQuizQuestion`(question)に`population`/`households`を追加し、シルエット・ヒントと同じタイミングでクライアントに渡す。ダミー選択肢は元々「人口が近い自治体」を選ぶ設計のため、人口を先に見せても4択の正解が自明になりすぎない
+- **正答率の集計**: `game_zukan_municipality_stats`テーブル(`pref_code, city_code, attempt_count, correct_count`)に、ログイン有無を問わず全回答を集計する。`claim_zukan_quiz_answer`関数内で`INSERT ... ON CONFLICT ... RETURNING ... INTO`によりUPSERTと同時に最新の集計値を取得し、そのままRPCの戻り値に含めて返す(直接のGRANTは一切行わず、書き込み・参照は同関数のsecurity definer経由のみ)
+  - この変更で`claim_zukan_quiz_answer`の`RETURNS TABLE`列を追加する必要があったが、Postgresでは`create or replace function`だけでは戻り値の型(列構成)を変更できない(`cannot change return type of existing function`エラー)。`drop function`してから`create function`し直す必要がある点に注意
+- geojson・統計APIのfetchはNext.jsのData Cache（`next: { revalidate }`、1週間）でキャッシュし、外部APIへの負荷を抑えている（国勢調査2020年データはほぼ更新されないため長めに設定）。トリビアJSONのみ5分キャッシュ（上記参照）
+- 画面: `/game/zukan-quiz`（トップ）、`/game/zukan-quiz/play`（クイズ本体、`ZukanQuizGame.tsx`）、`/game/zukan-quiz/collection`（図鑑一覧、都道府県別コンプリート率は`/api/zukan-quiz/prefectures`で分母を取得）
+
 ## 新規ゲーム構想「地図制覇ゲーム」のプロトタイプ（2026-07-21 移設）
 
 上記とは別に、新しいゲーム構想「地図制覇ゲーム」（カルドセプト風の陣取りゲーム、実データで町丁目を歩いて攻略する）のプロトタイピングも、ゲーム関連開発の集約方針によりこのリポジトリに移設した。
