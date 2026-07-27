@@ -47,6 +47,24 @@ export default function Home() {
               <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
             </div>
           </Link>
+
+          <Link
+            href="/game/zukan-quiz"
+            className="block bg-white rounded-2xl border-2 border-orange-100 hover:border-orange-300
+              shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(234,88,12,0.15)]
+              transition-all duration-150 p-5 active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="text-3xl shrink-0">📖</div>
+              <div className="flex-1 min-w-0">
+                <span className="font-bold text-[#3c2a14] text-sm block mb-1">市区町村図鑑クイズ</span>
+                <p className="text-sm text-[#78716c] leading-snug">
+                  シルエットと4択クイズで市区町村を当てて図鑑を集めるコレクションゲーム
+                </p>
+              </div>
+              <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
+            </div>
+          </Link>
         </div>
 
         {/* ログインについて */}

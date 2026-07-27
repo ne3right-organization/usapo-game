@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# ローカル専用メモ(コンテンツデータ等、公開リポジトリに置きたくないもの)
+/.local/
+
 # vercel
 .vercel
 
