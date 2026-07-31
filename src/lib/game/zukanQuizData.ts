@@ -23,6 +23,9 @@ const REVALIDATE_SECONDS = 60 * 60 * 24 * 7;
 // 統計データより大幅に短いキャッシュ期間にする
 const TRIVIA_REVALIDATE_SECONDS = 60 * 5;
 
+// 難易度は地図パズルと同じスラッグ(beginner/intermediate/advanced)を使う
+export type ZukanQuizDifficulty = "beginner" | "intermediate" | "advanced";
+
 export interface MunicipalityRef {
   prefCode: string;
   prefName: string;
@@ -177,14 +180,21 @@ export async function fetchTriviaCandidates(): Promise<QuizTargetCandidate[]> {
 
 // ─── ダミー選択肢の生成 ────────────────────────────────────────────────────────
 //
-// 決定した基準:
+// 決定した基準(ふつう=intermediateの場合):
 // 1. 同一都道府県内から、人口が対象の概ね1/3〜3倍のレンジに収まるものを優先候補にする
 // 2. 候補が3件に満たない場合は、レンジを1/10〜10倍→無制限、の順に広げる
 // 3. それでも3件集まらない場合(同一都道府県内の統計データが薄い場合)は、
 //    別の都道府県からも候補を補充する
 // (地理的近さは「同一都道府県」を代理指標として使い、重心間の距離計算などは行わない)
+//
+// 難易度による違い: かんたんは人口の近さを問わず選ぶ(結果的に見分けやすくなる)、
+// むずかしいはより近い人口を優先するレンジから試す(見分けにくくする)
 
-const POPULATION_BAND_RATIOS = [3, 10, Infinity];
+const POPULATION_BAND_RATIOS_BY_DIFFICULTY: Record<ZukanQuizDifficulty, number[]> = {
+  beginner: [Infinity],
+  intermediate: [3, 10, Infinity],
+  advanced: [1.5, 3, 10, Infinity],
+};
 const PROBE_SAMPLE_SIZE = 40;
 
 interface CandidateWithStats extends MunicipalityRef {
@@ -211,11 +221,12 @@ function pickWithinBand(pool: CandidateWithStats[], targetPopulation: number, ra
 
 async function pickDummyChoices(
   target: MunicipalityRef & { stats: MunicipalityStats },
-  samePrefCandidates: MunicipalityRef[]
+  samePrefCandidates: MunicipalityRef[],
+  difficulty: ZukanQuizDifficulty
 ): Promise<MunicipalityRef[]> {
   const pool = await probeCandidateStats(samePrefCandidates);
 
-  for (const ratio of POPULATION_BAND_RATIOS) {
+  for (const ratio of POPULATION_BAND_RATIOS_BY_DIFFICULTY[difficulty]) {
     const matched = pickWithinBand(pool, target.stats.population, ratio);
     if (matched.length >= 3) {
       return shuffle(matched).slice(0, 3);
@@ -302,8 +313,12 @@ export interface QuizTargetCandidate {
   localCuisine: string | null;
 }
 
-// ヒントを全部出すと簡単すぎるため、登録済みトリビアのうちランダムに最大3件だけを見せる
-const MAX_TRIVIA_HINTS = 3;
+// ヒントを全部出すと簡単すぎるため、登録済みトリビアのうち難易度別の件数だけランダムに見せる
+const MAX_TRIVIA_HINTS_BY_DIFFICULTY: Record<ZukanQuizDifficulty, number> = {
+  beginner: 5,
+  intermediate: 3,
+  advanced: 1,
+};
 
 function pickTriviaSubset(trivia: ZukanQuizTrivia, max: number): ZukanQuizTrivia {
   const entries = Object.entries(trivia) as [keyof ZukanQuizTrivia, string | null][];
@@ -317,7 +332,10 @@ function pickTriviaSubset(trivia: ZukanQuizTrivia, max: number): ZukanQuizTrivia
   return result;
 }
 
-async function buildZukanQuizQuestion(candidate: QuizTargetCandidate): Promise<GeneratedZukanQuiz | null> {
+async function buildZukanQuizQuestion(
+  candidate: QuizTargetCandidate,
+  difficulty: ZukanQuizDifficulty
+): Promise<GeneratedZukanQuiz | null> {
   const municipalities = await fetchMunicipalities(candidate.prefCode);
   const target = municipalities.find((m) => m.cityCode === candidate.cityCode);
   if (!target) return null;
@@ -332,7 +350,7 @@ async function buildZukanQuizQuestion(candidate: QuizTargetCandidate): Promise<G
 
   let dummies: MunicipalityRef[];
   try {
-    dummies = await pickDummyChoices({ ...target, stats }, samePrefCandidates);
+    dummies = await pickDummyChoices({ ...target, stats }, samePrefCandidates, difficulty);
   } catch {
     return null;
   }
@@ -357,7 +375,7 @@ async function buildZukanQuizQuestion(candidate: QuizTargetCandidate): Promise<G
     question: {
       silhouette: geometry,
       choices,
-      trivia: pickTriviaSubset(fullTrivia, MAX_TRIVIA_HINTS),
+      trivia: pickTriviaSubset(fullTrivia, MAX_TRIVIA_HINTS_BY_DIFFICULTY[difficulty]),
       population: stats.population,
       households: stats.households,
     },
@@ -375,10 +393,13 @@ async function buildZukanQuizQuestion(candidate: QuizTargetCandidate): Promise<G
 // candidatesはトリビア登録済み自治体の一覧(呼び出し側=Route Handlerが既にセッション内で
 // 使用済みの自治体を除外してから渡す想定)。ジオメトリ・統計データの取得に失敗した候補は
 // スキップして次の候補を試す
-export async function generateZukanQuizQuestion(candidates: QuizTargetCandidate[]): Promise<GeneratedZukanQuiz> {
+export async function generateZukanQuizQuestion(
+  candidates: QuizTargetCandidate[],
+  difficulty: ZukanQuizDifficulty
+): Promise<GeneratedZukanQuiz> {
   const shuffled = shuffle(candidates);
   for (const candidate of shuffled) {
-    const result = await buildZukanQuizQuestion(candidate);
+    const result = await buildZukanQuizQuestion(candidate, difficulty);
     if (result) return result;
   }
 

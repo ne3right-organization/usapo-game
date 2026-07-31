@@ -9,22 +9,12 @@ import {
   type ZukanQuizChoice,
   type ZukanQuizQuestion,
   type ZukanQuizAnswerResult,
-  type ZukanQuizTrivia,
+  type ZukanQuizDifficulty,
 } from "@/lib/game/zukanQuizClient";
+import { ZUKAN_DIFFICULTY_META } from "@/lib/game/zukanQuizDifficulty";
+import { TRIVIA_FIELD_LABELS } from "@/lib/game/zukanQuizTrivia";
 
 const QUESTIONS_PER_SESSION = 5;
-
-// 表示ラベルの並び順(本体側のトリビア管理画面のデータモデルと合わせている)
-const TRIVIA_FIELD_LABELS: { key: keyof ZukanQuizTrivia; label: string }[] = [
-  { key: "industry", label: "主な産業" },
-  { key: "specialty", label: "名物・特産品" },
-  { key: "historicalEvent", label: "歴史上有名な出来事" },
-  { key: "touristSpot", label: "観光スポット" },
-  { key: "notablePerson", label: "ゆかりの人物" },
-  { key: "festival", label: "祭り・イベント" },
-  { key: "natureFeature", label: "自然・地形の特徴" },
-  { key: "localCuisine", label: "郷土料理・ご当地グルメ" },
-];
 
 interface RoundRecord {
   isCorrect: boolean;
@@ -38,7 +28,12 @@ function choiceKey(c: { prefCode: string; cityCode: string }): string {
   return `${c.prefCode}-${c.cityCode}`;
 }
 
-export default function ZukanQuizGame() {
+interface Props {
+  difficulty: ZukanQuizDifficulty;
+}
+
+export default function ZukanQuizGame({ difficulty }: Props) {
+  const difficultyMeta = ZUKAN_DIFFICULTY_META[difficulty];
   const [round, setRound] = useState(1);
   const [status, setStatus] = useState<Status>("loading");
   const [question, setQuestion] = useState<ZukanQuizQuestion | null>(null);
@@ -53,7 +48,7 @@ export default function ZukanQuizGame() {
     setStatus("loading");
     setSelected(null);
     setResult(null);
-    startZukanQuiz(usedCityKeys)
+    startZukanQuiz(difficulty, usedCityKeys)
       .then((q) => {
         setQuestion(q);
         setStatus("answering");
@@ -63,7 +58,7 @@ export default function ZukanQuizGame() {
         setStatus("error");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [round]);
+  }, [round, difficulty]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -167,6 +162,9 @@ export default function ZukanQuizGame() {
         <span className="text-xs font-bold text-[#a8937a] tracking-widest">
           第{round}問 / {QUESTIONS_PER_SESSION}問
         </span>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${difficultyMeta.badgeClass}`}>
+          {difficultyMeta.label}
+        </span>
       </div>
 
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex items-center justify-center aspect-square">
@@ -177,7 +175,7 @@ export default function ZukanQuizGame() {
         )}
       </div>
 
-      {question && (
+      {question && (difficulty !== "advanced" || status === "revealed") && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-[#f8f4ea] rounded-xl px-3 py-2">
             <div className="text-[11px] text-[#a8937a]">人口</div>
@@ -188,6 +186,9 @@ export default function ZukanQuizGame() {
             <div className="text-base font-bold text-[#3c2a14]">{question.households.toLocaleString()}世帯</div>
           </div>
         </div>
+      )}
+      {question && difficulty === "advanced" && status === "answering" && (
+        <p className="text-[11px] text-[#a8937a] text-center -mt-2">むずかしいモードでは人口・世帯数は回答後に表示されます</p>
       )}
 
       {question && TRIVIA_FIELD_LABELS.some(({ key }) => question.trivia[key]) && (
@@ -234,7 +235,7 @@ export default function ZukanQuizGame() {
       {status === "revealed" && result && (
         <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex flex-col gap-2">
           <p className={`text-sm font-bold ${result.isCorrect ? "text-orange-600" : "text-red-500"}`}>
-            {result.isCorrect ? "正解！" : "不正解"}
+            {result.isCorrect ? `正解！「${difficultyMeta.label}」クリア` : "不正解"}
           </p>
           <p className="text-sm text-[#3c2a14]">
             正解は「{result.prefName} {result.cityName}」でした

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
+import { ZUKAN_DIFFICULTIES, ZUKAN_DIFFICULTY_META } from "@/lib/game/zukanQuizDifficulty";
 
 export const metadata: Metadata = {
   title: "市区町村図鑑クイズ",
@@ -31,29 +32,35 @@ export default function ZukanQuizPage() {
           </Link>
         </div>
 
-        <Link
-          href="/game/zukan-quiz/play"
-          className="block bg-white rounded-2xl border-2 border-orange-100 hover:border-orange-300
-            shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(234,88,12,0.15)]
-            transition-all duration-150 p-5 active:scale-[0.98]"
-        >
-          <div className="flex items-center gap-4">
-            <div className="text-3xl shrink-0">🧩</div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
-                  ふつう
-                </span>
-                <span className="font-bold text-[#3c2a14] text-sm">クイズに挑戦</span>
-              </div>
-              <p className="text-sm text-[#78716c] leading-snug">
-                4択クイズを5問。正解した市区町村は図鑑に登録されます
-              </p>
-              <p className="text-xs text-[#a8937a] mt-1">1セッション5問・3〜5分</p>
-            </div>
-            <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
-          </div>
-        </Link>
+        <div className="flex flex-col gap-3">
+          {ZUKAN_DIFFICULTIES.map((difficulty) => {
+            const meta = ZUKAN_DIFFICULTY_META[difficulty];
+            return (
+              <Link
+                key={difficulty}
+                href={`/game/zukan-quiz/play/${difficulty}`}
+                className="block bg-white rounded-2xl border-2 border-orange-100 hover:border-orange-300
+                  shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(234,88,12,0.15)]
+                  transition-all duration-150 p-5 active:scale-[0.98]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="text-3xl shrink-0">🧩</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.badgeClass}`}>
+                        {meta.label}
+                      </span>
+                      <span className="font-bold text-[#3c2a14] text-sm">クイズに挑戦</span>
+                    </div>
+                    <p className="text-sm text-[#78716c] leading-snug">{meta.description}</p>
+                    <p className="text-xs text-[#a8937a] mt-1">1セッション5問・3〜5分</p>
+                  </div>
+                  <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
 
         <p className="text-center text-[10px] text-[#c8b8a0] mt-12 leading-relaxed">
           データ提供: e-stat（国勢調査）・stat.usapo.net

@@ -1,9 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { generateZukanQuizQuestion, fetchTriviaCandidates, type QuizTargetCandidate } from "@/lib/game/zukanQuizData";
+import {
+  generateZukanQuizQuestion,
+  fetchTriviaCandidates,
+  type QuizTargetCandidate,
+  type ZukanQuizDifficulty,
+} from "@/lib/game/zukanQuizData";
+
+const VALID_DIFFICULTIES: ZukanQuizDifficulty[] = ["beginner", "intermediate", "advanced"];
 
 interface RequestBody {
+  difficulty?: string;
   // 同一セッション内で同じ自治体が再出題されないよう、クライアントが
   // これまでの出題済み自治体を "prefCode:cityCode" 形式で送ってくる
   excludeCityCodes?: string[];
@@ -16,9 +24,16 @@ interface RequestBody {
 // game_zukan_quiz_sessions への書き込みはRLSポリシーで誰でもINSERT可(ゲストプレイ許可)、
 // かつSELECT/UPDATEは一切許可していないため、ここではservice roleキー等は不要で
 // 通常のanonキーで十分(書き込み専用の一時テーブルのため)。
+//
+// difficulty・実際に見せたヒント項目(hint_fields)はここでセッション行に保存し、
+// claim_zukan_quiz_answer がそこから読む(クライアントの自己申告を信用しないため)。
 export async function POST(request: Request) {
   const body: RequestBody = await request.json().catch(() => ({}));
   const excludeKeys = new Set(body.excludeCityCodes ?? []);
+
+  const difficulty = VALID_DIFFICULTIES.includes(body.difficulty as ZukanQuizDifficulty)
+    ? (body.difficulty as ZukanQuizDifficulty)
+    : "intermediate";
 
   const allCandidates: QuizTargetCandidate[] = await fetchTriviaCandidates();
   const candidates = allCandidates.filter((c) => !excludeKeys.has(`${c.prefCode}:${c.cityCode}`));
@@ -29,7 +44,7 @@ export async function POST(request: Request) {
 
   let generated;
   try {
-    generated = await generateZukanQuizQuestion(candidates);
+    generated = await generateZukanQuizQuestion(candidates, difficulty);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "問題の生成に失敗しました" },
@@ -39,6 +54,9 @@ export async function POST(request: Request) {
 
   const { question, answer } = generated;
   const sessionId = randomUUID();
+  const hintFields = Object.entries(question.trivia)
+    .filter(([, value]) => value != null)
+    .map(([key]) => key);
 
   const supabase = createSupabaseJsClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,6 +71,8 @@ export async function POST(request: Request) {
     city_name: answer.cityName,
     population: answer.population,
     households: answer.households,
+    difficulty,
+    hint_fields: hintFields,
   });
 
   if (error) {
@@ -61,6 +81,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     sessionId,
+    difficulty,
     silhouette: question.silhouette,
     choices: question.choices,
     trivia: question.trivia,
