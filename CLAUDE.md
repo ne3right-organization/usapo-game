@@ -91,7 +91,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 
 ## 市区町村図鑑クイズ（2026-07-24 実装、MVP範囲）
 
-設計書: `docs/市区町村図鑑クイズ_設計ドキュメント.md`（ただし「7. データモデル」はDynamoDB想定のたたき台のため無視し、実際は以下の通りSupabase/Postgresで作り直した）。地図パズルと同一サイト内の新ミニゲームとして`/game/zukan-quiz`配下に実装。MVPは「ふつう」難易度のみ・4択クイズ・1セッション5問・正解した市区町村の図鑑登録（都道府県別コンプリート率表示まで）。
+設計書: `docs/市区町村図鑑クイズ_設計ドキュメント.md`（ただし「7. データモデル」はDynamoDB想定のたたき台のため無視し、実際は以下の通りSupabase/Postgresで作り直した）。地図パズルと同一サイト内の新ミニゲームとして`/game/zukan-quiz`配下に実装。MVPは「ふつう」難易度のみ・4択クイズ・1セッション5問・正解した市区町村の図鑑登録から開始し、その後「難易度3段階・カードグリッド・トリビア提案」（下記）で拡張した。
 
 - **データソース**: ポリゴンは既存と同じCloudFront配信geojson（`/geojson/municipality/2020/{prefCode}.geojson`。`prefCode/cityCode/cityName`のみでシルエット描画用に十分）。人口・世帯数は新規に`stat.usapo.net`（国勢調査統計API、`GET /statistics/census/2020/population/{prefCode}/{cityCode}.json`、`areas[]`の`hyosyo===1`要素が市区計）を利用。設計書にある「静岡県を除く」は現時点では実データ上は解消済み（両APIとも静岡県のデータが存在することを実機確認済み）
   - stat.usapo.netには面積データが無く、CloudFrontのgeojsonにも市区町村レベルの面積プロパティが無いため、人口密度・世帯数増減率のヒントはMVPスコープ外（人口・世帯数のみ表示、ユーザー確認済み）
@@ -116,7 +116,22 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - **正答率の集計**: `game_zukan_municipality_stats`テーブル(`pref_code, city_code, attempt_count, correct_count`)に、ログイン有無を問わず全回答を集計する。`claim_zukan_quiz_answer`関数内で`INSERT ... ON CONFLICT ... RETURNING ... INTO`によりUPSERTと同時に最新の集計値を取得し、そのままRPCの戻り値に含めて返す(直接のGRANTは一切行わず、書き込み・参照は同関数のsecurity definer経由のみ)
   - この変更で`claim_zukan_quiz_answer`の`RETURNS TABLE`列を追加する必要があったが、Postgresでは`create or replace function`だけでは戻り値の型(列構成)を変更できない(`cannot change return type of existing function`エラー)。`drop function`してから`create function`し直す必要がある点に注意
 - geojson・統計APIのfetchはNext.jsのData Cache（`next: { revalidate }`、1週間）でキャッシュし、外部APIへの負荷を抑えている（国勢調査2020年データはほぼ更新されないため長めに設定）。トリビアJSONのみ5分キャッシュ（上記参照）
-- 画面: `/game/zukan-quiz`（トップ）、`/game/zukan-quiz/play`（クイズ本体、`ZukanQuizGame.tsx`）、`/game/zukan-quiz/collection`（図鑑一覧、都道府県別コンプリート率は`/api/zukan-quiz/prefectures`で分母を取得）
+- 画面: `/game/zukan-quiz`（トップ）、`/game/zukan-quiz/play/[difficulty]`（クイズ本体、`ZukanQuizGame.tsx`）、`/game/zukan-quiz/collection`（図鑑一覧）
+
+### 難易度3段階・カードグリッド・トリビア提案（2026-07-28〜29 追加）
+
+「図鑑ページがフラットなテキスト一覧で面白くない」というフィードバックを受け、難易度を3段階に分け、図鑑をシルエット付きカードグリッドに再設計し、カード詳細にトリビア提案(コメント)機能を追加した。
+
+- **難易度3段階**（`beginner`/`intermediate`/`advanced`、表示ラベルは かんたん/ふつう/むずかしい。地図パズルと同じスラッグ命名に統一）: `/game/zukan-quiz/play/[difficulty]`。難易度による違いは①トリビアヒント表示件数（5/3/1件）②ダミー選択肢の人口の近さ（無制限/±3〜10倍/±1.5〜10倍、`zukanQuizData.ts`の`POPULATION_BAND_RATIOS_BY_DIFFICULTY`）③人口・世帯数の表示タイミング（むずかしいのみ回答後表示）。difficulty・実際に見せたヒント項目(`hint_fields`)は`game_zukan_quiz_sessions`にサーバー側(Route Handler)で保存し、`claim_zukan_quiz_answer`がそこから読んで反映する（クライアントの自己申告を信用しない既存方針を踏襲。difficultyをクライアントから直接受け取って図鑑に反映すると自己申告で高難易度ラベルを詐称できてしまうため）
+  - 図鑑カードは自治体1枚+**最高難易度クリアのラベル**（`game_zukan_collections.best_difficulty`、3難易度別の別カードにはしない。ユーザー確認済み）。難易度の大小比較は`zukan_quiz_difficulty_rank()`関数
+  - マイグレーション: `20260728000000_zukan_quiz_difficulty.sql`（列追加・`claim_zukan_quiz_answer`の`drop`+`create`し直し。理由は`20260725000000`と同じ「`RETURNS TABLE`の列追加はcreate or replaceできない」制約）
+- **図鑑をカードグリッド化**: `/game/zukan-quiz/collection`をテキスト行一覧からシルエット+難易度バッジのカードグリッド(`ZukanCardGrid`)に変更。カードをクリックすると詳細画面`/game/zukan-quiz/collection/[prefCode]/[cityCode]`（共有コンポーネント`ZukanCardDetail`）に遷移し、出題時に見せたヒント（`hint_fields`に記録された項目のみ、値はCloudFrontのトリビアJSONから都度取得）と後述のトリビア提案欄を表示する
+  - `hint_fields`は**追記ではなく上書き**（`claim_zukan_quiz_answer`内で毎回`excluded.hint_fields`を代入）。つまりカード詳細に出るのは直近に正解した時のヒントのみで、過去の出題履歴を保持しているわけではない。DB容量への影響は無視できるレベル（項目名の配列を1行分保持するだけで、トリビア本文自体は保存しない）
+- **他ユーザーの図鑑を公開プロフィールとして閲覧可能**に: `game_zukan_collections`のSELECT RLSを、既存の`game_profiles`/`game_map_puzzle_best`と同じ「nickname設定済みなら誰でも閲覧可」ルールに拡張（同じ`20260728000000`マイグレーション）。`/game/zukan-quiz/profile/[userId]`（読み取り専用グリッド、`ZukanPublicCollectionView`）から他人のカード詳細`/game/zukan-quiz/profile/[userId]/[prefCode]/[cityCode]`にも遷移できる
+- **カード詳細の「コメント」は実質「トリビア提案」**（2026-07-29、ユーザーが意図を明確化）: UI文言は「ヒントの提案」。ユーザーは「出題時のヒントにしてほしいトリビア」を投稿する想定で、雑談的なコメントではない。ただし**採用は自動ではない**——投稿はSupabase側に貯まるだけで、実際のヒントへの反映は本体側(team-kokuusa-platform-frontend)のトリビア管理画面での人力キュレーション前提（このリポジトリ側に自動反映の仕組みは無い）。テーブル・RPCの仕組み自体は汎用的な「コメント」のまま(`game_zukan_collection_comments`、変更したのはUI文言のみ):
+  - そのカードを**獲得済みのユーザーのみ投稿可**（RLSで強制。「クリア数に応じてコメントできればよい」というユーザー要望を「そのカードを持っているか」で実装）。1ユーザー1カードにつき1件（PK`(user_id, pref_code, city_code)`、編集・削除は本人のみ）。閲覧はログインユーザーなら誰でも可。モデレーション機能は未実装（荒らしが出たら別途対応する方針、ユーザー了承済み）
+  - マイグレーション: `20260728000001_zukan_quiz_comments.sql`
+- **都道府県別コンプリート率表示を廃止**（2026-07-29、ユーザー指摘で判明した性能問題への対応）: 表示のたびに`/api/zukan-quiz/prefectures`が47都道府県ぶんのgeojsonを全部fetchして市区町村数を数えており、これが図鑑ページの体感速度を悪化させていた。「今は要らない」というユーザー判断で機能ごと削除し、`/api/zukan-quiz/prefectures`ルートと`fetchPrefectureMunicipalityCounts`も削除した。図鑑ページの「全国コンプリート状況」は単純な獲得済みカード枚数のみの表示に簡略化（分母である全国総市区町村数は現状どこにも表示していない）
 
 ## 新規ゲーム構想「地図制覇ゲーム」のプロトタイプ（2026-07-21 移設）
 
