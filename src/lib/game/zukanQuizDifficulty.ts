@@ -23,7 +23,7 @@ export const ZUKAN_DIFFICULTY_META: Record<ZukanQuizDifficulty, ZukanDifficultyM
   },
   advanced: {
     label: "むずかしい",
-    description: "ヒント最大1件・人口非公開・人口が近い自治体から出題",
+    description: "ヒントなし・人口が近い自治体から出題",
     badgeClass: "bg-rose-100 text-rose-700 border-rose-200",
   },
 };
