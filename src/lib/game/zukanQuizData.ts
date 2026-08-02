@@ -188,7 +188,14 @@ export async function fetchTriviaCandidates(): Promise<QuizTargetCandidate[]> {
 // (地理的近さは「同一都道府県」を代理指標として使い、重心間の距離計算などは行わない)
 //
 // 難易度による違い: かんたんは人口の近さを問わず選ぶ(結果的に見分けやすくなる)、
-// むずかしいはより近い人口を優先するレンジから試す(見分けにくくする)
+// むずかしいはより近い人口を優先するレンジから試す(見分けにくくする)。
+//
+// むずかしいのダミー選択肢を全国(同一都道府県を除外)から選ぶ方式を一時試したが、
+// ダミー3件がたまたま同じ他都道府県に偏り、「他の3件と明らかに毛色が違う1件」が
+// 正答として一目で分かってしまう問題が発生した(ユーザーからのフィードバック、2026-08-02)。
+// そのため選択肢の選び方自体は他の難易度と同じ「同一都道府県優先」に戻した
+// (むずかしい固有の変更である「ヒント無し・トリビア登録の有無を問わず全自治体が出題対象」
+// は維持。詳細はCLAUDE.mdの該当セクション参照)
 
 const POPULATION_BAND_RATIOS_BY_DIFFICULTY: Record<ZukanQuizDifficulty, number[]> = {
   beginner: [Infinity],
@@ -299,7 +306,9 @@ export interface GeneratedZukanQuiz {
 
 // 出題対象の候補(トリビア登録済みの自治体)。シルエットのみでは出題が難しすぎるという
 // フィードバックを受け、正答前のヒントとして8種類のトリビアを出せる自治体に限定して
-// 出題する(トリビアデータが無い自治体は出題しない)
+// 出題する(トリビアデータが無い自治体は出題しない)。
+// ただしむずかしいだけは例外で、ヒントを出さない代わりにトリビア登録の有無を問わず
+// 全自治体を出題対象にする(fetchMunicipalityCandidatesForPrefecture参照)
 export interface QuizTargetCandidate {
   prefCode: string;
   cityCode: string;
@@ -313,11 +322,34 @@ export interface QuizTargetCandidate {
   localCuisine: string | null;
 }
 
-// ヒントを全部出すと簡単すぎるため、登録済みトリビアのうち難易度別の件数だけランダムに見せる
+// むずかしい用: トリビア登録の有無を問わず、都道府県を1つランダムに選んでその中の
+// 全自治体を出題候補にする(trivia系フィールドは使わないため全てnullで埋める)。
+// 47都道府県ぶんを毎回まとめて取得する実装を最初に試したが、東京都・熊本県など
+// geojsonが2MBを超える都道府県はNext.jsのData Cacheに乗らずリクエストのたびに
+// 再取得することになり、実機検証でdev serverをクラッシュさせる負荷になることが
+// 判明したため、1リクエストあたり1都道府県分のみ取得する方式に変更した
+export async function fetchMunicipalityCandidatesForPrefecture(prefCode: string): Promise<QuizTargetCandidate[]> {
+  const municipalities = await fetchMunicipalities(prefCode);
+  return municipalities.map((m) => ({
+    prefCode: m.prefCode,
+    cityCode: m.cityCode,
+    industry: null,
+    specialty: null,
+    historicalEvent: null,
+    touristSpot: null,
+    notablePerson: null,
+    festival: null,
+    natureFeature: null,
+    localCuisine: null,
+  }));
+}
+
+// ヒントを全部出すと簡単すぎるため、登録済みトリビアのうち難易度別の件数だけランダムに見せる。
+// むずかしいはトリビア登録の有無を問わず全自治体から出題するため、そもそもヒントを一切出さない
 const MAX_TRIVIA_HINTS_BY_DIFFICULTY: Record<ZukanQuizDifficulty, number> = {
   beginner: 5,
   intermediate: 3,
-  advanced: 1,
+  advanced: 0,
 };
 
 function pickTriviaSubset(trivia: ZukanQuizTrivia, max: number): ZukanQuizTrivia {

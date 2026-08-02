@@ -167,15 +167,28 @@ export default function ZukanQuizGame({ difficulty }: Props) {
         </span>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex items-center justify-center aspect-square">
+      <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex flex-col items-center justify-center aspect-square">
         {status === "loading" || !question ? (
           <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-orange-500 animate-spin" />
         ) : (
-          <MunicipalitySilhouette geometry={question.silhouette} className="w-full h-full" />
+          <MunicipalitySilhouette geometry={question.silhouette} className="w-full h-full" showTerrain />
         )}
       </div>
+      {question && status !== "loading" && (
+        <p className="text-[10px] text-[#a8937a] text-right -mt-3">
+          地形:{" "}
+          <a
+            href="https://maps.gsi.go.jp/development/ichiran.html"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            国土地理院
+          </a>
+        </p>
+      )}
 
-      {question && (difficulty !== "advanced" || status === "revealed") && (
+      {question && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-[#f8f4ea] rounded-xl px-3 py-2">
             <div className="text-[11px] text-[#a8937a]">人口</div>
@@ -186,9 +199,6 @@ export default function ZukanQuizGame({ difficulty }: Props) {
             <div className="text-base font-bold text-[#3c2a14]">{question.households.toLocaleString()}世帯</div>
           </div>
         </div>
-      )}
-      {question && difficulty === "advanced" && status === "answering" && (
-        <p className="text-[11px] text-[#a8937a] text-center -mt-2">むずかしいモードでは人口・世帯数は回答後に表示されます</p>
       )}
 
       {question && TRIVIA_FIELD_LABELS.some(({ key }) => question.trivia[key]) && (
