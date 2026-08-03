@@ -1,6 +1,8 @@
-// 国土地理院タイル(陰影起伏図)を取得してcanvasに合成するユーティリティ。
+// 国土地理院タイルを取得してcanvasに合成するユーティリティ。
 // 出典表示が必須のため、呼び出し側で「国土地理院」のクレジットを表示すること
 // (https://maps.gsi.go.jp/development/ichiran.html)
+
+export type GsiTileLayer = "hillshademap" | "std";
 
 export interface LngLatBBox {
   minLng: number;
@@ -36,18 +38,19 @@ function pickZoom(bbox: LngLatBBox): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 }
 
-function loadTileImage(z: number, x: number, y: number): Promise<HTMLImageElement> {
+function loadTileImage(layer: GsiTileLayer, z: number, x: number, y: number): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`hillshade tile load failed: ${z}/${x}/${y}`));
-    img.src = `https://cyberjapandata.gsi.go.jp/xyz/hillshademap/${z}/${x}/${y}.png`;
+    img.onerror = () => reject(new Error(`GSI tile load failed: ${layer} ${z}/${x}/${y}`));
+    img.src = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${z}/${x}/${y}.png`;
   });
 }
 
-// bboxにクロップした陰影起伏図をcanvasで返す。取得に失敗した場合はnull(呼び出し側で単色塗りにフォールバックする想定)
-export async function fetchHillshadeRaster(bbox: LngLatBBox): Promise<HTMLCanvasElement | null> {
+// bboxにクロップした地理院タイル(層はlayerで指定)をcanvasで返す。
+// 取得に失敗した場合はnull(呼び出し側で単色塗りにフォールバックする想定)
+export async function fetchGsiRaster(bbox: LngLatBBox, layer: GsiTileLayer): Promise<HTMLCanvasElement | null> {
   try {
     const zoom = pickZoom(bbox);
     const pxMinX = lngToGlobalPx(bbox.minLng, zoom);
@@ -68,7 +71,7 @@ export async function fetchHillshadeRaster(bbox: LngLatBBox): Promise<HTMLCanvas
       Array.from({ length: tileCountX * tileCountY }, (_, i) => {
         const tx = tileXStart + (i % tileCountX);
         const ty = tileYStart + Math.floor(i / tileCountX);
-        return loadTileImage(zoom, tx, ty).then((img) => ({ img, tx, ty }));
+        return loadTileImage(layer, zoom, tx, ty).then((img) => ({ img, tx, ty }));
       })
     );
 

@@ -2,15 +2,16 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import type { GeoJsonGeometry } from "@/lib/game/zukanQuizClient";
-import { fetchHillshadeRaster } from "@/lib/game/hillshadeRaster";
+import { fetchGsiRaster, type GsiTileLayer } from "@/lib/game/hillshadeRaster";
 
 export interface MunicipalitySilhouetteProps {
   geometry: GeoJsonGeometry;
   fillColor?: string;
   className?: string;
-  // 国土地理院の陰影起伏図をシルエット内部にテクスチャとして重ねる(取得失敗時は単色塗りにフォールバック)。
-  // 表示する場合、呼び出し側で出典(国土地理院)のクレジット表示が必要
-  showTerrain?: boolean;
+  // 国土地理院タイル(陰影起伏図 or 標準地図)をシルエット内部にテクスチャとして重ねる
+  // (取得失敗時は単色塗りにフォールバック)。指定する場合、呼び出し側で出典(国土地理院)の
+  // クレジット表示が必要。未指定(undefined)なら単色シルエットのまま
+  terrainLayer?: GsiTileLayer;
 }
 
 const VIEW_SIZE = 300;
@@ -86,7 +87,7 @@ export default function MunicipalitySilhouette({
   geometry,
   fillColor = "#57534e",
   className,
-  showTerrain = false,
+  terrainLayer,
 }: MunicipalitySilhouetteProps) {
   const { path, imageRect, bbox } = useMemo(() => {
     const projection = buildProjection(geometry);
@@ -110,15 +111,15 @@ export default function MunicipalitySilhouette({
   const [terrainUrl, setTerrainUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!showTerrain) {
+    if (!terrainLayer) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTerrainUrl(null);
       return;
     }
     let cancelled = false;
-    // 新しい問題(geometry)に切り替わった際、前の問題のテクスチャが一瞬残らないようリセットする
+    // 新しい問題(geometry)/レイヤ切り替え時、前のテクスチャが一瞬残らないようリセットする
     setTerrainUrl(null);
-    fetchHillshadeRaster(bbox).then((canvas) => {
+    fetchGsiRaster(bbox, terrainLayer).then((canvas) => {
       if (cancelled || !canvas) return;
       try {
         setTerrainUrl(canvas.toDataURL("image/png"));
@@ -129,7 +130,7 @@ export default function MunicipalitySilhouette({
     return () => {
       cancelled = true;
     };
-  }, [showTerrain, bbox]);
+  }, [terrainLayer, bbox]);
 
   return (
     <svg viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`} className={className} role="img" aria-label="出題対象の市区町村のシルエット">

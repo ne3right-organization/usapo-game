@@ -138,18 +138,22 @@ interface CloudFrontTriviaFile {
   municipalities: CloudFrontTriviaMunicipality[];
 }
 
-async function fetchPrefectureTrivia(prefCode: string): Promise<CloudFrontTriviaMunicipality[]> {
+async function fetchPrefectureTriviaFile(prefCode: string): Promise<CloudFrontTriviaFile | null> {
   try {
     const res = await fetch(`${CLOUDFRONT_URL}/municipality-trivia/${prefCode}.json`, {
       next: { revalidate: TRIVIA_REVALIDATE_SECONDS },
     });
     // トリビアが1件も公開されていない都道府県は404になる(まだ登録が無いだけで正常)
-    if (!res.ok) return [];
-    const data: CloudFrontTriviaFile = await res.json();
-    return data.municipalities ?? [];
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
-    return [];
+    return null;
   }
+}
+
+async function fetchPrefectureTrivia(prefCode: string): Promise<CloudFrontTriviaMunicipality[]> {
+  const file = await fetchPrefectureTriviaFile(prefCode);
+  return file?.municipalities ?? [];
 }
 
 // 47都道府県分のトリビアJSONを取得し、出題候補の一覧にする。
@@ -176,6 +180,31 @@ export async function fetchTriviaCandidates(): Promise<QuizTargetCandidate[]> {
       localCuisine: m.localCuisine,
     }))
   );
+}
+
+export interface TriviaRegisteredMunicipality {
+  prefCode: string;
+  prefName: string;
+  cityCode: string;
+  cityName: string;
+}
+
+// トップページの案内表示用: かんたん・ふつうで実際に出題される(=トリビア登録済みの)
+// 自治体の一覧を、表示に必要な名前だけ添えて返す
+export async function fetchTriviaRegisteredMunicipalities(): Promise<TriviaRegisteredMunicipality[]> {
+  const files = await Promise.all(ALL_PREF_CODES.map((prefCode) => fetchPrefectureTriviaFile(prefCode)));
+  return files
+    .flatMap((file) =>
+      file
+        ? file.municipalities.map((m) => ({
+            prefCode: file.prefCode,
+            prefName: file.prefName,
+            cityCode: m.cityCode,
+            cityName: m.cityName,
+          }))
+        : []
+    )
+    .sort((a, b) => (a.prefCode + a.cityCode).localeCompare(b.prefCode + b.cityCode));
 }
 
 // ─── ダミー選択肢の生成 ────────────────────────────────────────────────────────
