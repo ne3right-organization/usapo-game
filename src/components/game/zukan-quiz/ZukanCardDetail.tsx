@@ -48,6 +48,9 @@ export default function ZukanCardDetail({ prefCode, cityCode, targetUserId, back
   const [commentDraft, setCommentDraft] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState("");
+  // カードは既に獲得済み(正答を隠す必要が無い)なので、地形(陰影起伏図)と
+  // 地名入りの地図(標準地図)を切り替えて見られるようにする
+  const [terrainLayer, setTerrainLayer] = useState<"hillshademap" | "std">("hillshademap");
 
   useEffect(() => {
     let cancelled = false;
@@ -160,11 +163,50 @@ export default function ZukanCardDetail({ prefCode, cityCode, targetUserId, back
             <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5 flex flex-col items-center gap-3">
               <div className="w-full aspect-square max-w-[220px] flex items-center justify-center">
                 {state.geometry ? (
-                  <MunicipalitySilhouette geometry={state.geometry} className="w-full h-full" />
+                  <MunicipalitySilhouette geometry={state.geometry} className="w-full h-full" terrainLayer={terrainLayer} />
                 ) : (
                   <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-orange-500 animate-spin" />
                 )}
               </div>
+              {state.geometry && (
+                <>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setTerrainLayer("hillshademap")}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full border transition-colors ${
+                        terrainLayer === "hillshademap"
+                          ? "bg-orange-600 text-white border-orange-600"
+                          : "bg-white text-[#78716c] border-gray-200 hover:border-orange-300"
+                      }`}
+                    >
+                      地形
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTerrainLayer("std")}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full border transition-colors ${
+                        terrainLayer === "std"
+                          ? "bg-orange-600 text-white border-orange-600"
+                          : "bg-white text-[#78716c] border-gray-200 hover:border-orange-300"
+                      }`}
+                    >
+                      マップ
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-[#a8937a] -mt-1">
+                    {terrainLayer === "hillshademap" ? "地形" : "地図"}:{" "}
+                    <a
+                      href="https://maps.gsi.go.jp/development/ichiran.html"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      国土地理院
+                    </a>
+                  </p>
+                </>
+              )}
               <div className="text-center">
                 <div className="text-base font-bold text-[#3c2a14]">
                   {state.entry.prefName} {state.entry.cityName}

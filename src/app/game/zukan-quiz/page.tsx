@@ -2,13 +2,22 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
 import { ZUKAN_DIFFICULTIES, ZUKAN_DIFFICULTY_META } from "@/lib/game/zukanQuizDifficulty";
+import { fetchTriviaRegisteredMunicipalities } from "@/lib/game/zukanQuizData";
 
 export const metadata: Metadata = {
   title: "市区町村図鑑クイズ",
   description: "シルエットと4択で市区町村を当てて図鑑を集めるクイズゲーム",
 };
 
-export default function ZukanQuizPage() {
+export default async function ZukanQuizPage() {
+  const registered = await fetchTriviaRegisteredMunicipalities();
+  const groupedByPref = new Map<string, string[]>();
+  for (const m of registered) {
+    const cities = groupedByPref.get(m.prefName) ?? [];
+    cities.push(m.cityName);
+    groupedByPref.set(m.prefName, cities);
+  }
+
   return (
     <main className="min-h-full bg-[#fdf8f0]">
       <div className="max-w-lg mx-auto px-4 pt-8 pb-16">
@@ -62,8 +71,48 @@ export default function ZukanQuizPage() {
           })}
         </div>
 
+        <div className="mt-10">
+          <h2 className="text-sm font-bold text-[#3c2a14] mb-2">かんたん・ふつうで出題される市区町村</h2>
+          <div className="bg-white rounded-2xl border border-orange-100 p-4 max-h-64 overflow-y-auto text-sm text-[#78716c] leading-relaxed">
+            {groupedByPref.size === 0 ? (
+              <p>準備中です。むずかしいなら全国どこでも出題されます。</p>
+            ) : (
+              Array.from(groupedByPref.entries()).map(([prefName, cities]) => (
+                <p key={prefName} className="mb-1">
+                  <span className="font-bold text-[#3c2a14]">{prefName}</span>：{cities.join("、")}
+                </p>
+              ))
+            )}
+          </div>
+          <p className="text-xs text-[#a8937a] mt-3 leading-relaxed">
+            リストにない市区町村は、かんたん・ふつうには出題されません。出題用のトリビアを管理者(X:{" "}
+            <a
+              href="https://x.com/usagikanagawa"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              @usagikanagawa
+            </a>
+            )が登録していますので、追加してほしい場合は管理者まで連絡してください。
+            <br />
+            また、むずかしい、をクリアして図鑑に登録することでもヒントの提案を投稿できます。
+            <br />
+            チャレンジをお待ちしております。
+          </p>
+        </div>
+
         <p className="text-center text-[10px] text-[#c8b8a0] mt-12 leading-relaxed">
-          データ提供: e-stat（国勢調査）・stat.usapo.net
+          データ提供: e-stat（国勢調査）<br />
+          地形:{" "}
+          <a
+            href="https://maps.gsi.go.jp/development/ichiran.html"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            国土地理院
+          </a>
         </p>
       </div>
     </main>

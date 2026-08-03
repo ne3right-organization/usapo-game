@@ -171,7 +171,7 @@ export default function ZukanQuizGame({ difficulty }: Props) {
         {status === "loading" || !question ? (
           <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-orange-500 animate-spin" />
         ) : (
-          <MunicipalitySilhouette geometry={question.silhouette} className="w-full h-full" showTerrain />
+          <MunicipalitySilhouette geometry={question.silhouette} className="w-full h-full" terrainLayer="hillshademap" />
         )}
       </div>
       {question && status !== "loading" && (
