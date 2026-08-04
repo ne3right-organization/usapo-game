@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
+import RecentZukanRegistrations from "@/components/game/zukan-quiz/RecentZukanRegistrations";
 import { ZUKAN_DIFFICULTIES, ZUKAN_DIFFICULTY_META } from "@/lib/game/zukanQuizDifficulty";
 import { fetchTriviaRegisteredMunicipalities } from "@/lib/game/zukanQuizData";
 
@@ -40,6 +41,8 @@ export default async function ZukanQuizPage() {
             📖 図鑑を見る
           </Link>
         </div>
+
+        <RecentZukanRegistrations />
 
         <div className="flex flex-col gap-3">
           {ZUKAN_DIFFICULTIES.map((difficulty) => {
