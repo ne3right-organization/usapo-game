@@ -124,6 +124,41 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
+// ─── トップページ: 最近図鑑に登録された自治体 ───────────────────────────────────────
+//
+// 誰が獲得したかは一切特定せず、自治体名+最終登録時刻のみをsecurity definer関数
+// (fetch_recent_zukan_registrations)経由で取得する。むずかしいはトリビア登録の
+// 有無を問わず出題されるため、ここに出た自治体をきっかけにトリビア登録を促す狙い
+
+export interface RecentZukanRegistration {
+  prefCode: string;
+  prefName: string;
+  cityCode: string;
+  cityName: string;
+  lastAcquiredAt: string;
+}
+
+interface RecentRegistrationRow {
+  pref_code: string;
+  pref_name: string;
+  city_code: string;
+  city_name: string;
+  last_acquired_at: string;
+}
+
+export async function fetchRecentZukanRegistrations(limit = 8): Promise<RecentZukanRegistration[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("fetch_recent_zukan_registrations", { p_limit: limit });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RecentRegistrationRow[]).map((row) => ({
+    prefCode: row.pref_code,
+    prefName: row.pref_name,
+    cityCode: row.city_code,
+    cityName: row.city_name,
+    lastAcquiredAt: row.last_acquired_at,
+  }));
+}
+
 // ─── 図鑑 ──────────────────────────────────────────────────────────────────────
 
 export interface ZukanCollectionEntry {
