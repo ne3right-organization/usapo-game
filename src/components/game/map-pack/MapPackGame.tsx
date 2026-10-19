@@ -37,7 +37,12 @@ const FILL_RATIO = 0.5;
 const MIN_SIDE = 12;                  // 小さい地域でも見える・当たる大きさを確保する
 const PHYS_TOL = 2;                   // 物理形状の許容誤差(ワールド単位)。ピース数が多いエリアの負荷を抑えるため粗め
 const DRAW_TOL = 0.4;                 // 描画用の間引きの許容誤差(ワールド単位)
-const LABEL_MIN = 26;                 // 地域の一辺がこれ以上の大きさならラベルを描く
+// 合体したピースの中の地域は、一辺がこれ以上なら小さめの文字でラベルを描く(単独のピースは常に描く)。
+// 最初は26にしていたが、合体すると地名がほとんど消えてどこにくっつければいいか分からなくなったため下げた
+const LABEL_MIN = 14;
+const LABEL_FONT: [number, number] = [6.5, 9]; // ラベルの文字の大きさ(ワールド単位)の範囲
+// スマホでスクロールせずに遊べるよう、箱を画面の高さにも収める。サイト共通ヘッダー・タイトル行・HUD・ボタンの分の高さ(px)
+const RESERVED_HEIGHT_PX = 230;
 
 // ===== ピースの弾み =====
 // 一辺が BOUNCY_SIDE_MAX 未満のピースは、小さいほど反発係数を上げる。
@@ -70,6 +75,10 @@ const SUBSTEPS = 3;
 const GRAVITY = 1.3;
 const DROP_WAIT_MS = 600;             // 落としてから次のピースが出るまで
 const NEIGHBOR_BIAS = 0.6;            // 箱の中の地域に隣接する地域を優先して出す確率
+// 大きすぎる地域・歪な地域は、ふつうの地域を出し終わってから出す(序盤から箱を塞がないように)。
+// 面積の大きい順・歪な順(円形度 4π×面積÷周長² の低い順)にそれぞれこの割合を後回しにする
+const DEFER_LARGE_RATIO = 0.15;
+const DEFER_IRREGULAR_RATIO = 0.15;
 const FLASH_MS = 450;
 const POPUP_MS = 900;
 
@@ -93,8 +102,11 @@ type Piece = {
   scale: number;
   /** ピースのローカル座標系(角度0)での剛体の重心位置 */
   origin: { x: number; y: number };
+  /** regionIds と同じ順番の、地域ごとの輪郭 */
   paths: Path2D[];
-  labels: { text: string; x: number; y: number }[];
+  /** regionIds と同じ順番の、地域ごとの重心(ピースのローカル座標) */
+  centers: { x: number; y: number }[];
+  labels: { text: string; x: number; y: number; size: number }[];
   /** 弾みやすさ(0: 弾まない 〜 1: 最も小さいピース) */
   bounciness: number;
   /** 次にポンと跳ねてよい時刻(0なら未設定) */
@@ -220,6 +232,8 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     const pieces = new Map<number, Piece>(); // body.id → 箱の中のピース
     let hover: Piece | null = null;
     let hoverInfo: HoverInfo | null = null;
+    /** 今落とそうとしているピースとくっつく(隣接する)地域。箱の中で光らせて地名も出す */
+    let hoverTargets = new Set<number>();
     let aimX = W / 2;
     let nextHoverAt = 0;
     let dropped = 0;
@@ -283,18 +297,25 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
         return path;
       });
 
+      const centers = regs.map((r) => {
+        const v = toLocal([r.cx, r.cy]);
+        return { x: v.x - origin.x, y: v.y - origin.y };
+      });
+
       // 同じ名前が複数含まれる場合は一番大きい区画にだけラベルを付ける
-      const biggestByName = new Map<string, (typeof regs)[number]>();
-      for (const r of regs) {
+      const biggestByName = new Map<string, number>();
+      regs.forEach((r, i) => {
         const cur = biggestByName.get(r.name);
-        if (!cur || r.area > cur.area) biggestByName.set(r.name, r);
-      }
+        if (cur === undefined || r.area > regs[cur].area) biggestByName.set(r.name, i);
+      });
       const labels = [...biggestByName.values()]
-        .filter((r) => Math.sqrt(r.area) * scale >= LABEL_MIN || regs.length === 1)
-        .map((r) => {
-          const v = toLocal([r.cx, r.cy]);
-          return { text: r.name, x: v.x - origin.x, y: v.y - origin.y };
-        });
+        .map((i) => ({ i, side: Math.sqrt(regs[i].area) * scale }))
+        .filter(({ side }) => regs.length === 1 || side >= LABEL_MIN)
+        .map(({ i, side }) => ({
+          text: regs[i].name,
+          ...centers[i],
+          size: regs.length === 1 ? LABEL_FONT[1] : Math.min(LABEL_FONT[1], Math.max(LABEL_FONT[0], side * 0.3)),
+        }));
 
       const groupIds = new Set(regionIds.map((id) => groupOf.get(id)!));
       let fill: string, stroke: string;
@@ -310,7 +331,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       }
 
       Matter.Body.setAngle(body, angle);
-      return { body, regionIds, area, cx, cy, scale, origin, paths, labels, bounciness, nextHopAt: 0, fill, stroke };
+      return { body, regionIds, area, cx, cy, scale, origin, paths, centers, labels, bounciness, nextHopAt: 0, fill, stroke };
     }
 
     /** ピース上の地理座標(メートル)が今ワールドのどこにあるか */
@@ -332,6 +353,37 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
 
     // ----- 出題順: 同じ名前は連続で出す。名前の選び方は箱の中に隣接するものを優先する -----
     const remainingGroups = new Set(groups.map((_, g) => g));
+
+    // 後回しにする名前のまとまり。同じ名前は連続で出すので、まとまり単位で「一番大きい区画の面積」
+    // 「一番歪な区画の円形度」を比べる(区画単位で選ぶと、区画の多い町名がまとめて後回しになり、
+    // 小田原市では196ピース中93ピースが後回しになってしまった)
+    const deferredGroups = (() => {
+      const roundness = regions.map((r) => {
+        let perimeter = 0;
+        for (const ring of r.rings) ring.forEach((p, i) => {
+          const q = ring[(i + 1) % ring.length];
+          perimeter += Math.hypot(q[0] - p[0], q[1] - p[1]);
+        });
+        return perimeter ? (4 * Math.PI * r.area) / perimeter ** 2 : 1;
+      });
+      const maxArea = groups.map((ids) => Math.max(...ids.map((id) => regions[id].area)));
+      const minRound = groups.map((ids) => Math.min(...ids.map((id) => roundness[id])));
+      const idx = groups.map((_, g) => g);
+      const deferred = new Set<number>();
+      // 上限はピース数で数える(区画の多い町名は1つ選ぶだけでピースが一気に増えるため)
+      const take = (order: number[], ratio: number) => {
+        let budget = Math.floor(regions.length * ratio);
+        for (const g of order) {
+          if (deferred.has(g)) continue;
+          if (groups[g].length > budget) break;
+          deferred.add(g);
+          budget -= groups[g].length;
+        }
+      };
+      take(idx.slice().sort((a, b) => maxArea[b] - maxArea[a]), DEFER_LARGE_RATIO);
+      take(idx.slice().sort((a, b) => minRound[a] - minRound[b]), DEFER_IRREGULAR_RATIO);
+      return deferred;
+    })();
     let queue: number[] = [];
     let queueGroupSize = 0;
 
@@ -340,7 +392,8 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
         if (!remainingGroups.size) return null;
         const placed = new Set<number>();
         for (const p of pieces.values()) p.regionIds.forEach((id) => placed.add(id));
-        const rest = [...remainingGroups];
+        const normal = [...remainingGroups].filter((g) => !deferredGroups.has(g));
+        const rest = normal.length ? normal : [...remainingGroups];
         const near = rest.filter((g) => groups[g].some((id) => [...adjacency[id]].some((o) => placed.has(o))));
         const pool = near.length && Math.random() < NEIGHBOR_BIAS ? near : rest;
         const g = pool[Math.floor(Math.random() * pool.length)];
@@ -372,6 +425,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       if (!next) { hover = null; hoverInfo = null; publishHud(); return; }
       hover = buildPiece([next.id], 0);
       hoverInfo = next.info;
+      hoverTargets = new Set(adjacency[next.id]);
       nextHoverAt = now;
       publishHud();
     }
@@ -534,7 +588,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     let viewScale = 1;
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
     function resize() {
-      const cssW = wrap.clientWidth;
+      const cssW = Math.max(200, Math.min(wrap.clientWidth, ((window.innerHeight - RESERVED_HEIGHT_PX) * W) / H));
       viewScale = cssW / W;
       canvas.style.width = `${cssW}px`;
       canvas.style.height = `${cssW * (H / W)}px`;
@@ -544,9 +598,11 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
+    window.addEventListener("resize", resize);
 
-    function drawPiece(piece: Piece, alpha = 1) {
+    function drawPiece(piece: Piece, alpha = 1, targets?: Set<number>, pulse = 0) {
       const { body } = piece;
+      const hit = targets ? piece.regionIds.map((id) => targets.has(id)) : null;
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.translate(body.position.x, body.position.y);
@@ -556,22 +612,45 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       ctx.lineWidth = 0.8;
       ctx.lineJoin = "round";
       for (const path of piece.paths) { ctx.fill(path); ctx.stroke(path); }
+      if (hit?.some(Boolean)) {
+        ctx.fillStyle = `rgba(245,158,11,${0.3 + 0.25 * pulse})`;
+        ctx.strokeStyle = "#d97706";
+        ctx.lineWidth = 2;
+        piece.paths.forEach((path, i) => { if (hit[i]) { ctx.fill(path); ctx.stroke(path); } });
+      }
       ctx.restore();
 
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.font = "bold 9px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.fillStyle = "#3c2a14";
       const c = Math.cos(body.angle), s = Math.sin(body.angle);
+      const put = (text: string, lx: number, ly: number) => {
+        const x = body.position.x + lx * c - ly * s;
+        const y = body.position.y + lx * s + ly * c;
+        ctx.strokeText(text, x, y);
+        ctx.fillText(text, x, y);
+      };
+      // くっつく相手の地域は大きさにかかわらず地名を出すので、通常のラベルからは外す
+      const hitNames = new Set(hit ? piece.regionIds.filter((_, i) => hit[i]).map((id) => regions[id].name) : []);
+      ctx.fillStyle = "#3c2a14";
       for (const l of piece.labels) {
-        const x = body.position.x + l.x * c - l.y * s;
-        const y = body.position.y + l.x * s + l.y * c;
-        ctx.strokeText(l.text, x, y);
-        ctx.fillText(l.text, x, y);
+        if (hitNames.has(l.text)) continue;
+        ctx.font = `bold ${l.size}px sans-serif`;
+        put(l.text, l.x, l.y);
+      }
+      if (hit) {
+        ctx.font = "bold 10px sans-serif";
+        ctx.fillStyle = "#b45309";
+        const done = new Set<string>();
+        piece.regionIds.forEach((id, i) => {
+          const name = regions[id].name;
+          if (!hit[i] || done.has(name)) return;
+          done.add(name);
+          put(name, piece.centers[i].x, piece.centers[i].y);
+        });
       }
       ctx.restore();
     }
@@ -592,7 +671,8 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       ctx.lineTo(BOX_R + 1.5, RIM_Y);
       ctx.stroke();
 
-      for (const p of pieces.values()) drawPiece(p);
+      const pulse = 0.5 + 0.5 * Math.sin(now / 250);
+      for (const p of pieces.values()) drawPiece(p, 1, hover && !ended ? hoverTargets : undefined, pulse);
 
       if (hover && !ended) {
         const pos = hoverPosition(hover);
@@ -687,6 +767,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       cancelAnimationFrame(raf);
       clearInterval(timer);
       ro.disconnect();
+      window.removeEventListener("resize", resize);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
@@ -720,7 +801,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       </div>
 
       <div ref={wrapRef} className="relative w-full max-w-[420px]">
-        <canvas ref={canvasRef} className="block touch-none select-none" />
+        <canvas ref={canvasRef} className="block mx-auto touch-none select-none" />
         {result && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#fdf8f0]/70">
             <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(120,90,40,0.15)] px-6 py-5 text-center min-w-[220px]">
