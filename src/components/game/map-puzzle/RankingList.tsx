@@ -5,6 +5,8 @@ import { areaLabelOf, formatRelativeTime } from "@/lib/game/format";
 export interface RankingListProps {
   items: RankingEntry[];
   showArea?: boolean;
+  /** 行をタップしたときのプロフィールページ。null ならリンクにしない(プロフィールページが無いゲーム用) */
+  profileBasePath?: string | null;
 }
 
 function rankBadge(index: number): string {
@@ -14,7 +16,11 @@ function rankBadge(index: number): string {
   return String(index + 1);
 }
 
-export default function RankingList({ items, showArea = true }: RankingListProps) {
+export default function RankingList({
+  items,
+  showArea = true,
+  profileBasePath = "/game/map-puzzle/profile",
+}: RankingListProps) {
   if (items.length === 0) {
     return <p className="text-sm text-[#a8937a] text-center py-10">まだ記録がありません</p>;
   }
@@ -41,8 +47,8 @@ export default function RankingList({ items, showArea = true }: RankingListProps
           </div>
         );
 
-        return item.nickname ? (
-          <Link key={`${item.userId}-${i}`} href={`/game/map-puzzle/profile/${item.userId}`}>
+        return item.nickname && profileBasePath ? (
+          <Link key={`${item.userId}-${i}`} href={`${profileBasePath}/${item.userId}`}>
             {row}
           </Link>
         ) : (
