@@ -65,6 +65,27 @@ export default function Home() {
               <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
             </div>
           </Link>
+
+          <Link
+            href="/game/map-pack"
+            className="block bg-white rounded-2xl border-2 border-purple-100 hover:border-purple-300
+              shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(126,34,206,0.12)]
+              transition-all duration-150 p-5 active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="text-3xl shrink-0">📦</div>
+              <div className="flex-1 min-w-0">
+                <span className="font-bold text-[#3c2a14] text-sm block mb-1">
+                  地図パック
+                  <span className="ml-2 text-[10px] font-bold text-purple-600 align-middle">プロトタイプ</span>
+                </span>
+                <p className="text-sm text-[#78716c] leading-snug">
+                  都道府県・市区町村・町丁のピースを箱に落として、隣り合う地域同士をくっつけて地図を完成させるパズル
+                </p>
+              </div>
+              <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
+            </div>
+          </Link>
         </div>
 
         {/* ログインについて */}

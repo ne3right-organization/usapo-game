@@ -72,6 +72,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - [x] **Supabaseプロジェクトの作成**（プロジェクト名`usapo-game`、リージョン ap-northeast-1(東京)、Free plan、project ref `pctmohjcdtizoyalacts`）
   - `supabase db push`でマイグレーション適用済み: `game_profiles` / `game_map_puzzle_challenges` / `game_map_puzzle_progress` / `game_map_puzzle_best` の4テーブル + RLS + 集計トリガー
   - **重要**: Supabaseダッシュボードの「Automatically expose new tables」をOFFにしていても、SQLマイグレーション経由で作ったテーブルには`anon`ロールにデフォルト権限が付与される挙動を確認した（ダッシュボードのトグルはStudio UI経由の作成にしか効かない模様）。`20260722000000_revoke_anon_grants.sql`で明示的に`revoke all ... from anon`して対処済み。**今後新しいテーブルを追加する際も、この挙動を前提に毎回明示的なGRANT/REVOKEをマイグレーションに書くこと**（トグル設定を信用しない）
+  - **追記(2026-10-19、地図パックのスキーマ適用時)**: この自動付与は**`authenticated`ロールにも及ぶ**ことを実機確認で発見。マイグレーションで`grant select, insert ... to authenticated`しか書いていないテーブルに、DELETE/INSERT/REFERENCES/SELECT/TRIGGER/TRUNCATE/UPDATEが全部付いていた（地図パズル・地図制覇ゲームの既存テーブルも同じ状態のまま。図鑑クイズのテーブルは`20260724000001`で絞り直し済み）。UPDATE/DELETEはRLSポリシーが無ければ拒否されるが、TRUNCATEはRLSの対象外。**新しいテーブルでは`revoke all ... from anon, authenticated`してから必要な権限だけgrantし直すこと**。確認は`npx supabase db query --linked "select table_name, grantee, privilege_type from information_schema.role_table_grants where ..."`でコマンドからできる（`SUPABASE_ACCESS_TOKEN`が必要）
   - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`（Publishable key）をVercel(Production/Preview/Development)と`.env.local`に設定済み
   - Dockerが動いていなかったため、ローカル`supabase db reset`での事前検証はできておらず本番プロジェクトに直接`db push`した。マイグレーションSQL自体は目視レビュー済み、pushも成功・grant/RLSの実機確認も完了
   - ログイン方式はGoogle OAuthのみ（詳細は「システム構成」参照。当初マジックリンクを実装したがFree tierの制約により切り替えた）
@@ -155,6 +156,17 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - **人口・世帯数は3難易度共通で回答前から表示**: 従来はむずかしいのみ回答後表示だったが、常時表示に変更(`ZukanQuizGame.tsx`から`difficulty !== "advanced"`等の分岐を削除)
 - **選択肢(ダミー)は全国から出題→撤回(2026-08-02)**: 一時`pickDummyChoicesNationwide()`を新設し、対象自治体自身の都道府県を除外して全国からダミーを選ぶ方式を試した。同一都道府県を除外しない版では「4択が全部同じ都道府県」になり答えが一目でわかる問題があったため一度は「対象の都道府県だけ除外」に修正したが、それでも**ダミー3件が別の1つの他都道府県に偏り、「他の3件と明らかに毛色が違う1件」が正答だと一目でわかってしまう**という、ユーザーが実際に遊んでみて気づいたより本質的な問題が残っていた。ユーザー指示により全国出題は撤回し、`pickDummyChoicesNationwide()`は削除、ダミー選択は他の難易度と同じ「同一都道府県優先」ロジック(`pickDummyChoices`本体、`POPULATION_BAND_RATIOS_BY_DIFFICULTY.advanced`のレンジ`[1.5, 3, 10, Infinity]`)にそのまま合流させた。むずかしい固有の変更は「ヒントなし」「トリビア登録の有無を問わず全自治体が出題対象」の2点のみに縮小
 - 難易度カードの説明文(`ZUKAN_DIFFICULTY_META.advanced.description`)は「ヒントなし・人口が近い自治体から出題」(全国出題の撤回に合わせて文言も修正)
+
+## 地図パック（2026-10-19 プロトタイプ実装、`feature/map-pack`ブランチ）
+
+地域（都道府県/市区町村/町丁）のピースを箱に落とし、地理的に隣接するピース同士が触れると実際の位置関係のまま1つに固まる、スイカゲーム型の落下パズル。全ピースが1つに固まったら完成。「新・都道府県ゲーム」(https://sns.dopagamelab.com/pref-pack/) に着想を得た（公開HTMLで仕組みは読んだが、ゲーム本体のコードにはライセンス表記がないため**コードは流用せず仕組みだけ参考にした**。同ゲームも使っている Matter.js / poly-decomp はMITなので使用）。画面に着想元のクレジットを入れている。
+
+- 設計メモ: `docs/map_pack_game_design.md`（決定事項・不採用にした案と理由・シミュレーション結果はこちら）
+- 画面: `/game/map-pack`（トップ）、`/game/map-pack/[difficulty]`（エリア選択は地図パズルの`MapAreaSelector`を流用）、`/game/map-pack/ranking`、`/game/map-pack/ranking/area`
+- 実装: `src/lib/game/mapPack/{regions,shapes}.ts`（地図データの前処理・凸分解）、`src/components/game/map-pack/MapPackGame.tsx`（物理演算・描画）、`src/lib/game/mapPackData.ts`（記録送信・ランキング）
+- 参考ゲームとの違い（パクリと受け取られないよう意識した点）: あふれても終了しない、箱を揺らすボタンは無し（代わりにピースが時々ポンと跳ねる・「積み直す」ボタン）、町丁など3レベルで遊べる。都道府県レベルは参考ゲームとほぼ同じになるので、公開順は町丁を先にする方針（2026-10-19 決定）
+- **ランキングは地図パズルとは別集計**（`game_map_pack_challenges` / `game_map_pack_best`、マイグレーション`20261019000000_map_pack_schema.sql`）。`game_profiles.total_score`には含めない。得点はDB側のトリガーで計算し直す（クライアントの得点計算と同じ式なので、変えるときは両方そろえること）
+- **既知の課題**: ピース数が多いエリア（小田原市の町丁196、北海道の市区町村188など）は合体が起きにくく、クリアがかなり難しい（設計メモ参照）
 
 ## 新規ゲーム構想「地図制覇ゲーム」のプロトタイプ（2026-07-21 移設）
 
