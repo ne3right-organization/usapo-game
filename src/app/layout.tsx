@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
+import ReturnPathTracker from "@/components/ReturnPathTracker";
 import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
@@ -31,6 +32,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <SiteHeader />
+        <ReturnPathTracker />
         {/* 各ページの main は min-h-full 前提なので、ヘッダーを除いた残りの高さを親にしてはみ出さないようにする */}
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {/* Vercel Web Analytics(ページ閲覧数)。ログインせずに遊んだ人はDBに記録が残らないため、利用状況はこちらで見る */}
