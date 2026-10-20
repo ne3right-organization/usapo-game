@@ -60,8 +60,8 @@ export default function AuthStatus() {
 
   return (
     <div className="inline-flex items-center gap-3 text-sm">
-      <Link href="/game/map-puzzle/nickname" className="text-[#78716c] underline underline-offset-2">
-        {state.nickname ? `👤 ${state.nickname}` : "名前をつける"}
+      <Link href="/nickname" className="text-[#78716c] underline underline-offset-2">
+        {state.nickname ? `👤 ${state.nickname}` : "ニックネームを設定"}
       </Link>
       <button
         type="button"

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { buildAreaData, simplifyRing, type AreaData, type Point } from "@/lib/game/mapPack/regions";
 import { clearShapeCache, regionConvexParts } from "@/lib/game/mapPack/shapes";
+import { absoluteUrl, xShareUrl } from "@/lib/game/share";
 import {
   clearMapPackSessionSaves,
   currentUserId,
@@ -18,6 +19,7 @@ import {
   type MapPackSessionSave,
   type MapPackSnapshot,
   mapPackAreaRankingHref,
+  mapPackPlayHref,
   submitMapPackChallenge,
   type MapPackArea,
 } from "@/lib/game/mapPackData";
@@ -1120,6 +1122,19 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
               >
                 もう一回
               </button>
+              <a
+                href={xShareUrl(
+                  result.kind === "clear"
+                    ? `地図ポットンで「${areaLabel}」の${hud.total}${unitLabel}をくっつけて完成！ ${result.score.toLocaleString()}点（タイム ${formatTime(result.sec)}）`
+                    : `地図ポットンで「${areaLabel}」に挑戦！ ${result.score.toLocaleString()}点（最大のかたまり ${result.largest}/${hud.total}${unitLabel}）`,
+                  absoluteUrl(mapPackPlayHref(area)),
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block px-5 py-2 rounded-full bg-black text-white text-sm font-bold active:scale-[0.97]"
+              >
+                𝕏 でシェア
+              </a>
               <p className="mt-3">
                 <Link href={mapPackAreaRankingHref(area)} className="text-xs text-[#78716c] underline underline-offset-2">
                   🏆 このエリアのランキング

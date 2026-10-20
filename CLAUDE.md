@@ -157,6 +157,15 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - **選択肢(ダミー)は全国から出題→撤回(2026-08-02)**: 一時`pickDummyChoicesNationwide()`を新設し、対象自治体自身の都道府県を除外して全国からダミーを選ぶ方式を試した。同一都道府県を除外しない版では「4択が全部同じ都道府県」になり答えが一目でわかる問題があったため一度は「対象の都道府県だけ除外」に修正したが、それでも**ダミー3件が別の1つの他都道府県に偏り、「他の3件と明らかに毛色が違う1件」が正答だと一目でわかってしまう**という、ユーザーが実際に遊んでみて気づいたより本質的な問題が残っていた。ユーザー指示により全国出題は撤回し、`pickDummyChoicesNationwide()`は削除、ダミー選択は他の難易度と同じ「同一都道府県優先」ロジック(`pickDummyChoices`本体、`POPULATION_BAND_RATIOS_BY_DIFFICULTY.advanced`のレンジ`[1.5, 3, 10, Infinity]`)にそのまま合流させた。むずかしい固有の変更は「ヒントなし」「トリビア登録の有無を問わず全自治体が出題対象」の2点のみに縮小
 - 難易度カードの説明文(`ZUKAN_DIFFICULTY_META.advanced.description`)は「ヒントなし・人口が近い自治体から出題」(全国出題の撤回に合わせて文言も修正)
 
+## サイト共通の機能（2026-10-20）
+
+- **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）: トップ以外の全画面からトップに戻れる
+- **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack|zukan-quiz` で最初のタブを指定）: 地図パズル・地図ポットンの挑戦履歴と、図鑑クイズの図鑑登録（1問ごとの履歴は残していないため）をタブで見られる。旧`/game/map-puzzle/history`はここへ転送
+- **ニックネーム設定**（`/nickname`）: 全ゲーム共通の設定としてサイト直下に移した。旧`/game/map-puzzle/nickname`はここへ転送
+- **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: 地図パズル・地図ポットンとも `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=` でエリア選択を飛ばして始まる。ランキング・最近のクリア一覧・履歴・Xシェアのリンクに使う
+- **最近クリアされたエリア**（各ゲームのトップ、`src/components/game/RecentClears.tsx`）: 誰がクリアしたかは出さない集計RPC（`fetch_recent_map_puzzle_clears` / `fetch_recent_map_pack_clears`、マイグレーション`20261020000001_recent_clears.sql`）。図鑑クイズの`fetch_recent_zukan_registrations`と同じく、未ログイン(anon)にも意図的に実行を許可している
+- **Xシェア**（`src/lib/game/share.ts`）: 地図ポットンの結果画面と地図パズルのクリア画面に「𝕏 でシェア」。投稿には同じエリアのプレイ画面へのリンクを入れる
+
 ## 地図ポットン（旧称: 地図パック。2026-10-19 プロトタイプ実装、`feature/map-pack`ブランチ）
 
 表示名は「地図ポットン」、レベル名は 都道府県ポットン（初級）/ 自治体ポットン（中級）/ ご近所ポットン（上級）（2026-10-20 改名、ユーザー決定）。URL（`/game/map-pack`）・DBのテーブル名（`game_map_pack_*`）・コード上の名前（`mapPack`等）は「地図パック」時代のまま変えていない（テーブル名まで変えると本番DBのマイグレーションと既存記録の移し替えが必要になるため）。

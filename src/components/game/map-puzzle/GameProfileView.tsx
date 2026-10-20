@@ -96,7 +96,7 @@ export default function GameProfileView({ targetUserId }: GameProfileViewProps) 
           </span>
           {isSelf && (
             <Link
-              href="/game/map-puzzle/nickname"
+              href="/nickname"
               className="text-xs text-[#78716c] underline underline-offset-2"
             >
               編集

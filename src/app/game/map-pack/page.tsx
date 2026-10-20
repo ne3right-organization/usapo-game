@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
+import MapPackSavedGames from "@/components/game/map-pack/MapPackSavedGames";
+import RecentClears from "@/components/game/RecentClears";
 
 export const metadata: Metadata = {
   title: "地図ポットン",
@@ -69,6 +71,9 @@ export default function MapPackPage() {
             🏆 ランキング
           </Link>
         </div>
+
+        <MapPackSavedGames />
+        <RecentClears game="map-pack" />
 
         <p className="text-xs text-[#a8937a] mb-4 text-center tracking-widest">むずかしさを選んでね</p>
 

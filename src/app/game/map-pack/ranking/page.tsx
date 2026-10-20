@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Difficulty, RankingEntry } from "@/lib/game/mapPuzzleData";
-import { fetchMapPackModeRanking, mapPackPlayHref } from "@/lib/game/mapPackData";
+import { fetchMapPackModeRanking } from "@/lib/game/mapPackData";
+import { mapPackPlayHref, mapPuzzlePlayHref } from "@/lib/game/playLinks";
 import { DIFFICULTY_LABELS } from "@/lib/game/format";
 import RankingList from "@/components/game/map-puzzle/RankingList";
 
@@ -97,7 +98,16 @@ export default function MapPackRankingPage() {
 
         {!loading && !needsLogin && !errorMsg && (
           <>
-            <RankingList items={items} showArea profileBasePath={null} playHref={mapPackPlayHref} />
+            <RankingList
+              items={items}
+              showArea
+              profileBasePath={null}
+              playLinks={(item) => [
+                { label: "▶ 遊ぶ", href: mapPackPlayHref(item) },
+                // 同じエリアの地図パズルにも飛べるようにする
+                { label: "🗺️ 地図パズル", href: mapPuzzlePlayHref(item) },
+              ]}
+            />
             {nextCursor && (
               <button
                 type="button"
