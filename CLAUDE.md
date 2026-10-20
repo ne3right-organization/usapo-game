@@ -167,6 +167,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - 画面: `/game/map-pack`（トップ）、`/game/map-pack/[difficulty]`（エリア選択は地図パズルの`MapAreaSelector`を流用）、`/game/map-pack/ranking`、`/game/map-pack/ranking/area`
 - 実装: `src/lib/game/mapPack/{regions,shapes}.ts`（地図データの前処理・凸分解）、`src/components/game/map-pack/MapPackGame.tsx`（物理演算・描画）、`src/lib/game/mapPackData.ts`（記録送信・ランキング）
 - 参考ゲームとの違い（パクリと受け取られないよう意識した点）: あふれても終了しない、箱を揺らすボタンは無し（代わりにピースが時々ポンと跳ねる・「積み直す」ボタン）、町丁など3レベルで遊べる。都道府県レベルは参考ゲームとほぼ同じになるので、公開順は町丁を先にする方針（2026-10-19 決定）
+- 中断・再開は地図パズルと同じ2段構え（同じタブの sessionStorage への自動保存＋「中断」ボタンでサーバーの`game_map_pack_progress`に保存）。状態はクライアントが作るJSONをそのまま保存する
 - **ランキングは地図パズルとは別集計**（`game_map_pack_challenges` / `game_map_pack_best`、マイグレーション`20261019000000_map_pack_schema.sql`）。`game_profiles.total_score`には含めない。得点はDB側のトリガーで計算し直す（クライアントの得点計算と同じ式なので、変えるときは両方そろえること）
 - **既知の課題**: ピース数が多いエリア（小田原市の町丁196、北海道の市区町村188など）は合体が起きにくく、クリアがかなり難しい（設計メモ参照）
 

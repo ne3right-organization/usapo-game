@@ -160,6 +160,130 @@ export async function fetchMapPackAreaRanking(
   return { items, nextCursor: items.length === limit ? String(items[items.length - 1].bestScore) : null };
 }
 
+// ─── 途中保存(中断) ──────────────────────────────────────────────────────────
+// 地図パズルと同じ2段構え: プレイ中は同じタブの sessionStorage に自動保存し、
+// 「中断」ボタンではサーバー(game_map_pack_progress)に保存して別の端末からも再開できるようにする
+
+/** ゲームの途中の状態。MapPackGame が作り、再開時にそのまま戻す */
+export interface MapPackSnapshot {
+  version: 1;
+  /** 箱の中のピース(合体したかたまり)。位置が無いものは積み直し待ちだったピースで、再開時に落とし直す */
+  pieces: { ids: number[]; x?: number; y?: number; angle: number }[];
+  /** これから出す地域(今構えていたピースが先頭)と、その名前のまとまりの大きさ */
+  queue: number[];
+  queueGroupSize: number;
+  /** まだ1つも出していない名前のまとまり(groups の添字) */
+  remainingGroups: number[];
+  dropped: number;
+  mergePoints: number;
+  restacks: number;
+  elapsedSec: number;
+}
+
+/** sessionStorage に入れる形(エリアの情報も一緒に持ち、ページを開き直したときの再開確認に使う) */
+export interface MapPackSessionSave {
+  snapshot: MapPackSnapshot;
+  geojsonUrl: string;
+  areaLabel: string;
+  area: MapPackArea;
+  updatedAt: number;
+}
+
+export function mapPackSessionKey(difficulty: Difficulty, geojsonUrl: string): string {
+  return `mapPackProgress:${difficulty}:${geojsonUrl}`;
+}
+
+/** 同じタブで中断中のゲームのうち、一番新しいもの */
+export function findMapPackSessionSave(difficulty: Difficulty): MapPackSessionSave | null {
+  const prefix = mapPackSessionKey(difficulty, "");
+  let best: MapPackSessionSave | null = null;
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (!key?.startsWith(prefix)) continue;
+      try {
+        const saved = JSON.parse(window.sessionStorage.getItem(key) ?? "") as MapPackSessionSave;
+        if (saved?.snapshot?.version !== 1 || !saved.area) continue;
+        if (!best || saved.updatedAt > best.updatedAt) best = saved;
+      } catch {
+        // 壊れた保存データは無視
+      }
+    }
+  } catch {
+    // sessionStorage が使えない環境
+  }
+  return best;
+}
+
+export function clearMapPackSessionSaves(difficulty: Difficulty, geojsonUrl?: string): void {
+  try {
+    if (geojsonUrl !== undefined) {
+      window.sessionStorage.removeItem(mapPackSessionKey(difficulty, geojsonUrl));
+      return;
+    }
+    const prefix = mapPackSessionKey(difficulty, "");
+    for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
+      const key = window.sessionStorage.key(i);
+      if (key?.startsWith(prefix)) window.sessionStorage.removeItem(key);
+    }
+  } catch {
+    // sessionStorage が使えない環境
+  }
+}
+
+export async function saveMapPackProgress(area: MapPackArea, snapshot: MapPackSnapshot): Promise<void> {
+  const supabase = createClient();
+  const userId = await requireUserId();
+  const { error } = await supabase.from("game_map_pack_progress").upsert(
+    {
+      user_id: userId,
+      difficulty: area.difficulty,
+      pref_code: area.prefCode,
+      pref_name: area.prefName,
+      city_code: area.cityCode ?? null,
+      city_name: area.cityName ?? null,
+      state: snapshot,
+      elapsed_seconds: snapshot.elapsedSec,
+      saved_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,difficulty,pref_code,city_code_key" },
+  );
+  if (error) throw new Error(error.message);
+}
+
+/** 未ログインなら null(ゲスト扱い) */
+export async function fetchMapPackProgress(area: MapPackArea): Promise<MapPackSnapshot | null> {
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const supabase = createClient();
+  let query = supabase
+    .from("game_map_pack_progress")
+    .select("state")
+    .eq("user_id", userId)
+    .eq("difficulty", area.difficulty)
+    .eq("pref_code", area.prefCode);
+  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(error.message);
+  const state = data?.state as MapPackSnapshot | undefined;
+  return state?.version === 1 ? state : null;
+}
+
+export async function discardMapPackProgress(area: MapPackArea): Promise<void> {
+  const userId = await currentUserId();
+  if (!userId) return;
+  const supabase = createClient();
+  let query = supabase
+    .from("game_map_pack_progress")
+    .delete()
+    .eq("user_id", userId)
+    .eq("difficulty", area.difficulty)
+    .eq("pref_code", area.prefCode);
+  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
+  const { error } = await query;
+  if (error) throw new Error(error.message);
+}
+
 /** そのエリアのプレイ画面(エリア選択を飛ばして直接始める)。初級は全国固定なのでエリア指定なし */
 export function mapPackPlayHref(area: MapPackArea): string {
   if (area.difficulty === "beginner") return "/game/map-pack/beginner";

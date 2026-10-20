@@ -10,7 +10,13 @@ import { useEffect, useRef, useState } from "react";
 import { buildAreaData, simplifyRing, type AreaData, type Point } from "@/lib/game/mapPack/regions";
 import { clearShapeCache, regionConvexParts } from "@/lib/game/mapPack/shapes";
 import {
+  clearMapPackSessionSaves,
   currentUserId,
+  discardMapPackProgress,
+  mapPackSessionKey,
+  saveMapPackProgress,
+  type MapPackSessionSave,
+  type MapPackSnapshot,
   mapPackAreaRankingHref,
   submitMapPackChallenge,
   type MapPackArea,
@@ -113,6 +119,7 @@ const LIFT_STOP_BELOW_RIM = 30;       // 箱の縁からこの距離より上ま
 const LIFT_PAUSE_AFTER_RESTACK_MS = 1000; // 積み直しで最後のピースを落としてから、引き上げを再開するまで
 const FLASH_MS = 450;
 const POPUP_MS = 900;
+const CONFIRM_MS = 3000;              // やり直す・あきらめるを1回押してから、2回目を受け付ける時間
 
 // ===== 得点 =====
 // 合体1回ごとに「合体後のピースの地域数 × MERGE_POINT」。大きなかたまりに足していくほど伸びる。
@@ -197,6 +204,10 @@ export type MapPackGameProps = {
   unitLabel: string;
   /** ランキングの集計単位 */
   area: MapPackArea;
+  /** 中断したところから再開する場合の状態 */
+  initialSnapshot?: MapPackSnapshot | null;
+  /** 「中断」で保存し終えたあとに呼ぶ(ゲームのトップに戻るなど) */
+  onSaveAndExit?: () => void;
 };
 
 export default function MapPackGame({ geojsonUrl, nameKey, ...rest }: MapPackGameProps) {
@@ -224,22 +235,53 @@ export default function MapPackGame({ geojsonUrl, nameKey, ...rest }: MapPackGam
 
   if (error) return <p className="text-center text-sm text-red-600 py-10">地図データを読み込めませんでした（{error}）</p>;
   if (!data) return <p className="text-center text-sm text-[#a8937a] py-10">地図データを読み込み中…</p>;
-  return <MapPackBoard key={round} data={data} {...rest} onRestart={() => setRound((r) => r + 1)} />;
+  // やり直したら中断の状態からではなく最初から
+  return (
+    <MapPackBoard
+      key={round}
+      data={data}
+      geojsonUrl={geojsonUrl}
+      {...rest}
+      initialSnapshot={round === 0 ? rest.initialSnapshot : null}
+      onRestart={() => setRound((r) => r + 1)}
+    />
+  );
 }
 
-type BoardProps = Omit<MapPackGameProps, "geojsonUrl" | "nameKey"> & { data: AreaData; onRestart: () => void };
+type BoardProps = Omit<MapPackGameProps, "nameKey"> & { data: AreaData; onRestart: () => void };
 
-function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProps) {
+const AUTO_SAVE_MS = 2000;            // 同じタブの sessionStorage に自動保存する間隔
+
+function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSnapshot, onSaveAndExit, onRestart }: BoardProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hud, setHud] = useState<Hud>({ dropped: 0, total: data.regions.length, largest: 0, score: 0, hover: null });
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
+  /** 今の状態を書き出す(1つも落としていなければ null) */
+  const snapshotRef = useRef<() => MapPackSnapshot | null>(() => null);
+  const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
   const [submit, setSubmit] = useState<Submit | null>(null);
   const giveUpRef = useRef<() => void>(() => {});
   /** 積み直しを始め、全ピースを落とし終えるまでの見込み時間(ms)を返す */
   const restackRef = useRef<() => number>(() => 0);
   const [restacking, setRestacking] = useState(false);
+  // やり直す・あきらめるの確認。ブラウザの確認ダイアログ(window.confirm)は、スマホで何度か出すと
+  // 「このページでダイアログを表示しない」状態になったり、アプリ内ブラウザでは出なかったりして、
+  // 押しても何も起きなくなるため、ボタン自体を「本当に〜？」に変えて2回押しで実行する
+  const [confirming, setConfirming] = useState<"restart" | "giveup" | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmThen = (kind: "restart" | "giveup", run: () => void) => {
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    if (confirming === kind) {
+      setConfirming(null);
+      run();
+      return;
+    }
+    setConfirming(kind);
+    confirmTimer.current = setTimeout(() => setConfirming(null), CONFIRM_MS);
+  };
+  useEffect(() => () => { if (confirmTimer.current) clearTimeout(confirmTimer.current); }, []);
   const batchRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -657,6 +699,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       hoverInfo = null;
       publishHud();
       setResult(r);
+      clearMapPackSessionSaves(area.difficulty, geojsonUrl); // 終わったゲームは再開の対象にしない
       if (!dropped) return; // 1つも落とさずにあきらめた場合は記録しない
       setSubmit({ status: "sending" });
       // 未ログインならゲストプレイとして記録しない
@@ -880,6 +923,72 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
+    // ----- 中断・再開 -----
+    function takeSnapshot(): MapPackSnapshot | null {
+      if (!dropped) return null;
+      const round2 = (v: number) => Math.round(v * 100) / 100;
+      return {
+        version: 1,
+        pieces: [
+          ...[...pieces.values()].map((p) => ({
+            ids: p.regionIds,
+            x: round2(p.body.position.x),
+            y: round2(p.body.position.y),
+            angle: round2(p.body.angle),
+          })),
+          ...restackQueue.map((p) => ({ ids: p.regionIds, angle: round2(p.body.angle) })),
+        ],
+        // 構えていたピースは出題順の先頭に戻す
+        queue: hover ? [hover.regionIds[0], ...queue] : queue.slice(),
+        queueGroupSize,
+        remainingGroups: [...remainingGroups],
+        dropped,
+        mergePoints,
+        restacks,
+        elapsedSec: startAt === null ? 0 : Math.floor((performance.now() - startAt) / 1000),
+      };
+    }
+    snapshotRef.current = () => (ended ? null : takeSnapshot());
+
+    function restore(snap: MapPackSnapshot) {
+      const valid = (ids: number[]) => ids.every((id) => Number.isInteger(id) && id >= 0 && id < regions.length);
+      // 地図データが変わっていて合わない保存は使わない
+      if (!snap.pieces.every((p) => valid(p.ids)) || !valid(snap.queue)) return;
+      remainingGroups.clear();
+      for (const g of snap.remainingGroups) if (g >= 0 && g < groups.length) remainingGroups.add(g);
+      queue = snap.queue.slice();
+      queueGroupSize = snap.queueGroupSize;
+      dropped = snap.dropped;
+      mergePoints = snap.mergePoints;
+      restacks = snap.restacks;
+      for (const sp of snap.pieces) {
+        const piece = buildPiece(sp.ids, sp.angle);
+        if (sp.x === undefined || sp.y === undefined) {
+          restackQueue.push(piece); // 積み直し待ちだったピースは落とし直す
+          continue;
+        }
+        Matter.Body.setPosition(piece.body, { x: sp.x, y: sp.y });
+        Matter.Composite.add(engine.world, piece.body);
+        pieces.set(piece.body.id, piece);
+      }
+      if (dropped) startAt = performance.now() - snap.elapsedSec * 1000;
+    }
+    if (initialSnapshot) restore(initialSnapshot);
+
+    const sessionKey = mapPackSessionKey(area.difficulty, geojsonUrl);
+    function saveToSession() {
+      const snapshot = ended ? null : takeSnapshot();
+      if (!snapshot) return;
+      const save: MapPackSessionSave = { snapshot, geojsonUrl, areaLabel, area, updatedAt: Date.now() };
+      try {
+        window.sessionStorage.setItem(sessionKey, JSON.stringify(save));
+      } catch {
+        // 保存領域が使えない環境は無視
+      }
+    }
+    const autoSave = setInterval(saveToSession, AUTO_SAVE_MS);
+    window.addEventListener("pagehide", saveToSession);
+
     spawnHover(performance.now());
 
     const timer = setInterval(() => {
@@ -920,9 +1029,41 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       Matter.Events.off(engine, "collisionStart", onCollision);
       Matter.Events.off(engine, "collisionActive", onCollision);
       Matter.Engine.clear(engine);
+      clearInterval(autoSave);
+      window.removeEventListener("pagehide", saveToSession);
       ended = true; // 保留中の setTimeout から次のピースを出さない
     };
-  }, [data, area]);
+  }, [data, area, geojsonUrl, areaLabel, initialSnapshot]);
+
+  /** やり直すときは中断の保存も消す(残っているとページを開き直したときに古い続きが出てくる) */
+  const restart = () => {
+    clearMapPackSessionSaves(area.difficulty, geojsonUrl);
+    discardMapPackProgress(area).catch(() => {});
+    onRestart();
+  };
+
+  /** 中断: ログインしていればサーバーに保存(別の端末からも再開できる)、していなければ同じタブにだけ残す */
+  const saveAndExit = async () => {
+    if (saving === "saving") return;
+    const snapshot = snapshotRef.current();
+    if (!snapshot) {
+      onSaveAndExit?.();
+      return;
+    }
+    setSaving("saving");
+    try {
+      if (await currentUserId()) {
+        await saveMapPackProgress(area, snapshot);
+        clearMapPackSessionSaves(area.difficulty, geojsonUrl);
+      } else {
+        const save: MapPackSessionSave = { snapshot, geojsonUrl, areaLabel, area, updatedAt: Date.now() };
+        window.sessionStorage.setItem(mapPackSessionKey(area.difficulty, geojsonUrl), JSON.stringify(save));
+      }
+      onSaveAndExit?.();
+    } catch {
+      setSaving("error");
+    }
+  };
 
   return (
     <div className="flex flex-col items-center">
@@ -1015,20 +1156,36 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
         </button>
         <button
           type="button"
-          onClick={() => { if (hud.dropped === 0 || window.confirm("最初からやり直しますか？")) onRestart(); }}
-          className="px-4 py-1.5 rounded-full border border-[#c8b8a0] text-sm text-[#78716c] bg-white active:scale-[0.97]"
+          disabled={result !== null || saving === "saving"}
+          onClick={saveAndExit}
+          className="px-4 py-1.5 rounded-full border border-sky-300 text-sm text-sky-700 bg-white active:scale-[0.97] disabled:opacity-40"
         >
-          ↺ やり直す
+          {saving === "saving" ? "保存中…" : "💾 中断"}
+        </button>
+        <button
+          type="button"
+          onClick={() => (hud.dropped === 0 || result ? restart() : confirmThen("restart", restart))}
+          className={`px-4 py-1.5 rounded-full border text-sm active:scale-[0.97] ${
+            confirming === "restart" ? "border-red-400 bg-red-50 text-red-700 font-bold" : "border-[#c8b8a0] bg-white text-[#78716c]"
+          }`}
+        >
+          {confirming === "restart" ? "本当にやり直す？" : "↺ やり直す"}
         </button>
         <button
           type="button"
           disabled={result !== null}
-          onClick={() => { if (window.confirm("あきらめて、ここまでの得点で終わりますか？")) giveUpRef.current(); }}
-          className="px-4 py-1.5 rounded-full border border-[#c8b8a0] text-sm text-[#78716c] bg-white active:scale-[0.97] disabled:opacity-40"
+          onClick={() => confirmThen("giveup", () => giveUpRef.current())}
+          className={`px-4 py-1.5 rounded-full border text-sm active:scale-[0.97] disabled:opacity-40 ${
+            confirming === "giveup" ? "border-red-400 bg-red-50 text-red-700 font-bold" : "border-[#c8b8a0] bg-white text-[#78716c]"
+          }`}
         >
-          🏳️ あきらめる
+          {confirming === "giveup" ? "本当にあきらめる？" : "🏳️ あきらめる"}
         </button>
       </div>
+
+      {saving === "error" && (
+        <p className="text-xs text-red-600 mt-2">保存できませんでした。通信環境を確かめて、もう一度お試しください</p>
+      )}
 
       <p className="text-xs text-[#a8937a] mt-3">左右に動かして狙い、指を離す（クリックする）と落ちます</p>
     </div>
