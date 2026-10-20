@@ -1,4 +1,4 @@
-// poly-decomp には型定義が同梱されていないため、地図パックで使う関数だけ宣言する
+// poly-decomp には型定義が同梱されていないため、地図ポットンで使う関数だけ宣言する
 declare module "poly-decomp" {
   type Polygon = [number, number][];
   const decomp: {

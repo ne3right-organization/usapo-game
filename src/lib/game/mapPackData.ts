@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Difficulty, RankingEntry, RankingPage } from "@/lib/game/mapPuzzleData";
 
-// 地図パックの挑戦結果の送信とランキング取得。地図パズル(mapPuzzleData.ts)と同じく、
+// 地図ポットンの挑戦結果の送信とランキング取得。地図パズル(mapPuzzleData.ts)と同じく、
 // RLS (supabase/migrations/20261019000000_map_pack_schema.sql) がアクセス制御を担うため
 // クライアントから直接 supabase-js で読み書きする。
 // ランキングは地図パズルとは別集計(game_map_pack_best)。game_profiles.total_score(地図パズルの合計)には含めない

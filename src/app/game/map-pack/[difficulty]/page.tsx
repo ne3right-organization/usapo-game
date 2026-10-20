@@ -17,9 +17,9 @@ const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const VALID_DIFFICULTIES = ["beginner", "intermediate", "advanced"] as const;
 
 const META: Record<Difficulty, { label: string; title: string; nameKey: string; unitLabel: string }> = {
-  beginner: { label: "初級", title: "都道府県パック", nameKey: "name", unitLabel: "都道府県" },
-  intermediate: { label: "中級", title: "市区町村パック", nameKey: "cityName", unitLabel: "市区町村" },
-  advanced: { label: "上級", title: "町丁パック", nameKey: "S_NAME", unitLabel: "町丁" },
+  beginner: { label: "初級", title: "都道府県ポットン", nameKey: "name", unitLabel: "都道府県" },
+  intermediate: { label: "中級", title: "自治体ポットン", nameKey: "cityName", unitLabel: "市区町村" },
+  advanced: { label: "上級", title: "ご近所ポットン", nameKey: "S_NAME", unitLabel: "町丁" },
 };
 
 type GameConfig = { geojsonUrl: string; areaLabel: string; area: MapPackArea };

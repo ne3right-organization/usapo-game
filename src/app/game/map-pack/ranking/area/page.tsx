@@ -66,7 +66,7 @@ function AreaRankingContent() {
   return (
     <>
       <h1 className="text-lg font-bold text-[#3c2a14] mb-1">{cityName ?? prefName} のランキング</h1>
-      <p className="text-xs text-[#a8937a] mb-6">地図パック・{DIFFICULTY_LABELS[difficulty!]}</p>
+      <p className="text-xs text-[#a8937a] mb-6">地図ポットン・{DIFFICULTY_LABELS[difficulty!]}</p>
 
       {loading && <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}
 

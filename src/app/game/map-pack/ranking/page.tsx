@@ -64,7 +64,7 @@ export default function MapPackRankingPage() {
           <Link href="/game/map-pack" className="text-[#78716c] text-lg leading-none">
             ←
           </Link>
-          <h1 className="text-lg font-bold text-[#3c2a14]">🏆 地図パック ランキング</h1>
+          <h1 className="text-lg font-bold text-[#3c2a14]">🏆 地図ポットン ランキング</h1>
         </div>
 
         <div className="flex gap-2 mb-5">
