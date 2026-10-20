@@ -1,8 +1,9 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { Suspense, use, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { notFound, useRouter } from "next/navigation";
+import { notFound, useRouter, useSearchParams } from "next/navigation";
+import { areaFromQuery } from "@/lib/game/playLinks";
 import type { Difficulty } from "@/components/game/map-puzzle/MapPuzzleGame";
 import { progressStorageKey } from "@/components/game/map-puzzle/MapPuzzleGame";
 import type { AreaInfo } from "@/components/game/map-puzzle/MapAreaSelector";
@@ -206,8 +207,44 @@ export default function MapPuzzleGamePage({ params }: Props) {
     notFound();
   }
   const difficulty = diffParam as Difficulty;
+  // useSearchParams を使うので Suspense で包む(Next.js の要件)
+  return (
+    <Suspense fallback={<LoadingScreen themeColor={DIFFICULTY_META[difficulty].themeColor} />}>
+      <MapPuzzlePlay difficulty={difficulty} />
+    </Suspense>
+  );
+}
+
+/**
+ * URL でエリアが指定されていれば(ランキング・地図ポットン・最近のクリア一覧から来た場合)そのエリアで始める。
+ * エリア名の表記はエリア選択(MapAreaSelector)から始めた場合と揃える
+ */
+function queryConfigOf(difficulty: Difficulty, q: URLSearchParams): GameConfig | null {
+  const area = areaFromQuery(difficulty, q);
+  if (!area) return null;
+  if (difficulty === "intermediate") {
+    return {
+      geojsonUrl: `${CLOUDFRONT_URL}/geojson/municipality/2020/${area.prefCode}.geojson`,
+      areaLabel: `${area.prefName}（市区町村）`,
+      prefCode: area.prefCode,
+      prefName: area.prefName,
+    };
+  }
+  return {
+    geojsonUrl: `${CLOUDFRONT_URL}/geojson/town-district/2020/${area.prefCode}/${area.cityCode}.geojson`,
+    areaLabel: `${area.cityName}（町丁）`,
+    prefCode: area.prefCode,
+    prefName: area.prefName,
+    cityCode: area.cityCode,
+    cityName: area.cityName,
+  };
+}
+
+function MapPuzzlePlay({ difficulty }: { difficulty: Difficulty }) {
   const meta = DIFFICULTY_META[difficulty];
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [queryConfig] = useState(() => queryConfigOf(difficulty, searchParams));
 
   // ゲーム再起動キー（インクリメントで MapPuzzleGame を再マウント）
   const [gameKey, setGameKey] = useState(0);
@@ -234,7 +271,9 @@ export default function MapPuzzleGamePage({ params }: Props) {
 
   useEffect(() => {
     // sessionStorage はブラウザ専用APIのため、difficulty変更のたびにここで同期的に読むしかない
-    const candidate = findResumeCandidate(difficulty);
+    const found = findResumeCandidate(difficulty);
+    // URL でエリアが指定されているときは、そのエリアの中断中パズルだけを再開の対象にする
+    const candidate = found && (!queryConfig || found.geojsonUrl === queryConfig.geojsonUrl) ? found : null;
     if (candidate) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setResumeCandidate(candidate);
@@ -242,6 +281,8 @@ export default function MapPuzzleGamePage({ params }: Props) {
       setResumeCandidate(null);
       if (difficulty === "beginner") {
         setPendingArea(defaultBeginnerConfig);
+      } else if (queryConfig) {
+        setPendingArea(queryConfig);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,6 +342,8 @@ export default function MapPuzzleGamePage({ params }: Props) {
           setResumeCandidate(null);
           if (difficulty === "beginner") {
             setPendingArea(defaultBeginnerConfig);
+          } else if (queryConfig) {
+            setPendingArea(queryConfig);
           }
         }}
       />

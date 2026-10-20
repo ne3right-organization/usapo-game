@@ -7,8 +7,8 @@ export interface RankingListProps {
   showArea?: boolean;
   /** 行をタップしたときのプロフィールページ。null ならリンクにしない(プロフィールページが無いゲーム用) */
   profileBasePath?: string | null;
-  /** 渡すと各行に、そのエリアを遊ぶリンクを出す(行がプロフィールへのリンクでない場合のみ) */
-  playHref?: (item: RankingEntry) => string;
+  /** 渡すと各行の右端に、そのエリアを遊ぶリンクを縦に並べて出す(行がプロフィールへのリンクでない場合のみ) */
+  playLinks?: (item: RankingEntry) => { label: string; href: string }[];
 }
 
 function rankBadge(index: number): string {
@@ -22,7 +22,7 @@ export default function RankingList({
   items,
   showArea = true,
   profileBasePath = "/game/map-puzzle/profile",
-  playHref,
+  playLinks,
 }: RankingListProps) {
   if (items.length === 0) {
     return <p className="text-sm text-[#a8937a] text-center py-10">まだ記録がありません</p>;
@@ -47,13 +47,18 @@ export default function RankingList({
               </div>
               <div className="text-[11px] text-[#a8937a]">{formatRelativeTime(item.lastPlayedAt)}</div>
             </div>
-            {playHref && !(item.nickname && profileBasePath) && (
-              <Link
-                href={playHref(item)}
-                className="shrink-0 text-xs font-semibold text-teal-700 border border-teal-300 rounded-full px-2.5 py-1"
-              >
-                ▶ 遊ぶ
-              </Link>
+            {playLinks && !(item.nickname && profileBasePath) && (
+              <div className="shrink-0 flex flex-col items-stretch gap-1">
+                {playLinks(item).map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="text-center text-[11px] font-semibold text-teal-700 border border-teal-300 rounded-full px-2.5 py-0.5"
+                  >
+                    {l.label}
+                  </Link>
+                ))}
+              </div>
             )}
           </div>
         );

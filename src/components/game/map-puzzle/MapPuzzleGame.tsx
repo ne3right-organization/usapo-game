@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type L from "leaflet";
 import { submitChallenge, saveProgress, type SavedProgressRecord } from "@/lib/game/mapPuzzleData";
+import { mapPuzzlePlayHref } from "@/lib/game/playLinks";
+import { absoluteUrl, xShareUrl } from "@/lib/game/share";
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -1502,6 +1504,29 @@ export default function MapPuzzleGame({
             >
               もう一度プレイ
             </button>
+            {!gaveUp && score && (
+              <a
+                href={xShareUrl(
+                  `地図パズル「${diffLabel}｜${areaLabel}」をクリア！ ${score.total.toLocaleString()}pt（タイム ${formatTime(score.elapsedSec)}）`,
+                  absoluteUrl(mapPuzzlePlayHref({ difficulty, prefCode, prefName, cityCode, cityName })),
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  marginTop: "8px",
+                  padding: "12px",
+                  borderRadius: "10px",
+                  background: "#000",
+                  color: "white",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                𝕏 でシェア
+              </a>
+            )}
             {challengeSubmitState === "error" && (
               <p style={{ marginTop: "10px", fontSize: "12px", color: "#dc2626" }}>
                 結果の送信に失敗しました（記録は反映されていません）

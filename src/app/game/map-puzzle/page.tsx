@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
+import RecentClears from "@/components/game/RecentClears";
 
 export const metadata: Metadata = {
   title: "地図パズル",
@@ -63,7 +64,7 @@ export default function MapPuzzlePage() {
         {/* 履歴・プロフィール・ランキングリンク */}
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-6">
           <Link
-            href="/game/map-puzzle/history"
+            href="/history?game=map-puzzle"
             className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2"
           >
             📜 プレイ履歴
@@ -81,6 +82,8 @@ export default function MapPuzzlePage() {
             🏆 ランキング
           </Link>
         </div>
+
+        <RecentClears game="map-puzzle" />
 
         {/* 難易度選択 */}
         <p className="text-xs text-[#a8937a] mb-4 text-center tracking-widest">

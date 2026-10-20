@@ -6,6 +6,7 @@ import Link from "next/link";
 import { notFound, useRouter, useSearchParams } from "next/navigation";
 import type { Difficulty } from "@/lib/game/mapPuzzleData";
 import type { AreaInfo } from "@/components/game/map-puzzle/MapAreaSelector";
+import { areaFromQuery } from "@/lib/game/playLinks";
 import {
   MAP_PACK_BEGINNER_AREA,
   clearMapPackSessionSaves,
@@ -47,21 +48,19 @@ function initialConfig(difficulty: Difficulty, q: URLSearchParams): GameConfig |
       area: { difficulty, ...MAP_PACK_BEGINNER_AREA },
     };
   }
-  const prefCode = q.get("prefCode"), prefName = q.get("prefName");
-  if (!prefCode || !/^\d{2}$/.test(prefCode) || !prefName) return null;
+  const area = areaFromQuery(difficulty, q);
+  if (!area) return null;
   if (difficulty === "intermediate") {
     return {
-      geojsonUrl: `${CLOUDFRONT_URL}/geojson/municipality/2020/${prefCode}.geojson`,
-      areaLabel: prefName,
-      area: { difficulty, prefCode, prefName },
+      geojsonUrl: `${CLOUDFRONT_URL}/geojson/municipality/2020/${area.prefCode}.geojson`,
+      areaLabel: area.prefName,
+      area,
     };
   }
-  const cityCode = q.get("cityCode"), cityName = q.get("cityName");
-  if (!cityCode || !/^\d{3}$/.test(cityCode) || !cityName) return null;
   return {
-    geojsonUrl: `${CLOUDFRONT_URL}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`,
-    areaLabel: cityName,
-    area: { difficulty, prefCode, prefName, cityCode, cityName },
+    geojsonUrl: `${CLOUDFRONT_URL}/geojson/town-district/2020/${area.prefCode}/${area.cityCode}.geojson`,
+    areaLabel: area.cityName!,
+    area,
   };
 }
 

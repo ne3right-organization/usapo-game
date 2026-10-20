@@ -22,6 +22,11 @@ export default function Home() {
           <div className="mt-3">
             <AuthStatus />
           </div>
+          <div className="mt-2">
+            <Link href="/history" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
+              📜 遊んだ履歴
+            </Link>
+          </div>
         </div>
 
         {/* ゲーム一覧 */}

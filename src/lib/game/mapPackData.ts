@@ -111,6 +111,54 @@ export async function submitMapPackChallenge(payload: MapPackSubmission): Promis
   return { score: data.score, isNewBest: data.is_new_best };
 }
 
+// ─── 遊んだ履歴 ──────────────────────────────────────────────────────────────
+
+export interface MapPackHistoryRecord extends MapPackArea {
+  id: string;
+  score: number;
+  cleared: boolean;
+  totalPieces: number;
+  restackCount: number;
+  elapsedSeconds: number;
+  isNewBest: boolean;
+  playedAt: string;
+}
+
+export async function fetchMapPackHistory(
+  cursor?: string | null,
+  limit = 20,
+): Promise<{ items: MapPackHistoryRecord[]; nextCursor: string | null }> {
+  const supabase = createClient();
+  const userId = await requireUserId();
+  let query = supabase
+    .from("game_map_pack_challenges")
+    .select(
+      "id, difficulty, pref_code, pref_name, city_code, city_name, score, cleared, total_pieces, restack_count, elapsed_seconds, is_new_best, played_at",
+    )
+    .eq("user_id", userId)
+    .order("played_at", { ascending: false })
+    .limit(limit);
+  if (cursor) query = query.lt("played_at", cursor);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const items: MapPackHistoryRecord[] = (data ?? []).map((row) => ({
+    id: row.id,
+    difficulty: row.difficulty,
+    prefCode: row.pref_code,
+    prefName: row.pref_name,
+    cityCode: row.city_code ?? undefined,
+    cityName: row.city_name ?? undefined,
+    score: row.score,
+    cleared: row.cleared,
+    totalPieces: row.total_pieces,
+    restackCount: row.restack_count,
+    elapsedSeconds: row.elapsed_seconds,
+    isNewBest: row.is_new_best,
+    playedAt: row.played_at,
+  }));
+  return { items, nextCursor: items.length === limit ? items[items.length - 1].playedAt : null };
+}
+
 export async function fetchMapPackModeRanking(
   difficulty: Difficulty,
   cursor?: string | null,
@@ -346,16 +394,7 @@ export async function discardMapPackProgress(area: MapPackArea): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** そのエリアのプレイ画面(エリア選択を飛ばして直接始める)。初級は全国固定なのでエリア指定なし */
-export function mapPackPlayHref(area: MapPackArea): string {
-  if (area.difficulty === "beginner") return "/game/map-pack/beginner";
-  const q = new URLSearchParams({ prefCode: area.prefCode, prefName: area.prefName });
-  if (area.cityCode && area.cityName) {
-    q.set("cityCode", area.cityCode);
-    q.set("cityName", area.cityName);
-  }
-  return `/game/map-pack/${area.difficulty}?${q.toString()}`;
-}
+export { mapPackPlayHref } from "@/lib/game/playLinks";
 
 export function mapPackAreaRankingHref(area: MapPackArea): string {
   const q = new URLSearchParams({ difficulty: area.difficulty, prefCode: area.prefCode, prefName: area.prefName });
