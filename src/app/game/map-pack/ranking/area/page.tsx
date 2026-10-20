@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { Difficulty, RankingEntry } from "@/lib/game/mapPuzzleData";
-import { fetchMapPackAreaRanking } from "@/lib/game/mapPackData";
+import { fetchMapPackAreaRanking, mapPackPlayHref } from "@/lib/game/mapPackData";
 import { DIFFICULTY_LABELS } from "@/lib/game/format";
 import RankingList from "@/components/game/map-puzzle/RankingList";
 
@@ -66,7 +66,13 @@ function AreaRankingContent() {
   return (
     <>
       <h1 className="text-lg font-bold text-[#3c2a14] mb-1">{cityName ?? prefName} のランキング</h1>
-      <p className="text-xs text-[#a8937a] mb-6">地図パック・{DIFFICULTY_LABELS[difficulty!]}</p>
+      <p className="text-xs text-[#a8937a] mb-3">地図ポットン・{DIFFICULTY_LABELS[difficulty!]}</p>
+      <Link
+        href={mapPackPlayHref({ difficulty: difficulty!, prefCode: prefCode!, prefName: prefName!, cityCode, cityName: cityName ?? undefined })}
+        className="inline-block mb-6 px-4 py-2 rounded-full bg-teal-600 text-white text-sm font-bold active:scale-[0.97]"
+      >
+        ▶ このエリアで遊ぶ
+      </Link>
 
       {loading && <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}
 

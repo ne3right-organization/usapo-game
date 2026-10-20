@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Difficulty, RankingEntry, RankingPage } from "@/lib/game/mapPuzzleData";
 
-// 地図パックの挑戦結果の送信とランキング取得。地図パズル(mapPuzzleData.ts)と同じく、
+// 地図ポットンの挑戦結果の送信とランキング取得。地図パズル(mapPuzzleData.ts)と同じく、
 // RLS (supabase/migrations/20261019000000_map_pack_schema.sql) がアクセス制御を担うため
 // クライアントから直接 supabase-js で読み書きする。
 // ランキングは地図パズルとは別集計(game_map_pack_best)。game_profiles.total_score(地図パズルの合計)には含めない
@@ -158,6 +158,17 @@ export async function fetchMapPackAreaRanking(
   if (error) throw new Error(error.message);
   const items = (data ?? []).map(rowToRanking);
   return { items, nextCursor: items.length === limit ? String(items[items.length - 1].bestScore) : null };
+}
+
+/** そのエリアのプレイ画面(エリア選択を飛ばして直接始める)。初級は全国固定なのでエリア指定なし */
+export function mapPackPlayHref(area: MapPackArea): string {
+  if (area.difficulty === "beginner") return "/game/map-pack/beginner";
+  const q = new URLSearchParams({ prefCode: area.prefCode, prefName: area.prefName });
+  if (area.cityCode && area.cityName) {
+    q.set("cityCode", area.cityCode);
+    q.set("cityName", area.cityName);
+  }
+  return `/game/map-pack/${area.difficulty}?${q.toString()}`;
 }
 
 export function mapPackAreaRankingHref(area: MapPackArea): string {

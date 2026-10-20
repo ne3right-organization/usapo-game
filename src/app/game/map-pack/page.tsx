@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
 
 export const metadata: Metadata = {
-  title: "地図パック",
+  title: "地図ポットン",
   description: "地域のピースを箱に落として、隣り合う地域同士をくっつけて地図を完成させるパズルゲーム",
 };
 
@@ -13,7 +13,7 @@ const DIFFICULTIES = [
     emoji: "🌸",
     label: "初級",
     labelClass: "bg-amber-100 text-amber-700 border border-amber-200",
-    title: "都道府県パック",
+    title: "都道府県ポットン",
     description: "47都道府県をくっつけて日本地図を完成させよう",
     sub: "47ピース・全国固定",
     borderClass: "border-amber-100 hover:border-amber-300",
@@ -24,7 +24,7 @@ const DIFFICULTIES = [
     emoji: "🌿",
     label: "中級",
     labelClass: "bg-violet-100 text-violet-700 border border-violet-200",
-    title: "市区町村パック",
+    title: "自治体ポットン",
     description: "都道府県を選んで、市区町村をくっつけよう",
     sub: "エリアを選んでスタート",
     borderClass: "border-violet-100 hover:border-violet-300",
@@ -35,7 +35,7 @@ const DIFFICULTIES = [
     emoji: "🍃",
     label: "上級",
     labelClass: "bg-teal-100 text-teal-700 border border-teal-200",
-    title: "町丁パック",
+    title: "ご近所ポットン",
     description: "市区町村を選んで、町丁をくっつけよう",
     sub: "エリアを選んでスタート",
     borderClass: "border-teal-100 hover:border-teal-300",
@@ -50,7 +50,7 @@ export default function MapPackPage() {
         <div className="text-center mb-10">
           <div className="text-5xl mb-3">📦</div>
           <h1 className="text-2xl font-bold text-[#3c2a14] tracking-wide">
-            地図パック
+            地図ポットン
             <span className="ml-2 text-[10px] font-bold text-purple-600 align-middle">プロトタイプ</span>
           </h1>
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">

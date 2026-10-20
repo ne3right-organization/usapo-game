@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Difficulty, RankingEntry } from "@/lib/game/mapPuzzleData";
-import { fetchMapPackModeRanking } from "@/lib/game/mapPackData";
+import { fetchMapPackModeRanking, mapPackPlayHref } from "@/lib/game/mapPackData";
 import { DIFFICULTY_LABELS } from "@/lib/game/format";
 import RankingList from "@/components/game/map-puzzle/RankingList";
 
@@ -64,7 +64,7 @@ export default function MapPackRankingPage() {
           <Link href="/game/map-pack" className="text-[#78716c] text-lg leading-none">
             ←
           </Link>
-          <h1 className="text-lg font-bold text-[#3c2a14]">🏆 地図パック ランキング</h1>
+          <h1 className="text-lg font-bold text-[#3c2a14]">🏆 地図ポットン ランキング</h1>
         </div>
 
         <div className="flex gap-2 mb-5">
@@ -97,7 +97,7 @@ export default function MapPackRankingPage() {
 
         {!loading && !needsLogin && !errorMsg && (
           <>
-            <RankingList items={items} showArea profileBasePath={null} />
+            <RankingList items={items} showArea profileBasePath={null} playHref={mapPackPlayHref} />
             {nextCursor && (
               <button
                 type="button"

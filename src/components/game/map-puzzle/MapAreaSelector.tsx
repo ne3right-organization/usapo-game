@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type L from "leaflet";
-// 地図パズル以外(地図パックなど)からも使うため、Leaflet のCSSはこのコンポーネント自身で読み込む
+// 地図パズル以外(地図ポットンなど)からも使うため、Leaflet のCSSはこのコンポーネント自身で読み込む
 import "leaflet/dist/leaflet.css";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
