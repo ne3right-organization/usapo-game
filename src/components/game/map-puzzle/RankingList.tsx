@@ -7,6 +7,8 @@ export interface RankingListProps {
   showArea?: boolean;
   /** 行をタップしたときのプロフィールページ。null ならリンクにしない(プロフィールページが無いゲーム用) */
   profileBasePath?: string | null;
+  /** 渡すと各行に、そのエリアを遊ぶリンクを出す(行がプロフィールへのリンクでない場合のみ) */
+  playHref?: (item: RankingEntry) => string;
 }
 
 function rankBadge(index: number): string {
@@ -20,6 +22,7 @@ export default function RankingList({
   items,
   showArea = true,
   profileBasePath = "/game/map-puzzle/profile",
+  playHref,
 }: RankingListProps) {
   if (items.length === 0) {
     return <p className="text-sm text-[#a8937a] text-center py-10">まだ記録がありません</p>;
@@ -44,6 +47,14 @@ export default function RankingList({
               </div>
               <div className="text-[11px] text-[#a8937a]">{formatRelativeTime(item.lastPlayedAt)}</div>
             </div>
+            {playHref && !(item.nickname && profileBasePath) && (
+              <Link
+                href={playHref(item)}
+                className="shrink-0 text-xs font-semibold text-teal-700 border border-teal-300 rounded-full px-2.5 py-1"
+              >
+                ▶ 遊ぶ
+              </Link>
+            )}
           </div>
         );
 

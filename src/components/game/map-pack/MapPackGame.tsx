@@ -94,9 +94,22 @@ const DEFER_IRREGULAR_RATIO = 0.15;
 // 落とす位置の線(点線)に重なっている、くっつく相手のピースを上に引っ張り上げる。
 // 相手が山の下の方に埋まっていると、上から落としても届かずくっつけられないため(試遊での指摘)。
 // 引っ張るのは狙っている間だけで、落とした(指を離した)瞬間にやめる(ユーザー指示)
-const LIFT_FACTOR = 2.2;              // 重力の何倍の上向きの力をかけるか(1を超えた分だけ浮く)
+// 力は一定ではなく、浮き上がる速さが LIFT_TARGET_SPEED になるよう自動で調整する。
+// (最初は重力の2.2倍の一定の力にしたが、邪魔がないと強すぎて飛び上がり、上に乗られている・挟まっていると
+//  弱すぎて動かなかったため。試遊での指摘)
+// 力(重力の何倍か) = 1 + LIFT_GAIN × (目標の速さ - 今の上向きの速さ) + 詰まり分。
+// 詰まり分は、速さが目標の半分に届かない間 LIFT_BOOST_STEP ずつ増え、動き出すと減る。合計は LIFT_MAX まで
+const LIFT_TARGET_SPEED = 1.2;        // 目標の上向きの速さ(ワールド単位/ステップ)
+const LIFT_GAIN = 1.5;
+const LIFT_BOOST_STEP = 0.04;         // 1サブステップごとに増やす詰まり分(約1.5秒で最大に届く)
+const LIFT_MAX = 6;
+// 合体して大きくなったピースの底の方にくっつく相手がいると、引き上げても相手は底を向いたままで、
+// 上から落としたピースが触れられない(試遊での指摘)。相手の地域が上を向くようにピースを回す
+const LIFT_ROT_MIN_OFFSET = 8;        // 相手の地域がピースの中心からこれ以上離れていれば回す(中心付近なら向きは関係ない)
+const LIFT_ROT_GAIN = 0.05;           // 角度のずれ(ラジアン)あたりの目標の回転の速さ
+const LIFT_ROT_MAX = 0.04;            // 回転の速さの上限(ラジアン/ステップ)
+const LIFT_ROT_BLEND = 0.2;           // 今の回転の速さを目標に近づける割合(サブステップごと)
 const LIFT_STOP_BELOW_RIM = 30;       // 箱の縁からこの距離より上まで来たら引っ張るのをやめる(飛び出さないように)
-const LIFT_MAX_UP_SPEED = 1;          // 上向きの速さがこれを超えていれば力をかけない(勢いがつきすぎないように)
 const LIFT_PAUSE_AFTER_RESTACK_MS = 1000; // 積み直しで最後のピースを落としてから、引き上げを再開するまで
 const FLASH_MS = 450;
 const POPUP_MS = 900;
@@ -479,6 +492,32 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     }
 
     /** 落とす位置の線に重なっている、くっつく相手のピースを上に引っ張る(Engine.update の前に毎回呼ぶ) */
+    /** 引っ張っているピース(body.id)ごとの「詰まり分」 */
+    const liftBoost = new Map<number, number>();
+
+    /** ピースの中のくっつく相手の地域(点線に一番近いもの)が、中心から見て真上に来るよう少しずつ回す */
+    function turnTargetUp(p: Piece, lineX: number) {
+      const { body } = p;
+      const c = Math.cos(body.angle), s = Math.sin(body.angle);
+      let best: { rx: number; ry: number; dx: number } | null = null;
+      p.regionIds.forEach((id, i) => {
+        if (!hoverTargets.has(id)) return;
+        const rx = p.centers[i].x * c - p.centers[i].y * s;
+        const ry = p.centers[i].x * s + p.centers[i].y * c;
+        const dx = Math.abs(body.position.x + rx - lineX);
+        if (!best || dx < best.dx) best = { rx, ry, dx };
+      });
+      if (!best) return;
+      const { rx, ry } = best as { rx: number; ry: number };
+      if (Math.hypot(rx, ry) < LIFT_ROT_MIN_OFFSET) return;
+      // 画面は y が下向きなので、真上は角度 -π/2
+      let diff = -Math.PI / 2 - Math.atan2(ry, rx);
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      const want = Math.max(-LIFT_ROT_MAX, Math.min(LIFT_ROT_MAX, diff * LIFT_ROT_GAIN));
+      const av = body.angularVelocity;
+      Matter.Body.setAngularVelocity(body, av + (want - av) * LIFT_ROT_BLEND);
+    }
+
     function liftTargets(now: number) {
       if (!hover || ended || !hoverTargets.size) return;
       // 新しいピースが出てきただけでは引っ張らず、プレイヤーが動かして狙い始めてから効かせる(ユーザー指示)
@@ -487,14 +526,25 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       if (restackQueue.length || now < restackNextAt + LIFT_PAUSE_AFTER_RESTACK_MS) return;
       if (batchRemaining) return; // まとめて落としている間は相手がめまぐるしく変わるので引っ張らない
       const x = hoverPosition(hover).x;
+      const lifting = new Set<number>();
       for (const p of pieces.values()) {
         const b = p.body.bounds;
-        if (x < b.min.x || x > b.max.x || b.min.y < RIM_Y + LIFT_STOP_BELOW_RIM) continue;
-        if (p.body.velocity.y < -LIFT_MAX_UP_SPEED) continue;
+        if (x < b.min.x || x > b.max.x) continue;
+        if (b.min.y < RIM_Y + LIFT_STOP_BELOW_RIM) continue;
         if (!p.regionIds.some((id) => hoverTargets.has(id))) continue;
-        const up = p.body.mass * engine.gravity.y * engine.gravity.scale * LIFT_FACTOR;
+        const id = p.body.id;
+        lifting.add(id);
+        const upSpeed = -p.body.velocity.y;
+        let boost = liftBoost.get(id) ?? 0;
+        boost = upSpeed < LIFT_TARGET_SPEED / 2 ? boost + LIFT_BOOST_STEP : Math.max(0, boost - LIFT_BOOST_STEP * 2);
+        liftBoost.set(id, boost);
+        const factor = Math.min(LIFT_MAX, Math.max(0, 1 + LIFT_GAIN * (LIFT_TARGET_SPEED - upSpeed) + boost));
+        const up = p.body.mass * engine.gravity.y * engine.gravity.scale * factor;
         Matter.Body.applyForce(p.body, p.body.position, { x: 0, y: -up });
+        if (p.regionIds.length > 1) turnTargetUp(p, x);
       }
+      // 引っ張るのをやめたピースの詰まり分は忘れる
+      for (const id of liftBoost.keys()) if (!lifting.has(id)) liftBoost.delete(id);
     }
 
     /** batchX を渡すと、狙いの位置の代わりにその横位置に落とし、次のピースを待たずにすぐ出す(まとめて落とす用) */

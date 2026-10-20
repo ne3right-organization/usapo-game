@@ -160,6 +160,17 @@ export async function fetchMapPackAreaRanking(
   return { items, nextCursor: items.length === limit ? String(items[items.length - 1].bestScore) : null };
 }
 
+/** そのエリアのプレイ画面(エリア選択を飛ばして直接始める)。初級は全国固定なのでエリア指定なし */
+export function mapPackPlayHref(area: MapPackArea): string {
+  if (area.difficulty === "beginner") return "/game/map-pack/beginner";
+  const q = new URLSearchParams({ prefCode: area.prefCode, prefName: area.prefName });
+  if (area.cityCode && area.cityName) {
+    q.set("cityCode", area.cityCode);
+    q.set("cityName", area.cityName);
+  }
+  return `/game/map-pack/${area.difficulty}?${q.toString()}`;
+}
+
 export function mapPackAreaRankingHref(area: MapPackArea): string {
   const q = new URLSearchParams({ difficulty: area.difficulty, prefCode: area.prefCode, prefName: area.prefName });
   if (area.cityCode && area.cityName) {

@@ -1,9 +1,9 @@
 "use client";
 
-import { use, useState } from "react";
+import { Suspense, use, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { notFound, useRouter } from "next/navigation";
+import { notFound, useRouter, useSearchParams } from "next/navigation";
 import type { Difficulty } from "@/lib/game/mapPuzzleData";
 import type { AreaInfo } from "@/components/game/map-puzzle/MapAreaSelector";
 import { MAP_PACK_BEGINNER_AREA, type MapPackArea } from "@/lib/game/mapPackData";
@@ -26,23 +26,54 @@ type GameConfig = { geojsonUrl: string; areaLabel: string; area: MapPackArea };
 
 type Props = { params: Promise<{ difficulty: string }> };
 
+/**
+ * 最初に遊ぶエリア。初級は全国固定。中級・上級は URL でエリアが指定されていれば(ランキングから直接来た場合)
+ * それで始め、無ければ地図でエリアを選ぶ
+ */
+function initialConfig(difficulty: Difficulty, q: URLSearchParams): GameConfig | null {
+  if (difficulty === "beginner") {
+    return {
+      geojsonUrl: `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`,
+      areaLabel: "日本",
+      area: { difficulty, ...MAP_PACK_BEGINNER_AREA },
+    };
+  }
+  const prefCode = q.get("prefCode"), prefName = q.get("prefName");
+  if (!prefCode || !/^\d{2}$/.test(prefCode) || !prefName) return null;
+  if (difficulty === "intermediate") {
+    return {
+      geojsonUrl: `${CLOUDFRONT_URL}/geojson/municipality/2020/${prefCode}.geojson`,
+      areaLabel: prefName,
+      area: { difficulty, prefCode, prefName },
+    };
+  }
+  const cityCode = q.get("cityCode"), cityName = q.get("cityName");
+  if (!cityCode || !/^\d{3}$/.test(cityCode) || !cityName) return null;
+  return {
+    geojsonUrl: `${CLOUDFRONT_URL}/geojson/town-district/2020/${prefCode}/${cityCode}.geojson`,
+    areaLabel: cityName,
+    area: { difficulty, prefCode, prefName, cityCode, cityName },
+  };
+}
+
 export default function MapPackPlayPage({ params }: Props) {
   const { difficulty: diffParam } = use(params);
   if (!VALID_DIFFICULTIES.includes(diffParam as Difficulty)) notFound();
-  const difficulty = diffParam as Difficulty;
+  // useSearchParams を使うので Suspense で包む(Next.js の要件)
+  return (
+    <Suspense fallback={<p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}>
+      <MapPackPlay difficulty={diffParam as Difficulty} />
+    </Suspense>
+  );
+}
+
+function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
   const meta = META[difficulty];
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // 初級は全国固定なのでエリア選択なしで始める。area はゲーム側の effect の依存になるので state で固定する
-  const [config, setConfig] = useState<GameConfig | null>(() =>
-    difficulty === "beginner"
-      ? {
-          geojsonUrl: `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`,
-          areaLabel: "日本",
-          area: { difficulty, ...MAP_PACK_BEGINNER_AREA },
-        }
-      : null,
-  );
+  // area はゲーム側の effect の依存になるので state で固定する
+  const [config, setConfig] = useState<GameConfig | null>(() => initialConfig(difficulty, searchParams));
 
   if (!config) {
     return (
