@@ -269,6 +269,68 @@ export async function fetchMapPackProgress(area: MapPackArea): Promise<MapPackSn
   return state?.version === 1 ? state : null;
 }
 
+/** 中断中のゲームの一覧の1行(どこを中断したか思い出せるように、トップに並べる) */
+export interface MapPackSavedGame {
+  area: MapPackArea;
+  savedAt: number;
+  dropped: number;
+  /** server: 「中断」でサーバーに保存したもの / session: このタブに自動保存されているもの */
+  source: "server" | "session";
+}
+
+/** 中断中のゲームの一覧(新しい順)。サーバー(ログイン時)とこのタブの両方を見て、同じエリアは新しい方だけ残す */
+export async function fetchMapPackSavedGames(): Promise<MapPackSavedGame[]> {
+  const list: MapPackSavedGame[] = [];
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (!key?.startsWith("mapPackProgress:")) continue;
+      try {
+        const saved = JSON.parse(window.sessionStorage.getItem(key) ?? "") as MapPackSessionSave;
+        if (saved?.snapshot?.version !== 1 || !saved.area) continue;
+        list.push({ area: saved.area, savedAt: saved.updatedAt, dropped: saved.snapshot.dropped, source: "session" });
+      } catch {
+        // 壊れた保存データは無視
+      }
+    }
+  } catch {
+    // sessionStorage が使えない環境
+  }
+
+  const userId = await currentUserId();
+  if (userId) {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("game_map_pack_progress")
+      .select("difficulty, pref_code, pref_name, city_code, city_name, saved_at, state")
+      .eq("user_id", userId)
+      .order("saved_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      list.push({
+        area: {
+          difficulty: row.difficulty,
+          prefCode: row.pref_code,
+          prefName: row.pref_name,
+          cityCode: row.city_code ?? undefined,
+          cityName: row.city_name ?? undefined,
+        },
+        savedAt: new Date(row.saved_at).getTime(),
+        dropped: (row.state as MapPackSnapshot | null)?.dropped ?? 0,
+        source: "server",
+      });
+    }
+  }
+
+  const byArea = new Map<string, MapPackSavedGame>();
+  for (const g of list) {
+    const key = `${g.area.difficulty}:${g.area.prefCode}:${g.area.cityCode ?? ""}`;
+    const cur = byArea.get(key);
+    if (!cur || g.savedAt > cur.savedAt) byArea.set(key, g);
+  }
+  return [...byArea.values()].sort((a, b) => b.savedAt - a.savedAt);
+}
+
 export async function discardMapPackProgress(area: MapPackArea): Promise<void> {
   const userId = await currentUserId();
   if (!userId) return;
