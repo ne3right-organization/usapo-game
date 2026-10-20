@@ -1,12 +1,21 @@
 "use client";
 
-import { Suspense, use, useState } from "react";
+import { Suspense, use, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { notFound, useRouter, useSearchParams } from "next/navigation";
 import type { Difficulty } from "@/lib/game/mapPuzzleData";
 import type { AreaInfo } from "@/components/game/map-puzzle/MapAreaSelector";
-import { MAP_PACK_BEGINNER_AREA, type MapPackArea } from "@/lib/game/mapPackData";
+import {
+  MAP_PACK_BEGINNER_AREA,
+  clearMapPackSessionSaves,
+  discardMapPackProgress,
+  fetchMapPackProgress,
+  findMapPackSessionSave,
+  type MapPackArea,
+  type MapPackSessionSave,
+  type MapPackSnapshot,
+} from "@/lib/game/mapPackData";
 
 const MapPackGame = dynamic(() => import("@/components/game/map-pack/MapPackGame"), { ssr: false });
 // エリア選択は地図パズルのものをそのまま使う
@@ -67,6 +76,52 @@ export default function MapPackPlayPage({ params }: Props) {
   );
 }
 
+function ResumePrompt({
+  title,
+  description,
+  areaLabel,
+  resumeLabel,
+  resetLabel,
+  onResume,
+  onReset,
+}: {
+  title: string;
+  description: string;
+  areaLabel: string;
+  resumeLabel: string;
+  resetLabel: string;
+  onResume: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <main className="min-h-full bg-[#fdf8f0] flex items-center justify-center px-6">
+      <div className="w-full max-w-xs text-center">
+        <p className="text-base font-semibold text-[#3c2a14] mb-2">{title}</p>
+        <p className="text-xs text-[#a8937a] mb-3">{description}</p>
+        <p className="text-sm text-[#78716c] mb-6">「{areaLabel}」の途中から再開しますか？</p>
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={onResume}
+            className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-teal-700 hover:bg-teal-800"
+          >
+            {resumeLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onReset}
+            className="w-full py-3.5 rounded-xl text-sm font-semibold text-[#78716c] border border-gray-300 bg-white hover:bg-gray-50"
+          >
+            {resetLabel}
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+const Loading = () => <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>;
+
 function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
   const meta = META[difficulty];
   const router = useRouter();
@@ -74,6 +129,64 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
 
   // area はゲーム側の effect の依存になるので state で固定する
   const [config, setConfig] = useState<GameConfig | null>(() => initialConfig(difficulty, searchParams));
+  // 再開する場合の状態と、ゲームを始めてよいか(再開の確認が済んだか)
+  const [snapshot, setSnapshot] = useState<MapPackSnapshot | null>(null);
+  const [started, setStarted] = useState(false);
+
+  // 地図パズルと同じ順で再開を確認する: ①同じタブで中断中のゲーム → ②サーバーに保存した続き
+  const [sessionSave, setSessionSave] = useState<MapPackSessionSave | null | undefined>(undefined);
+  const [serverSnapshot, setServerSnapshot] = useState<MapPackSnapshot | null>(null);
+
+  useEffect(() => {
+    // sessionStorage はブラウザ専用なので、表示後にここで読むしかない
+    const save = findMapPackSessionSave(difficulty);
+    // URL でエリアが指定されている(ランキングから来た)ときは、そのエリアの続きだけを対象にする
+    const fits = save && (!config || save.geojsonUrl === config.geojsonUrl);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSessionSave(fits ? save : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty]);
+
+  useEffect(() => {
+    if (sessionSave !== null || !config || started) return;
+    let cancelled = false;
+    fetchMapPackProgress(config.area)
+      .then((snap) => {
+        if (cancelled) return;
+        if (snap) setServerSnapshot(snap);
+        else setStarted(true);
+      })
+      .catch(() => {
+        if (!cancelled) setStarted(true); // 未ログイン・通信エラーは続きなしとして始める
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionSave, config, started]);
+
+  if (sessionSave === undefined) return <Loading />;
+
+  if (sessionSave) {
+    return (
+      <ResumePrompt
+        title="中断中のゲームがあります"
+        description="このタブを離れる前の状態が一時的に残っています（タブを閉じると消えます）"
+        areaLabel={sessionSave.areaLabel}
+        resumeLabel="再開する"
+        resetLabel="最初から始める"
+        onResume={() => {
+          setConfig({ geojsonUrl: sessionSave.geojsonUrl, areaLabel: sessionSave.areaLabel, area: sessionSave.area });
+          setSnapshot(sessionSave.snapshot);
+          setStarted(true);
+          setSessionSave(null);
+        }}
+        onReset={() => {
+          clearMapPackSessionSaves(difficulty);
+          setSessionSave(null);
+        }}
+      />
+    );
+  }
 
   if (!config) {
     return (
@@ -87,6 +200,31 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
       />
     );
   }
+
+  if (!started && serverSnapshot) {
+    const area = config.area;
+    return (
+      <ResumePrompt
+        title="保存された途中経過があります"
+        description="「中断」で保存した続きです（別の端末・ブラウザからでも再開できます）"
+        areaLabel={config.areaLabel}
+        resumeLabel="続きから再開する"
+        resetLabel="最初から始める"
+        onResume={() => {
+          setSnapshot(serverSnapshot);
+          setServerSnapshot(null);
+          setStarted(true);
+        }}
+        onReset={() => {
+          discardMapPackProgress(area).catch(() => {});
+          setServerSnapshot(null);
+          setStarted(true);
+        }}
+      />
+    );
+  }
+
+  if (!started) return <Loading />;
 
   return (
     <main className="min-h-full bg-[#fdf8f0]">
@@ -104,18 +242,25 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
         </div>
 
         <MapPackGame
+          key={config.geojsonUrl}
           geojsonUrl={config.geojsonUrl}
           areaLabel={config.areaLabel}
           nameKey={meta.nameKey}
           unitLabel={meta.unitLabel}
           area={config.area}
+          initialSnapshot={snapshot}
+          onSaveAndExit={() => router.push("/game/map-pack")}
         />
 
         {difficulty !== "beginner" && (
           <p className="text-center mt-6">
             <button
               type="button"
-              onClick={() => setConfig(null)}
+              onClick={() => {
+                setConfig(null);
+                setSnapshot(null);
+                setStarted(false);
+              }}
               className="text-sm text-[#78716c] underline underline-offset-2"
             >
               別のエリアを選ぶ
