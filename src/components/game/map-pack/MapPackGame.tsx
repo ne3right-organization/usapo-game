@@ -68,6 +68,16 @@ const HOP_REST_SPEED = 1.5;
 const RESTACK_INTERVAL_MS = 150;
 const RESTACK_AIM = 0.7;
 const RESTACK_PENALTY = 50;
+const SPAWN_GAP = 4;                  // 落とす・落とし直すピースを、真下のピースからこれだけ離して出現させる
+
+// ===== まとめて落とす =====
+// ピース数が多いエリア(900ピース近い市区町村もある)で、1つずつ落とすだけで一苦労なため、
+// 次の何個かをバラバラのまま続けて落とせるようにする(あらかじめくっつけて落とす案はユーザーが不採用)。
+// 個数はエリアのピース数で決める。250個未満はボタンを出さない
+const BATCH_SIZES: [minPieces: number, size: number][] = [[1000, 20], [750, 15], [500, 10], [250, 5]];
+const batchSizeFor = (pieces: number) => BATCH_SIZES.find(([min]) => pieces >= min)?.[1] ?? 0;
+const BATCH_INTERVAL_MS = 120;
+const BATCH_SPREAD = 0.3;             // 狙った位置から左右に、箱の幅のこの割合まで散らす
 
 // ===== 物理・進行 =====
 const STEP_MS = 1000 / 60;
@@ -79,6 +89,15 @@ const NEIGHBOR_BIAS = 0.6;            // 箱の中の地域に隣接する地域
 // 面積の大きい順・歪な順(円形度 4π×面積÷周長² の低い順)にそれぞれこの割合を後回しにする
 const DEFER_LARGE_RATIO = 0.15;
 const DEFER_IRREGULAR_RATIO = 0.15;
+
+// ===== くっつく相手の引き上げ =====
+// 落とす位置の線(点線)に重なっている、くっつく相手のピースを上に引っ張り上げる。
+// 相手が山の下の方に埋まっていると、上から落としても届かずくっつけられないため(試遊での指摘)。
+// 引っ張るのは狙っている間だけで、落とした(指を離した)瞬間にやめる(ユーザー指示)
+const LIFT_FACTOR = 2.2;              // 重力の何倍の上向きの力をかけるか(1を超えた分だけ浮く)
+const LIFT_STOP_BELOW_RIM = 30;       // 箱の縁からこの距離より上まで来たら引っ張るのをやめる(飛び出さないように)
+const LIFT_MAX_UP_SPEED = 1;          // 上向きの速さがこれを超えていれば力をかけない(勢いがつきすぎないように)
+const LIFT_PAUSE_AFTER_RESTACK_MS = 1000; // 積み直しで最後のピースを落としてから、引き上げを再開するまで
 const FLASH_MS = 450;
 const POPUP_MS = 900;
 
@@ -208,6 +227,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
   /** 積み直しを始め、全ピースを落とし終えるまでの見込み時間(ms)を返す */
   const restackRef = useRef<() => number>(() => 0);
   const [restacking, setRestacking] = useState(false);
+  const batchRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -430,6 +450,24 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       publishHud();
     }
 
+    /**
+     * 箱の中のピースに重ならない出現位置の y を返す。真下(横の範囲が重なる)にあるピースのうち一番高いものより上にする。
+     * 山が縁より高いと、決まった高さに出現させたピースが既存のピースの内側に深く重なり、物理エンジンが
+     * 引き離せずにかたまりの中に埋まったまま残ることがあったため(積み直しで起きやすい)
+     */
+    function clearSpawnY(body: Matter.Body, x: number, preferredY: number) {
+      const b = body.bounds, pos = body.position;
+      const left = x - (pos.x - b.min.x), right = x + (b.max.x - pos.x), bottom = b.max.y - pos.y;
+      let y = preferredY;
+      for (const p of pieces.values()) {
+        if (p.body === body) continue;
+        const q = p.body.bounds;
+        if (q.max.x < left || q.min.x > right) continue;
+        y = Math.min(y, q.min.y - bottom - SPAWN_GAP);
+      }
+      return y;
+    }
+
     function hoverPosition(piece: Piece) {
       const b = piece.body.bounds, p = piece.body.position;
       const half = { l: p.x - b.min.x, r: b.max.x - p.x, bottom: b.max.y - p.y };
@@ -437,9 +475,32 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       return { x, y: RIM_Y - half.bottom - 6 };
     }
 
-    function drop(now: number) {
+    /** 落とす位置の線に重なっている、くっつく相手のピースを上に引っ張る(Engine.update の前に毎回呼ぶ) */
+    function liftTargets(now: number) {
+      if (!hover || ended || !hoverTargets.size) return;
+      // 積み直しの最中(と落とし終えて落ち着くまで)は引っ張らない。並びをばらす邪魔になるため
+      if (restackQueue.length || now < restackNextAt + LIFT_PAUSE_AFTER_RESTACK_MS) return;
+      if (batchRemaining) return; // まとめて落としている間は相手がめまぐるしく変わるので引っ張らない
+      const x = hoverPosition(hover).x;
+      for (const p of pieces.values()) {
+        const b = p.body.bounds;
+        if (x < b.min.x || x > b.max.x || b.min.y < RIM_Y + LIFT_STOP_BELOW_RIM) continue;
+        if (p.body.velocity.y < -LIFT_MAX_UP_SPEED) continue;
+        if (!p.regionIds.some((id) => hoverTargets.has(id))) continue;
+        const up = p.body.mass * engine.gravity.y * engine.gravity.scale * LIFT_FACTOR;
+        Matter.Body.applyForce(p.body, p.body.position, { x: 0, y: -up });
+      }
+    }
+
+    /** batchX を渡すと、狙いの位置の代わりにその横位置に落とし、次のピースを待たずにすぐ出す(まとめて落とす用) */
+    function drop(now: number, batchX?: number) {
       if (!hover || ended || now < nextHoverAt) return;
-      Matter.Body.setPosition(hover.body, hoverPosition(hover));
+      const at = hoverPosition(hover);
+      if (batchX !== undefined) {
+        const b = hover.body.bounds, pos = hover.body.position;
+        at.x = Math.min(Math.max(batchX, BOX_L + (pos.x - b.min.x) + 1), BOX_R - (b.max.x - pos.x) - 1);
+      }
+      Matter.Body.setPosition(hover.body, { x: at.x, y: clearSpawnY(hover.body, at.x, at.y) });
       Matter.Body.setVelocity(hover.body, { x: 0, y: 0 });
       Matter.Composite.add(engine.world, hover.body);
       pieces.set(hover.body.id, hover);
@@ -448,7 +509,26 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       dropped++;
       if (startAt === null) startAt = now;
       publishHud();
-      setTimeout(() => { if (!ended) spawnHover(performance.now()); }, DROP_WAIT_MS);
+      if (batchX !== undefined) spawnHover(now);
+      else setTimeout(() => { if (!ended) spawnHover(performance.now()); }, DROP_WAIT_MS);
+    }
+
+    // まとめて落とす残り個数
+    let batchRemaining = 0;
+    let batchNextAt = 0;
+
+    batchRef.current = () => {
+      if (ended || !hover || batchRemaining) return;
+      batchRemaining = batchSizeFor(regions.length);
+      batchNextAt = 0;
+    };
+
+    function feedBatch(now: number) {
+      if (!batchRemaining || now < batchNextAt) return;
+      if (!hover || ended) { batchRemaining = 0; return; }
+      drop(now, aimX + (Math.random() * 2 - 1) * BW * BATCH_SPREAD);
+      batchRemaining--;
+      batchNextAt = now + BATCH_INTERVAL_MS;
     }
 
     // ----- 合体 -----
@@ -569,7 +649,8 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       const x = near.length && Math.random() < RESTACK_AIM
         ? near[Math.floor(Math.random() * near.length)].body.position.x
         : minX + Math.random() * (maxX - minX);
-      Matter.Body.setPosition(p.body, { x: Math.min(Math.max(x, minX), maxX), y: RIM_Y - (b.max.y - pos.y) - 6 });
+      const sx = Math.min(Math.max(x, minX), maxX);
+      Matter.Body.setPosition(p.body, { x: sx, y: clearSpawnY(p.body, sx, RIM_Y - (b.max.y - pos.y) - 6) });
       Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
       Matter.Body.setAngularVelocity(p.body, 0);
       p.nextHopAt = 0;
@@ -730,10 +811,14 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       acc += Math.min(now - last, 100);
       last = now;
       while (acc >= STEP_MS) {
-        for (let i = 0; i < SUBSTEPS; i++) Matter.Engine.update(engine, STEP_MS / SUBSTEPS);
+        for (let i = 0; i < SUBSTEPS; i++) {
+          liftTargets(now); // 力は Engine.update のたびにリセットされるので、毎回かけ直す
+          Matter.Engine.update(engine, STEP_MS / SUBSTEPS);
+        }
         processMerges(now);
         hopPieces(now);
         feedRestack(now);
+        feedBatch(now);
         acc -= STEP_MS;
       }
       draw(now);
@@ -844,14 +929,17 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
         )}
       </div>
 
-      <div className="flex items-center gap-3 mt-3">
-        <button
-          type="button"
-          onClick={() => { if (hud.dropped === 0 || window.confirm("最初からやり直しますか？")) onRestart(); }}
-          className="px-4 py-1.5 rounded-full border border-[#c8b8a0] text-sm text-[#78716c] bg-white active:scale-[0.97]"
-        >
-          ↺ やり直す
-        </button>
+      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+        {batchSizeFor(hud.total) > 0 && (
+          <button
+            type="button"
+            disabled={result !== null || !hud.hover}
+            onClick={() => batchRef.current()}
+            className="px-4 py-1.5 rounded-full border border-amber-300 text-sm text-amber-700 bg-white active:scale-[0.97] disabled:opacity-40"
+          >
+            ⏬ {batchSizeFor(hud.total)}個まとめて落とす
+          </button>
+        )}
         <button
           type="button"
           disabled={result !== null || restacking}
@@ -864,6 +952,13 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
           className="px-4 py-1.5 rounded-full border border-teal-300 text-sm text-teal-700 bg-white active:scale-[0.97] disabled:opacity-40"
         >
           🧱 積み直す<span className="ml-1 text-[10px]">-{RESTACK_PENALTY}点</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (hud.dropped === 0 || window.confirm("最初からやり直しますか？")) onRestart(); }}
+          className="px-4 py-1.5 rounded-full border border-[#c8b8a0] text-sm text-[#78716c] bg-white active:scale-[0.97]"
+        >
+          ↺ やり直す
         </button>
         <button
           type="button"
