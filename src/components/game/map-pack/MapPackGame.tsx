@@ -254,6 +254,8 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     let hoverInfo: HoverInfo | null = null;
     /** 今落とそうとしているピースとくっつく(隣接する)地域。箱の中で光らせて地名も出す */
     let hoverTargets = new Set<number>();
+    /** 今のピースが出てから、プレイヤーが指(マウス)を動かして狙ったか */
+    let aimedSinceSpawn = false;
     let aimX = W / 2;
     let nextHoverAt = 0;
     let dropped = 0;
@@ -446,6 +448,7 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
       hover = buildPiece([next.id], 0);
       hoverInfo = next.info;
       hoverTargets = new Set(adjacency[next.id]);
+      aimedSinceSpawn = false;
       nextHoverAt = now;
       publishHud();
     }
@@ -478,6 +481,8 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     /** 落とす位置の線に重なっている、くっつく相手のピースを上に引っ張る(Engine.update の前に毎回呼ぶ) */
     function liftTargets(now: number) {
       if (!hover || ended || !hoverTargets.size) return;
+      // 新しいピースが出てきただけでは引っ張らず、プレイヤーが動かして狙い始めてから効かせる(ユーザー指示)
+      if (!aimedSinceSpawn) return;
       // 積み直しの最中(と落とし終えて落ち着くまで)は引っ張らない。並びをばらす邪魔になるため
       if (restackQueue.length || now < restackNextAt + LIFT_PAUSE_AFTER_RESTACK_MS) return;
       if (batchRemaining) return; // まとめて落としている間は相手がめまぐるしく変わるので引っ張らない
@@ -834,8 +839,13 @@ function MapPackBoard({ data, areaLabel, unitLabel, area, onRestart }: BoardProp
     // ----- 操作: 指(マウス)の横位置で狙い、離したら落とす -----
     const toWorldX = (e: PointerEvent) => (e.clientX - canvas.getBoundingClientRect().left) / viewScale;
     let pressing = false;
-    const onDown = (e: PointerEvent) => { pressing = true; aimX = toWorldX(e); canvas.setPointerCapture(e.pointerId); };
-    const onMove = (e: PointerEvent) => { aimX = toWorldX(e); };
+    const aimAt = (e: PointerEvent) => {
+      const x = toWorldX(e);
+      if (x !== aimX) aimedSinceSpawn = true;
+      aimX = x;
+    };
+    const onDown = (e: PointerEvent) => { pressing = true; aimAt(e); canvas.setPointerCapture(e.pointerId); };
+    const onMove = (e: PointerEvent) => { aimAt(e); };
     const onUp = (e: PointerEvent) => {
       if (!pressing) return;
       pressing = false;
