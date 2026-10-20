@@ -3,6 +3,21 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  RETURN_PATH_COOKIE,
+  RETURN_PATH_COOKIE_MAX_AGE,
+  RETURN_PATH_STORAGE_KEY,
+  safeReturnPath,
+} from "@/lib/loginReturn";
+
+/** ログインボタンを押した画面(ReturnPathTracker が覚えているURL)。無ければサイトのトップ */
+function returnPath(): string {
+  try {
+    return safeReturnPath(window.sessionStorage.getItem(RETURN_PATH_STORAGE_KEY));
+  } catch {
+    return "/";
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,7 +27,7 @@ export default function LoginPage() {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) router.replace("/game/map-puzzle");
+      if (user) router.replace(returnPath());
     });
   }, [router]);
 
@@ -20,6 +35,9 @@ export default function LoginPage() {
     if (status === "redirecting") return;
     setStatus("redirecting");
     setErrorMsg("");
+
+    // Googleから戻ってきたあと、認証のコールバック(サーバー側)でここに転送する
+    document.cookie = `${RETURN_PATH_COOKIE}=${encodeURIComponent(returnPath())}; Path=/; Max-Age=${RETURN_PATH_COOKIE_MAX_AGE}; SameSite=Lax`;
 
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
