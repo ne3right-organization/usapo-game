@@ -83,6 +83,13 @@ const RESTACK_PENALTY = 50;
 // くっつけられなくなったとき用(試遊での指摘。最初は「囲まれた地域は輪のどこに触れてもくっつく」自動の対応を
 // 入れたが、点数を使って自分でこじ開ける方が遊びとして良いというユーザー判断で置き換えた)
 const SPLIT_PENALTY = 200;
+// 割るときにこれより小さい部分(全体に対する割合・地域数)ができたら、隣の部分にくっつけたまま割る。
+// 切る線の片側が地続きでないと1〜3地域の細かいかけらが生まれ、動けなくなっていた(関市の中断データで確認)
+const SPLIT_MIN_PART_RATIO = 0.1;
+const SPLIT_MIN_PART = 3;
+// 割ったかたまり同士が再びくっつかないのは、積み直しで最後のピースを落としてからこの時間だけ。
+// 時間制限が無いと、隣が同じ割り方のかたまりにしかないかけらが永久にくっつけなくなっていた
+const SPLIT_BLOCK_MS = 15000;
 const SPAWN_GAP = 4;                  // 落とす・落とし直すピースを、真下のピースからこれだけ離して出現させる
 
 // ===== まとめて落とす =====
@@ -354,6 +361,9 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
     let restacks = 0;
     let splits = 0;
     let splitSeq = 0;
+    // 再びくっつかないようにしている割り方(直近の1回だけ)と、その期限(積み直しを落とし終えるまでは無期限)
+    let blockedSplitTag: number | null = null;
+    let splitBlockUntil = Infinity;
     // 一度くっついたことのある地域同士(union-find)。割ってくっつけ直しても点が入らないようにする
     // (入れると、大きいかたまりを割ってくっつけ直すだけで得点を稼げてしまう)
     const joined = Int32Array.from(regions, (_, i) => i);
@@ -701,13 +711,58 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
     }
 
     // ----- 合体 -----
+    // ピースの地域の集合と、ピースの外で隣り合う地域の集合(ピースは作り直すまで変わらないのでキャッシュする)
+    const idSetCache = new WeakMap<Piece, Set<number>>();
+    const neighborCache = new WeakMap<Piece, Set<number>>();
+    function idSetOf(p: Piece) {
+      let set = idSetCache.get(p);
+      if (!set) { set = new Set(p.regionIds); idSetCache.set(p, set); }
+      return set;
+    }
+    function neighborsOf(p: Piece) {
+      let set = neighborCache.get(p);
+      if (!set) {
+        const mine = idSetOf(p);
+        set = new Set<number>();
+        for (const id of p.regionIds) for (const o of adjacency[id]) if (!mine.has(o)) set.add(o);
+        neighborCache.set(p, set);
+      }
+      return set;
+    }
+    /**
+     * a の隣の地域が全部 b の中にある = a がくっつける相手は b しかない。この場合は、b のどこに触れてもくっつく。
+     * 相手の地域が大きなかたまりの内側に埋もれていたり、周りを1つの地域に囲まれた飛び地だったりすると、
+     * 外から触れられずにクリアできなくなっていたため(関市の中断データで確認)
+     */
+    function canOnlyJoin(a: Piece, b: Piece) {
+      const nb = neighborsOf(a);
+      if (!nb.size) return false;
+      const target = idSetOf(b);
+      for (const o of nb) if (!target.has(o)) return false;
+      return true;
+    }
+    /** 直近に割ったかたまり同士は、積み直しを落とし終えてから SPLIT_BLOCK_MS の間は再びくっつかない */
+    function blockedBySplit(a: Piece, b: Piece) {
+      return (
+        blockedSplitTag !== null &&
+        a.splitTag === blockedSplitTag &&
+        b.splitTag === blockedSplitTag &&
+        performance.now() < splitBlockUntil
+      );
+    }
+
     function onCollision(e: Matter.IEventCollision<Matter.Engine>) {
       for (const pair of e.pairs) {
         const a = pair.bodyA as RegionPart, b = pair.bodyB as RegionPart;
         if (a.regionId === undefined || b.regionId === undefined || a.parent === b.parent) continue;
-        if (!adjacency[a.regionId].has(b.regionId)) continue;
         const pa = pieces.get(a.parent.id), pb = pieces.get(b.parent.id);
-        if (pa?.splitTag != null && pa.splitTag === pb?.splitTag) continue; // 割った直後のかたまり同士
+        if (!pa || !pb) continue;
+        // 行き先が1つしかないなら、触れた場所も割った直後かどうかも問わない
+        if (canOnlyJoin(pa, pb) || canOnlyJoin(pb, pa)) {
+          pending.push([a.parent, b.parent]);
+          continue;
+        }
+        if (!adjacency[a.regionId].has(b.regionId) || blockedBySplit(pa, pb)) continue;
         pending.push([a.parent, b.parent]);
       }
     }
@@ -859,6 +914,22 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
           parts.push(comp);
         }
       }
+      // 細かい部分は、隣り合う部分のうち接している地域が一番多いものにくっつける(2つは残す)
+      const minPart = Math.max(SPLIT_MIN_PART, Math.ceil(ids.length * SPLIT_MIN_PART_RATIO));
+      while (parts.length > 2) {
+        parts.sort((a, b) => a.length - b.length);
+        const small = parts[0];
+        if (small.length >= minPart) break;
+        const smallSet = new Set(small);
+        let best = -1, bestLinks = 0;
+        for (let k = 1; k < parts.length; k++) {
+          const links = parts[k].filter((id) => [...adjacency[id]].some((o) => smallSet.has(o))).length;
+          if (links > bestLinks) { best = k; bestLinks = links; }
+        }
+        if (best < 0) break;
+        parts[best] = parts[best].concat(small);
+        parts.shift();
+      }
       return parts;
     }
 
@@ -873,6 +944,8 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       const parts = splitRegions(biggest.regionIds).map((ids) => {
         const part = buildPiece(ids, Math.random() * Math.PI * 2);
         part.splitTag = tag;
+        blockedSplitTag = tag;
+        splitBlockUntil = Infinity; // 積み直しを落とし終えたら期限を決める(feedRestack)
         return part;
       });
       splits++;
@@ -890,9 +963,8 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       const b = p.body.bounds, pos = p.body.position;
       const left = pos.x - b.min.x, right = b.max.x - pos.x;
       const minX = BOX_L + left + 1, maxX = Math.max(minX, BOX_R - right - 1);
-      const near = [...pieces.values()].filter((q) =>
-        p.regionIds.some((id) => q.regionIds.some((o) => adjacency[id].has(o))),
-      );
+      const nb = neighborsOf(p);
+      const near = [...pieces.values()].filter((q) => q.regionIds.some((o) => nb.has(o)));
       const x = near.length && Math.random() < RESTACK_AIM
         ? near[Math.floor(Math.random() * near.length)].body.position.x
         : minX + Math.random() * (maxX - minX);
@@ -904,6 +976,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       Matter.Composite.add(engine.world, p.body);
       pieces.set(p.body.id, p);
       restackNextAt = now + RESTACK_INTERVAL_MS;
+      if (!restackQueue.length && splitBlockUntil === Infinity) splitBlockUntil = now + SPLIT_BLOCK_MS;
     }
 
     giveUpRef.current = () => {
