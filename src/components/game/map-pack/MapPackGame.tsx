@@ -298,6 +298,8 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
   const [hud, setHud] = useState<Hud>({ dropped: 0, total: data.regions.length, largest: 0, score: 0, hover: null });
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
+  // 結果のポップアップを閉じて、完成した地図だけを見られるようにする(閉じても操作ボタンは押せないまま)
+  const [resultHidden, setResultHidden] = useState(false);
   /** 今の状態を書き出す(1つも落としていなければ null) */
   const snapshotRef = useRef<() => MapPackSnapshot | null>(() => null);
   const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
@@ -814,6 +816,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
 
     /** 止まっているピースを時々ポンと跳ねさせる */
     function hopPieces(now: number) {
+      if (ended) return; // 終わったあとは、完成した地図が跳ねて動かないようにする
       for (const p of pieces.values()) {
         if (p.body.speed > HOP_REST_SPEED) { p.nextHopAt = 0; continue; }
         if (p.nextHopAt === 0) { p.nextHopAt = now + rand(HOP_INTERVAL_MS) * (2 - p.bounciness); continue; }
@@ -1324,9 +1327,18 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
 
       <div ref={wrapRef} className="relative w-full max-w-[420px]">
         <canvas ref={canvasRef} className="block mx-auto touch-none select-none" />
-        {result && (
+        {result && !resultHidden && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#fdf8f0]/70">
-            <div className="bg-white rounded-2xl shadow-[0_4px_20px_rgba(120,90,40,0.15)] px-6 py-5 text-center min-w-[220px]">
+            <div className="relative bg-white rounded-2xl shadow-[0_4px_20px_rgba(120,90,40,0.15)] px-6 py-5 text-center min-w-[220px]">
+              <button
+                type="button"
+                onClick={() => setResultHidden(true)}
+                className="absolute top-2 right-3 text-xl leading-none text-[#a8937a] hover:text-[#3c2a14]"
+                title="閉じて地図を見る"
+                aria-label="閉じて地図を見る"
+              >
+                ×
+              </button>
               <p className="text-3xl mb-1">{result.kind === "clear" ? "🎉" : "🏳️"}</p>
               <p className="font-bold text-[#3c2a14]">
                 {result.kind === "clear" ? `${areaLabel} 完成！` : "ここまで"}
@@ -1380,6 +1392,15 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+        {result && resultHidden && (
+          <button
+            type="button"
+            onClick={() => setResultHidden(false)}
+            className="px-4 py-1.5 rounded-full bg-teal-600 text-white text-sm font-bold active:scale-[0.97]"
+          >
+            🏆 結果を見る
+          </button>
+        )}
         {batchSizeFor(hud.total) > 0 && (
           <button
             type="button"
