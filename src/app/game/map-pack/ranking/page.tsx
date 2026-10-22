@@ -83,6 +83,10 @@ export default function MapPackRankingPage() {
           ))}
         </div>
 
+        <p className="text-xs text-[#a8937a] mb-3">
+          エリアごとの自己ベストの合計点で、1人1行に並べています
+        </p>
+
         {loading && <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}
 
         {!loading && needsLogin && (
