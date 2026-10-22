@@ -161,27 +161,54 @@ export async function fetchMapPackHistory(
   return { items, nextCursor: items.length === limit ? items[items.length - 1].playedAt : null };
 }
 
+/**
+ * 難易度別ランキング(1人1行)。その難易度のエリアごとの自己ベストの合計点で並べ、一番点の高いエリアを
+ * 代表として返す(bestScore は合計点、エリアは一番点の高いエリア)。cursor は読み飛ばす件数
+ */
 export async function fetchMapPackModeRanking(
   difficulty: Difficulty,
   cursor?: string | null,
   limit = 20,
 ): Promise<RankingPage> {
   const supabase = createClient();
-  await requireUserId(); // 地図パズルと同じく閲覧も要ログイン(anonには権限を付けていないため、呼ばないと生のpermission deniedが出る)
-
-  let query = supabase
-    .from("game_map_pack_best")
-    .select("*")
-    .eq("difficulty", difficulty)
-    .order("best_score", { ascending: false })
-    .order("id", { ascending: true })
-    .limit(limit);
-  if (cursor) query = query.lt("best_score", Number(cursor));
-
-  const { data, error } = await query;
+  await requireUserId(); // 閲覧は要ログイン(anon には実行を許可していない)
+  const offset = cursor ? Number(cursor) : 0;
+  const { data, error } = await supabase.rpc("fetch_map_pack_user_ranking", {
+    p_difficulty: difficulty,
+    p_limit: limit,
+    p_offset: offset,
+  });
   if (error) throw new Error(error.message);
-  const items = (data ?? []).map(rowToRanking);
-  return { items, nextCursor: items.length === limit ? String(items[items.length - 1].bestScore) : null };
+  const items: RankingEntry[] = ((data ?? []) as {
+    user_id: string;
+    nickname: string | null;
+    total_score: number;
+    areas_count: number;
+    top_pref_code: string;
+    top_pref_name: string;
+    top_city_code: string | null;
+    top_city_name: string | null;
+    top_score: number;
+    last_played_at: string;
+  }[]).map((row) => {
+    const top = {
+      difficulty,
+      prefCode: row.top_pref_code,
+      prefName: row.top_pref_name,
+      cityCode: row.top_city_code ?? undefined,
+      cityName: row.top_city_name ?? undefined,
+    };
+    const topLabel = difficulty === "beginner" ? "全国" : top.cityName ? `${top.prefName} ${top.cityName}` : top.prefName;
+    return {
+      ...top,
+      userId: row.user_id,
+      nickname: row.nickname,
+      bestScore: row.total_score,
+      lastPlayedAt: row.last_played_at,
+      detail: `${row.areas_count}エリア・最高 ${row.top_score.toLocaleString()}点（${topLabel}）`,
+    };
+  });
+  return { items, nextCursor: items.length === limit ? String(offset + limit) : null };
 }
 
 export async function fetchMapPackAreaRanking(

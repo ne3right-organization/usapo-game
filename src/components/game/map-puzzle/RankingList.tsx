@@ -38,7 +38,7 @@ export default function RankingList({
               <div className="text-sm font-semibold text-[#3c2a14] truncate">
                 {item.nickname ? `👤 ${item.nickname}` : "未登録"}
               </div>
-              {showArea && <div className="text-xs text-[#a8937a] truncate">{areaLabelOf(item)}</div>}
+              {showArea && <div className="text-xs text-[#a8937a] truncate">{item.detail ?? areaLabelOf(item)}</div>}
             </div>
             <div className="text-right shrink-0">
               <div className="text-lg font-extrabold text-amber-600">
