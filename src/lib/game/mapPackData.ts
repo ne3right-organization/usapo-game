@@ -24,6 +24,7 @@ export interface MapPackSubmission extends MapPackArea {
   /** 合体で得た点の合計(減点前) */
   mergePoints: number;
   restackCount: number;
+  splitCount: number;
   cleared: boolean;
   elapsedSeconds: number;
 }
@@ -101,6 +102,7 @@ export async function submitMapPackChallenge(payload: MapPackSubmission): Promis
       total_pieces: payload.totalPieces,
       merge_points: payload.mergePoints,
       restack_count: payload.restackCount,
+      split_count: payload.splitCount,
       cleared: payload.cleared,
       elapsed_seconds: payload.elapsedSeconds,
     })
@@ -216,7 +218,7 @@ export async function fetchMapPackAreaRanking(
 export interface MapPackSnapshot {
   version: 1;
   /** 箱の中のピース(合体したかたまり)。位置が無いものは積み直し待ちだったピースで、再開時に落とし直す */
-  pieces: { ids: number[]; x?: number; y?: number; angle: number }[];
+  pieces: { ids: number[]; x?: number; y?: number; angle: number; tag?: number }[];
   /** これから出す地域(今構えていたピースが先頭)と、その名前のまとまりの大きさ */
   queue: number[];
   queueGroupSize: number;
@@ -225,6 +227,10 @@ export interface MapPackSnapshot {
   dropped: number;
   mergePoints: number;
   restacks: number;
+  /** 割って積み直した回数(この機能を入れる前の保存には無い) */
+  splits?: number;
+  /** 一度くっついたことのある地域同士の union-find(地域idごとの親)。くっつけ直しを0点にするため */
+  joined?: number[];
   elapsedSec: number;
 }
 

@@ -42,7 +42,10 @@ const MERGED_MAX = 0.9;               // 合体ピース(完成形を含む)の�
 // (最初は「全地域が固まった完成形が箱に収まる」大きさを基準にしたが、日本列島のように細長い地図だと
 //  ピースが極端に小さくなったため不採用。完成形・合体ピースは buildPiece で MERGED_MAX に収まるよう個別に縮める)
 const FILL_RATIO = 0.5;
-const MIN_SIDE = 12;                  // 小さい地域でも見える・当たる大きさを確保する
+// 小さい地域でも見える・当たる大きさを確保する。ただしピース数が多いエリア(岐阜市の町丁は2,142)では
+// この大きさでも箱に入りきらない(最小サイズのピースだけで箱の2.4倍)ため、ピース数に応じて MIN_SIDE_FLOOR まで下げる
+const MIN_SIDE = 12;
+const MIN_SIDE_FLOOR = 7;
 const PHYS_TOL = 2;                   // 物理形状の許容誤差(ワールド単位)。ピース数が多いエリアの負荷を抑えるため粗め
 const DRAW_TOL = 0.4;                 // 描画用の間引きの許容誤差(ワールド単位)
 // 合体したピースの中の地域は、一辺がこれ以上なら小さめの文字でラベルを描く(単独のピースは常に描く)。
@@ -76,6 +79,10 @@ const HOP_REST_SPEED = 1.5;
 const RESTACK_INTERVAL_MS = 150;
 const RESTACK_AIM = 0.7;
 const RESTACK_PENALTY = 50;
+// 割って積み直す: 一番大きいかたまりを2つに割ってから、全部を積み直す。かたまりが輪になって内側に入る地域が
+// くっつけられなくなったとき用(試遊での指摘。最初は「囲まれた地域は輪のどこに触れてもくっつく」自動の対応を
+// 入れたが、点数を使って自分でこじ開ける方が遊びとして良いというユーザー判断で置き換えた)
+const SPLIT_PENALTY = 200;
 const SPAWN_GAP = 4;                  // 落とす・落とし直すピースを、真下のピースからこれだけ離して出現させる
 
 // ===== まとめて落とす =====
@@ -93,6 +100,25 @@ const SUBSTEPS = 3;
 const GRAVITY = 1.3;
 const DROP_WAIT_MS = 600;             // 落としてから次のピースが出るまで
 const NEIGHBOR_BIAS = 0.6;            // 箱の中の地域に隣接する地域を優先して出す確率
+// 地名の先頭がこの文字数だけ同じもの(例: 加納〇〇町、長良〇〇)を「地名の系統」とし、系統の中は名前順
+// (一丁目→二丁目→…)に続けて出す。同じ地区・番号の近い丁目は隣り合っていることが多く、落とした直後に
+// くっつきやすくなる(2,000ピースを超える岐阜市でほとんどくっつけられなかったことへの対応)
+const FAMILY_PREFIX_LEN = 2;
+
+const KANJI_DIGITS = "〇一二三四五六七八九";
+/** 一〜九十九の漢数字を数にする(丁目の並べ替え用) */
+function kanjiNumber(k: string): number {
+  const i = k.indexOf("十");
+  if (i < 0) return KANJI_DIGITS.indexOf(k);
+  const tens = i === 0 ? 1 : KANJI_DIGITS.indexOf(k.slice(0, i));
+  const ones = i === k.length - 1 ? 0 : KANJI_DIGITS.indexOf(k.slice(i + 1));
+  return tens * 10 + ones;
+}
+/** 地名を「丁目を除いた名前」と「丁目の番号」に分ける */
+function splitChome(name: string): [string, number] {
+  const m = name.match(/^(.*?)([一二三四五六七八九十]+)丁目$/);
+  return m ? [m[1], kanjiNumber(m[2])] : [name, 0];
+}
 // 大きすぎる地域・歪な地域は、ふつうの地域を出し終わってから出す(序盤から箱を塞がないように)。
 // 面積の大きい順・歪な順(円形度 4π×面積÷周長² の低い順)にそれぞれこの割合を後回しにする
 const DEFER_LARGE_RATIO = 0.15;
@@ -152,6 +178,11 @@ type Piece = {
   bounciness: number;
   /** 次にポンと跳ねてよい時刻(0なら未設定) */
   nextHopAt: number;
+  /**
+   * 割って積み直したときに分かれたかたまりに付ける印(同じ割り方で分かれたものは同じ番号)。同じ印同士は
+   * 再びくっつかない(切り口で隣り合っているので、すぐ輪に戻ってしまうため)。別のピースとくっつくと印は消える
+   */
+  splitTag: number | null;
   fill: string;
   stroke: string;
 };
@@ -267,6 +298,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
   const giveUpRef = useRef<() => void>(() => {});
   /** 積み直しを始め、全ピースを落とし終えるまでの見込み時間(ms)を返す */
   const restackRef = useRef<() => number>(() => 0);
+  const splitRef = useRef<() => number>(() => 0);
   const [restacking, setRestacking] = useState(false);
   // やり直す・あきらめるの確認。ブラウザの確認ダイアログ(window.confirm)は、スマホで何度か出すと
   // 「このページでダイアログを表示しない」状態になったり、アプリ内ブラウザでは出なかったりして、
@@ -291,6 +323,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
     const wrap = wrapRef.current!;
     const ctx = canvas.getContext("2d")!;
     const { regions, adjacency, groups } = data;
+    const minSide = Math.min(MIN_SIDE, Math.max(MIN_SIDE_FLOOR, Math.sqrt((FILL_RATIO * BW * BH) / regions.length) * 0.8));
     const groupOf = new Map<number, number>();
     groups.forEach((ids, g) => ids.forEach((id) => groupOf.set(id, g)));
 
@@ -319,8 +352,20 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
     let startAt: number | null = null;
     let mergePoints = 0;
     let restacks = 0;
+    let splits = 0;
+    let splitSeq = 0;
+    // 一度くっついたことのある地域同士(union-find)。割ってくっつけ直しても点が入らないようにする
+    // (入れると、大きいかたまりを割ってくっつけ直すだけで得点を稼げてしまう)
+    const joined = Int32Array.from(regions, (_, i) => i);
+    const joinedRoot = (x: number) => {
+      while (joined[x] !== x) {
+        joined[x] = joined[joined[x]];
+        x = joined[x];
+      }
+      return x;
+    };
     let bonus = 0;
-    const currentScore = () => Math.max(0, mergePoints - restacks * RESTACK_PENALTY) + bonus;
+    const currentScore = () => Math.max(0, mergePoints - restacks * RESTACK_PENALTY - splits * SPLIT_PENALTY) + bonus;
     let ended = false; // 完成またはあきらめた
     const flashes: { x: number; y: number; r: number; at: number }[] = [];
     const popups: { x: number; y: number; text: string; at: number }[] = [];
@@ -335,7 +380,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       let rMax = 0;
       for (const r of regs) for (const ring of r.rings) for (const [x, y] of ring) rMax = Math.max(rMax, Math.hypot(x - cx, y - cy));
       let scale = sizeK * Math.pow(area, SIZE_EXP - 0.5);
-      scale = Math.max(scale, MIN_SIDE / Math.sqrt(area));
+      scale = Math.max(scale, minSide / Math.sqrt(area));
       scale = Math.min(scale, (MERGED_MAX * BW) / (2 * rMax));
 
       const toLocal = ([x, y]: Point) => ({ x: (x - cx) * scale, y: (y - cy) * scale });
@@ -358,7 +403,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
         parts.push(part);
       }
       const side = Math.sqrt(area) * scale;
-      const bounciness = Math.min(1, Math.max(0, (BOUNCY_SIDE_MAX - side) / (BOUNCY_SIDE_MAX - MIN_SIDE)));
+      const bounciness = Math.min(1, Math.max(0, (BOUNCY_SIDE_MAX - side) / (BOUNCY_SIDE_MAX - minSide)));
       const restitution = RESTITUTION_MIN + (RESTITUTION_MAX - RESTITUTION_MIN) * bounciness;
       const body = Matter.Body.create({ parts, friction: 0.5, frictionStatic: 0.8, restitution, frictionAir: 0.012 });
       const origin = { x: body.position.x, y: body.position.y };
@@ -410,7 +455,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       }
 
       Matter.Body.setAngle(body, angle);
-      return { body, regionIds, area, cx, cy, scale, origin, paths, centers, labels, bounciness, nextHopAt: 0, fill, stroke };
+      return { body, regionIds, area, cx, cy, scale, origin, paths, centers, labels, bounciness, nextHopAt: 0, splitTag: null, fill, stroke };
     }
 
     /** ピース上の地理座標(メートル)が今ワールドのどこにあるか */
@@ -432,6 +477,24 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
 
     // ----- 出題順: 同じ名前は連続で出す。名前の選び方は箱の中に隣接するものを優先する -----
     const remainingGroups = new Set(groups.map((_, g) => g));
+
+    // 地名の系統ごとに、名前のまとまりを名前順(丁目は番号順)に並べておく
+    const familyOf: string[] = [];
+    const familyGroups = new Map<string, number[]>();
+    groups.forEach((ids, g) => {
+      const key = splitChome(regions[ids[0]].name)[0].slice(0, FAMILY_PREFIX_LEN);
+      familyOf[g] = key;
+      if (!familyGroups.has(key)) familyGroups.set(key, []);
+      familyGroups.get(key)!.push(g);
+    });
+    for (const list of familyGroups.values()) {
+      list.sort((a, b) => {
+        const [na, ca] = splitChome(regions[groups[a][0]].name);
+        const [nb, cb] = splitChome(regions[groups[b][0]].name);
+        return na === nb ? ca - cb : na < nb ? -1 : 1;
+      });
+    }
+    let currentFamily: string | null = null;
 
     // 後回しにする名前のまとまり。同じ名前は連続で出すので、まとまり単位で「一番大きい区画の面積」
     // 「一番歪な区画の円形度」を比べる(区画単位で選ぶと、区画の多い町名がまとめて後回しになり、
@@ -473,9 +536,16 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
         for (const p of pieces.values()) p.regionIds.forEach((id) => placed.add(id));
         const normal = [...remainingGroups].filter((g) => !deferredGroups.has(g));
         const rest = normal.length ? normal : [...remainingGroups];
-        const near = rest.filter((g) => groups[g].some((id) => [...adjacency[id]].some((o) => placed.has(o))));
-        const pool = near.length && Math.random() < NEIGHBOR_BIAS ? near : rest;
-        const g = pool[Math.floor(Math.random() * pool.length)];
+        const restSet = new Set(rest);
+        // 今の地名の系統に残りがあれば、名前順で次のものを出す
+        let g = currentFamily === null ? undefined : familyGroups.get(currentFamily)!.find((x) => restSet.has(x));
+        if (g === undefined) {
+          // 新しい系統は、箱の中に隣接するものを優先して選び、その系統の名前順の先頭から出す
+          const near = rest.filter((x) => groups[x].some((id) => [...adjacency[id]].some((o) => placed.has(o))));
+          const pool = near.length && Math.random() < NEIGHBOR_BIAS ? near : rest;
+          currentFamily = familyOf[pool[Math.floor(Math.random() * pool.length)]];
+          g = familyGroups.get(currentFamily)!.find((x) => restSet.has(x))!;
+        }
         remainingGroups.delete(g);
         queue = shuffle(groups[g].slice());
         queueGroupSize = queue.length;
@@ -635,7 +705,10 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       for (const pair of e.pairs) {
         const a = pair.bodyA as RegionPart, b = pair.bodyB as RegionPart;
         if (a.regionId === undefined || b.regionId === undefined || a.parent === b.parent) continue;
-        if (adjacency[a.regionId].has(b.regionId)) pending.push([a.parent, b.parent]);
+        if (!adjacency[a.regionId].has(b.regionId)) continue;
+        const pa = pieces.get(a.parent.id), pb = pieces.get(b.parent.id);
+        if (pa?.splitTag != null && pa.splitTag === pb?.splitTag) continue; // 割った直後のかたまり同士
+        pending.push([a.parent, b.parent]);
       }
     }
     Matter.Events.on(engine, "collisionStart", onCollision);
@@ -664,8 +737,10 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
         pieces.set(piece.body.id, piece);
         const b2 = piece.body.bounds;
         flashes.push({ x: target.x, y: target.y, r: Math.max(b2.max.x - b2.min.x, b2.max.y - b2.min.y) / 2, at: now });
-        const gained = MERGE_POINT * piece.regionIds.length;
-        if (!ended) {
+        const ra = joinedRoot(a.regionIds[0]), rb = joinedRoot(b.regionIds[0]);
+        const gained = ra === rb ? 0 : MERGE_POINT * piece.regionIds.length; // くっつけ直しは0点
+        joined[ra] = rb;
+        if (!ended && gained) {
           mergePoints += gained;
           popups.push({ x: target.x, y: target.y, text: `+${gained}`, at: now });
         }
@@ -713,6 +788,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
             totalPieces: regions.length,
             mergePoints,
             restackCount: restacks,
+            splitCount: splits,
             cleared: r.kind === "clear",
             elapsedSeconds: r.sec,
           }).then((res) => setSubmit({ status: "done", isNewBest: res.isNewBest }));
@@ -720,19 +796,90 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
         .catch((e: unknown) => setSubmit({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     }
 
-    restackRef.current = () => {
-      if (ended || restackQueue.length || !pieces.size) return 0;
-      restackQueue = shuffle([...pieces.values()]);
-      for (const p of restackQueue) {
+    /** 箱の中のピース(と extra)を全部取り出し、ランダムな順番で落とし直す。落とし終えるまでの見込み時間(ms)を返す */
+    function startRestack(extra: Piece[] = []) {
+      const all = [...pieces.values()];
+      for (const p of all) {
         Matter.Composite.remove(engine.world, p.body);
         pieces.delete(p.body.id);
       }
+      restackQueue = shuffle([...all, ...extra]);
       pending = [];
       restackNextAt = 0;
+      return restackQueue.length * RESTACK_INTERVAL_MS;
+    }
+
+    restackRef.current = () => {
+      if (ended || restackQueue.length || !pieces.size) return 0;
       restacks++;
       popups.push({ x: W / 2, y: RIM_Y - 30, text: `積み直し -${RESTACK_PENALTY}`, at: performance.now() });
+      const ms = startRestack();
       publishHud();
-      return restackQueue.length * RESTACK_INTERVAL_MS;
+      return ms;
+    };
+
+    /**
+     * かたまりを2つに割る地域の分け方。重心を通り、かたまりの長い方向に直角な線で切る(輪なら重心は
+     * だいたい穴のあたりに来るので、2つのC字に分かれて輪が開く)。切った片側が地続きでなければ、
+     * つながっている部分ごとに分かれるので、2つより多くなることもある
+     */
+    function splitRegions(ids: number[]): number[][] {
+      const regs = ids.map((id) => regions[id]);
+      const total = regs.reduce((sum, r) => sum + r.area, 0);
+      const mx = regs.reduce((sum, r) => sum + r.cx * r.area, 0) / total;
+      const my = regs.reduce((sum, r) => sum + r.cy * r.area, 0) / total;
+      let sxx = 0, sxy = 0, syy = 0;
+      for (const r of regs) {
+        const dx = r.cx - mx, dy = r.cy - my;
+        sxx += r.area * dx * dx; sxy += r.area * dx * dy; syy += r.area * dy * dy;
+      }
+      const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy); // 長い方向(主軸)
+      const proj = new Map(regs.map((r) => [r.id, (r.cx - mx) * Math.cos(theta) + (r.cy - my) * Math.sin(theta)]));
+      let sideA = ids.filter((id) => proj.get(id)! < 0);
+      if (!sideA.length || sideA.length === ids.length) {
+        // 偏っていて片側が空になる場合は、真ん中の順位で分ける
+        const sorted = ids.slice().sort((a, b) => proj.get(a)! - proj.get(b)!);
+        sideA = sorted.slice(0, Math.floor(sorted.length / 2));
+      }
+      const inA = new Set(sideA);
+      const sides = [sideA, ids.filter((id) => !inA.has(id))];
+      const parts: number[][] = [];
+      for (const side of sides) {
+        const left = new Set(side);
+        for (const start of side) {
+          if (!left.has(start)) continue;
+          const comp: number[] = [];
+          const stack = [start];
+          left.delete(start);
+          while (stack.length) {
+            const x = stack.pop()!;
+            comp.push(x);
+            for (const o of adjacency[x]) if (left.has(o)) { left.delete(o); stack.push(o); }
+          }
+          parts.push(comp);
+        }
+      }
+      return parts;
+    }
+
+    splitRef.current = () => {
+      if (ended || restackQueue.length) return 0;
+      let biggest: Piece | null = null;
+      for (const p of pieces.values()) if (!biggest || p.regionIds.length > biggest.regionIds.length) biggest = p;
+      if (!biggest || biggest.regionIds.length < 2) return 0;
+      Matter.Composite.remove(engine.world, biggest.body);
+      pieces.delete(biggest.body.id);
+      const tag = ++splitSeq;
+      const parts = splitRegions(biggest.regionIds).map((ids) => {
+        const part = buildPiece(ids, Math.random() * Math.PI * 2);
+        part.splitTag = tag;
+        return part;
+      });
+      splits++;
+      popups.push({ x: W / 2, y: RIM_Y - 30, text: `割って積み直し -${SPLIT_PENALTY}`, at: performance.now() });
+      const ms = startRestack(parts);
+      publishHud();
+      return ms;
     };
 
     /** 積み直し待ちのピースを1つずつ落とし直す */
@@ -937,8 +1084,13 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
             x: round2(p.body.position.x),
             y: round2(p.body.position.y),
             angle: round2(p.body.angle),
+            ...(p.splitTag !== null && { tag: p.splitTag }),
           })),
-          ...restackQueue.map((p) => ({ ids: p.regionIds, angle: round2(p.body.angle) })),
+          ...restackQueue.map((p) => ({
+            ids: p.regionIds,
+            angle: round2(p.body.angle),
+            ...(p.splitTag !== null && { tag: p.splitTag }),
+          })),
         ],
         // 構えていたピースは出題順の先頭に戻す
         queue: hover ? [hover.regionIds[0], ...queue] : queue.slice(),
@@ -947,6 +1099,8 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
         dropped,
         mergePoints,
         restacks,
+        splits,
+        joined: Array.from(joined),
         elapsedSec: startAt === null ? 0 : Math.floor((performance.now() - startAt) / 1000),
       };
     }
@@ -963,8 +1117,15 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
       dropped = snap.dropped;
       mergePoints = snap.mergePoints;
       restacks = snap.restacks;
+      splits = snap.splits ?? 0;
+      if (snap.joined?.length === regions.length && valid(snap.joined)) joined.set(snap.joined);
+      else for (const sp of snap.pieces) for (const id of sp.ids) joined[joinedRoot(id)] = joinedRoot(sp.ids[0]);
       for (const sp of snap.pieces) {
         const piece = buildPiece(sp.ids, sp.angle);
+        if (sp.tag !== undefined) {
+          piece.splitTag = sp.tag;
+          splitSeq = Math.max(splitSeq, sp.tag);
+        }
         if (sp.x === undefined || sp.y === undefined) {
           restackQueue.push(piece); // 積み直し待ちだったピースは落とし直す
           continue;
@@ -1168,6 +1329,19 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
           className="px-4 py-1.5 rounded-full border border-teal-300 text-sm text-teal-700 bg-white active:scale-[0.97] disabled:opacity-40"
         >
           🧱 積み直す<span className="ml-1 text-[10px]">-{RESTACK_PENALTY}点</span>
+        </button>
+        <button
+          type="button"
+          disabled={result !== null || restacking || hud.largest < 2}
+          onClick={() => {
+            const ms = splitRef.current();
+            if (!ms) return;
+            setRestacking(true);
+            setTimeout(() => setRestacking(false), ms + 500);
+          }}
+          className="px-4 py-1.5 rounded-full border border-rose-300 text-sm text-rose-700 bg-white active:scale-[0.97] disabled:opacity-40"
+        >
+          ✂️ 割って積み直す<span className="ml-1 text-[10px]">-{SPLIT_PENALTY}点</span>
         </button>
         <button
           type="button"
