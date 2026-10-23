@@ -18,6 +18,7 @@ import {
 } from "@/lib/game/completionData";
 import { areaLabelOf } from "@/lib/game/format";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
+import { FollowButton, FollowSummary } from "@/components/profile/FollowControls";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`;
@@ -158,13 +159,20 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex items-center justify-between">
-        <span className="text-lg font-bold text-[#3c2a14]">{view.nickname ? `👤 ${view.nickname}` : "ニックネーム未登録"}</span>
-        {view.isSelf && (
-          <Link href="/nickname" className="text-xs text-[#78716c] underline underline-offset-2">
-            {view.nickname ? "編集" : "設定する"}
-          </Link>
-        )}
+      <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-lg font-bold text-[#3c2a14] truncate">
+            {view.nickname ? `👤 ${view.nickname}` : "ニックネーム未登録"}
+          </span>
+          {view.isSelf ? (
+            <Link href="/nickname" className="shrink-0 text-xs text-[#78716c] underline underline-offset-2">
+              {view.nickname ? "編集" : "設定する"}
+            </Link>
+          ) : (
+            <FollowButton targetUserId={view.userId} />
+          )}
+        </div>
+        {view.isSelf && <FollowSummary />}
       </div>
 
       <div className="flex gap-2">
