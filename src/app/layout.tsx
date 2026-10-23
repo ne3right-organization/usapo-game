@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
 import ReturnPathTracker from "@/components/ReturnPathTracker";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
@@ -18,6 +19,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "usapo-game",
   description: "うさぽの境界データを使った地図ゲーム集",
+  applicationName: "うさぽ ゲームコーナー",
+  // iOSでホーム画面に追加したとき、ブラウザの枠なしで開くようにする
+  appleWebApp: {
+    capable: true,
+    title: "うさぽゲーム",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#fdf8f0",
 };
 
 export default function RootLayout({
@@ -37,6 +49,7 @@ export default function RootLayout({
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {/* Vercel Web Analytics(ページ閲覧数)。ログインせずに遊んだ人はDBに記録が残らないため、利用状況はこちらで見る */}
         <Analytics />
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

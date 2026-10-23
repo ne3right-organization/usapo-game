@@ -22,9 +22,12 @@ export default function Home() {
           <div className="mt-3">
             <AuthStatus />
           </div>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center justify-center gap-4">
             <Link href="/history" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
               📜 遊んだ履歴
+            </Link>
+            <Link href="/profile" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
+              🏅 コンプリート状況
             </Link>
           </div>
         </div>
@@ -105,6 +108,19 @@ export default function Home() {
           >
             ログインする →
           </Link>
+        </div>
+
+        {/* ホーム画面に追加(PWA) */}
+        <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5 mt-4">
+          <h2 className="text-sm font-bold text-[#3c2a14] mb-2">📱 ホーム画面に追加できます</h2>
+          <p className="text-sm text-[#78716c] leading-relaxed mb-3">
+            このサイトはアプリのようにホーム画面に追加して、ブラウザの枠なしで遊べます。
+          </p>
+          <ul className="text-sm text-[#78716c] leading-relaxed list-disc pl-5 space-y-1">
+            <li>iPhone・iPad（Safari）: 共有ボタン → 「ホーム画面に追加」</li>
+            <li>Android（Chrome）: 右上のメニュー → 「ホーム画面に追加」または「アプリをインストール」</li>
+            <li>パソコン（Chrome・Edge）: アドレスバー右端のインストールボタン</li>
+          </ul>
         </div>
 
       </div>
