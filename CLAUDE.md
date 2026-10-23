@@ -164,6 +164,12 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 - **ニックネーム設定**（`/nickname`）: 全ゲーム共通の設定としてサイト直下に移した。旧`/game/map-puzzle/nickname`はここへ転送
 - **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: 地図パズル・地図ポットンとも `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=` でエリア選択を飛ばして始まる。ランキング・最近のクリア一覧・履歴・Xシェアのリンクに使う
 - **最近クリアされたエリア**（各ゲームのトップ、`src/components/game/RecentClears.tsx`）: 誰がクリアしたかは出さない集計RPC（`fetch_recent_map_puzzle_clears` / `fetch_recent_map_pack_clears`、マイグレーション`20261020000001_recent_clears.sql`）。図鑑クイズの`fetch_recent_zukan_registrations`と同じく、未ログイン(anon)にも意図的に実行を許可している
+- **コンプリート状況（プロフィール）**（2026-10-23、`/profile`=自分・`/profile/[userId]`=他人、`?game=&level=`でタブ指定。`src/components/profile/`・`src/lib/game/completionData.ts`）: ゲーム（地図パズル/地図ポットン/図鑑クイズ）×レベルごとに、クリアしたエリアを地図で塗って見せる。要ログイン、公開範囲は既存RLSのまま（ニックネーム未登録の人は他人からは非公開）。未クリアのエリアをタップするとそのエリアのプレイ画面に飛べる（図鑑クイズは出題がランダムなのでレベルの画面に飛ぶだけ）
+  - 初級は全国1エリア、中級は都道府県の地図、上級・図鑑クイズは市区町村が単位。市区町村は**全国ぶんのgeojsonを一度に読まない**（図鑑・むずかしいの教訓）。全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県の市区町村geojsonだけを読む
+  - 地図ポットンはあきらめた挑戦もベスト記録に入るため、`game_map_pack_best.first_cleared_at`（マイグレーション`20261023000000_map_pack_best_first_cleared.sql`）で完成済みかを判定する
+  - 図鑑クイズは上の難易度で登録した市区町村を下の難易度でもクリア扱いにしている
+- **地図ポットンのランキング**: 点数の上に「◯エリア合計」、下の行に「🏅 最高◯点（エリア）」を出す。カードをタップするとその人のエリア一覧（`MapPackUserAreas`）が開き、コンプリート状況へのリンクもある
+- **PWA**（2026-10-23）: `src/app/manifest.ts`・アイコン（ユーザー提供の地図パズル柄の画像から、角丸の外の白がかからないよう各辺を元画像の約9%内側で正方形に切り抜いて`public/icons/icon-{192,512}.png`・`src/app/apple-icon.png`・`src/app/icon.png`(ファビコン)を作った）・`public/sw.js`。サービスワーカーは**オフライン時にページ遷移の代わりに`/offline`を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないようにするため）。登録は本番ビルドのみ（`ServiceWorkerRegister`）
 - **Xシェア**（`src/lib/game/share.ts`）: 地図ポットンの結果画面と地図パズルのクリア画面に「𝕏 でシェア」。投稿には同じエリアのプレイ画面へのリンクを入れる
 
 ## 地図ポットン（旧称: 地図パック。2026-10-19 プロトタイプ実装、`feature/map-pack`ブランチ）

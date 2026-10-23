@@ -205,10 +205,40 @@ export async function fetchMapPackModeRanking(
       nickname: row.nickname,
       bestScore: row.total_score,
       lastPlayedAt: row.last_played_at,
-      detail: `${row.areas_count}エリア・最高 ${row.top_score.toLocaleString()}点（${topLabel}）`,
+      detail: `🏅 最高 ${row.top_score.toLocaleString()}点（${topLabel}）`,
+      scoreCaption: `${row.areas_count}エリア合計`,
     };
   });
   return { items, nextCursor: items.length === limit ? String(offset + limit) : null };
+}
+
+/** ランキングのカードを開いたときに出す、その人のその難易度のエリア一覧(点数の高い順) */
+export interface MapPackUserArea extends MapPackArea {
+  bestScore: number;
+  cleared: boolean;
+  playCount: number;
+}
+
+export async function fetchMapPackUserAreas(userId: string, difficulty: Difficulty): Promise<MapPackUserArea[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("game_map_pack_best")
+    .select("pref_code, pref_name, city_code, city_name, best_score, first_cleared_at, play_count")
+    .eq("user_id", userId)
+    .eq("difficulty", difficulty)
+    .order("best_score", { ascending: false })
+    .limit(1000);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    difficulty,
+    prefCode: row.pref_code,
+    prefName: row.pref_name,
+    cityCode: row.city_code ?? undefined,
+    cityName: row.city_name ?? undefined,
+    bestScore: row.best_score,
+    cleared: row.first_cleared_at != null,
+    playCount: row.play_count,
+  }));
 }
 
 export async function fetchMapPackAreaRanking(
