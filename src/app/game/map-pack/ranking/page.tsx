@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Difficulty, RankingEntry } from "@/lib/game/mapPuzzleData";
 import { fetchMapPackModeRanking } from "@/lib/game/mapPackData";
-import { mapPackPlayHref, mapPuzzlePlayHref } from "@/lib/game/playLinks";
 import { DIFFICULTY_LABELS } from "@/lib/game/format";
 import RankingList from "@/components/game/map-puzzle/RankingList";
+import MapPackUserAreas from "@/components/game/map-pack/MapPackUserAreas";
 
 const DIFFICULTIES: Difficulty[] = ["beginner", "intermediate", "advanced"];
 
@@ -84,7 +84,7 @@ export default function MapPackRankingPage() {
         </div>
 
         <p className="text-xs text-[#a8937a] mb-3">
-          エリアごとの自己ベストの合計点で、1人1行に並べています
+          エリアごとの自己ベストの合計点で、1人1行に並べています。タップするとその人のエリア一覧が見られます
         </p>
 
         {loading && <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}
@@ -106,11 +106,7 @@ export default function MapPackRankingPage() {
               items={items}
               showArea
               profileBasePath={null}
-              playLinks={(item) => [
-                { label: "▶ 遊ぶ", href: mapPackPlayHref(item) },
-                // 同じエリアの地図パズルにも飛べるようにする
-                { label: "🗺️ 地図パズル", href: mapPuzzlePlayHref(item) },
-              ]}
+              renderExpanded={(item) => <MapPackUserAreas userId={item.userId} difficulty={difficulty} />}
             />
             {nextCursor && (
               <button

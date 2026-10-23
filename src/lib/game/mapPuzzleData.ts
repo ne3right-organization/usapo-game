@@ -85,8 +85,10 @@ export interface RankingEntry extends AreaInfo {
   nickname: string | null;
   bestScore: number;
   lastPlayedAt: string;
-  /** エリア名の代わりに出す補足(1人1行に集計したランキングで「〇エリア・最高〇点(エリア名)」を出す) */
+  /** エリア名の代わりに出す補足(1人1行に集計したランキングで「最高〇点(エリア名)」を出す) */
   detail?: string;
+  /** 点数の上に添える説明(1人1行に集計したランキングで「〇エリア合計」と出す) */
+  scoreCaption?: string;
 }
 
 export interface RankingPage {

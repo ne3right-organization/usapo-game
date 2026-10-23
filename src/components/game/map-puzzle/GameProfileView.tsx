@@ -19,7 +19,7 @@ type ViewState =
   | { status: "loading" }
   | { status: "needs-login" }
   | { status: "private" }
-  | { status: "ready"; isSelf: boolean; profile: GameProfilePublic | null; bestList: BestRecord[] };
+  | { status: "ready"; isSelf: boolean; userId: string; profile: GameProfilePublic | null; bestList: BestRecord[] };
 
 export default function GameProfileView({ targetUserId }: GameProfileViewProps) {
   const [state, setState] = useState<ViewState>({ status: "loading" });
@@ -49,7 +49,7 @@ export default function GameProfileView({ targetUserId }: GameProfileViewProps) 
         }
 
         const bestList = await fetchBestList(targetUserId);
-        if (!cancelled) setState({ status: "ready", isSelf, profile, bestList });
+        if (!cancelled) setState({ status: "ready", isSelf, userId: targetUserId ?? user.id, profile, bestList });
       } catch {
         if (!cancelled) setState({ status: "needs-login" });
       }
@@ -85,7 +85,7 @@ export default function GameProfileView({ targetUserId }: GameProfileViewProps) 
     );
   }
 
-  const { isSelf, profile, bestList } = state;
+  const { isSelf, userId, profile, bestList } = state;
 
   return (
     <div className="flex flex-col gap-4">
@@ -117,6 +117,12 @@ export default function GameProfileView({ targetUserId }: GameProfileViewProps) 
             </div>
           </div>
         </div>
+        <Link
+          href={`/profile/${userId}?game=map-puzzle`}
+          className="block mt-3 text-center text-sm font-semibold text-teal-700 underline underline-offset-2"
+        >
+          🏅 コンプリート状況を地図で見る →
+        </Link>
       </div>
 
       <div>
