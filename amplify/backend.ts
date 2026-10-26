@@ -1,4 +1,5 @@
 import { defineBackend } from "@aws-amplify/backend";
+import { Tags } from "aws-cdk-lib";
 import { CfnUserPoolDomain } from "aws-cdk-lib/aws-cognito";
 import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
@@ -29,6 +30,10 @@ backend.data.resources.cfnResources.amplifyDynamoDbTables["GameZukanQuizSession"
   attributeName: "expiresAt",
   enabled: true,
 };
+
+// 費用を Cost Explorer で見分けられるよう、バックエンドの全リソースに付ける
+// (使うには Payer の請求コンソールでコスト配分タグとして有効にする)
+Tags.of(backend.stack).add("project", "usapo-game");
 
 // メール・パスワードでの自己登録を止める(Google でのログインはこの設定の影響を受けない)
 backend.auth.resources.cfnResources.cfnUserPool.adminCreateUserConfig = {

@@ -7,6 +7,7 @@ const appId = process.env.AWS_APP_ID;
 // Amplify でブランチに付けた独自ドメイン
 const CUSTOM_DOMAINS: Record<string, string> = {
   develop: "https://devgame.usapo.net",
+  main: "https://game.usapo.net",
 };
 const origins = [
   ...(CUSTOM_DOMAINS[branch] ? [CUSTOM_DOMAINS[branch]] : []),
