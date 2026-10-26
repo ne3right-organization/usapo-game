@@ -3,7 +3,12 @@ import { defineAuth, secret } from "@aws-amplify/backend";
 // Amplify のビルドでは AWS_BRANCH / AWS_APP_ID が入る。sandbox(手元)では入らない
 export const branch = (process.env.AWS_BRANCH ?? "sandbox").replace(/[^a-z0-9-]/gi, "-").toLowerCase();
 const appId = process.env.AWS_APP_ID;
+// Amplify でブランチに付けた独自ドメイン
+const CUSTOM_DOMAINS: Record<string, string> = {
+  develop: "https://devgame.usapo.net",
+};
 const origins = [
+  ...(CUSTOM_DOMAINS[branch] ? [CUSTOM_DOMAINS[branch]] : []),
   ...(appId ? [`https://${branch}.${appId}.amplifyapp.com`] : []),
   "http://localhost:3000",
 ];
