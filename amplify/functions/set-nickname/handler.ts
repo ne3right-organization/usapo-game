@@ -37,7 +37,7 @@ export const handler: Schema["setNickname"]["functionHandler"] = async (event) =
   do {
     const page = await c.models.GameMapPackUserTotal.list({ userId, nextToken });
     for (const total of unwrap(page)) {
-      unwrap(await c.models.GameMapPackUserTotal.update({ userId, difficulty: total.difficulty, nickname }));
+      unwrap(await c.models.GameMapPackUserTotal.update({ userId, level: total.level, nickname }));
     }
     nextToken = page.nextToken;
   } while (nextToken);

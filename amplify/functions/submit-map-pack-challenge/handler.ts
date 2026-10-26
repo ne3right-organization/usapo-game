@@ -136,6 +136,7 @@ async function refreshUserTotal(
 
   const fields = {
     userId,
+    level: difficulty,
     difficulty,
     nickname,
     totalScore,
@@ -147,6 +148,6 @@ async function refreshUserTotal(
     topScore: top.bestScore,
     lastPlayedAt,
   };
-  const existing = unwrap(await c.models.GameMapPackUserTotal.get({ userId, difficulty }));
+  const existing = unwrap(await c.models.GameMapPackUserTotal.get({ userId, level: difficulty }));
   unwrap(existing ? await c.models.GameMapPackUserTotal.update(fields) : await c.models.GameMapPackUserTotal.create(fields));
 }

@@ -171,6 +171,7 @@ const schema = a
     GameMapPackUserTotal: a
       .model({
         userId: a.id().required(),
+        level: a.string().required(), // difficulty と同じ値。主キーに enum は使えないため文字列で持つ
         difficulty: a.ref("GameDifficulty").required(),
         nickname: a.string(),
         totalScore: a.integer().required(),
@@ -182,7 +183,7 @@ const schema = a
         topScore: a.integer().required(),
         lastPlayedAt: a.datetime().required(),
       })
-      .identifier(["userId", "difficulty"])
+      .identifier(["userId", "level"])
       .secondaryIndexes((index) => [
         index("difficulty").sortKeys(["totalScore"]).queryField("listMapPackUserTotalsByDifficulty"),
       ])
