@@ -16,7 +16,8 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const areaKey = `${prefCode}#${cityCode}`;
   const c = await dataClient(env);
 
-  if (event.info.fieldName === "deleteZukanComment") {
+  // Amplify Gen2 の関数には event.info が来ないので、本文(body)の有無で見分ける(投稿は body が必須、削除には無い)
+  if (event.arguments.body === undefined) {
     await c.models.GameZukanComment.delete({ areaKey, userId });
     return true;
   }
