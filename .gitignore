@@ -45,3 +45,8 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# amplify
+.amplify
+amplify_outputs*
+amplifyconfiguration*
