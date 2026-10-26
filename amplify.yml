@@ -6,7 +6,8 @@ backend:
         # Next.js 16 は Node.js 20.9 以上が必要
         - nvm install 22
         - nvm use 22
-        - npm ci
+        # npm ci はAmplifyのパッケージ(data-construct)が同梱するsemverとロックファイルが合わず失敗するため install を使う
+        - npm install --no-audit --no-fund
     build:
       commands:
         # Cognito などのバックエンドをデプロイし、画面側が読む amplify_outputs.json を作る
