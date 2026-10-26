@@ -41,9 +41,14 @@ export interface ZukanQuizQuestion {
   households: number;
 }
 
-/** a.json の項目は文字列で返ることがあるので、どちらでも受け取れるようにする */
+/**
+ * a.json の項目は文字列で返る。Lambda で JSON にした値を AppSync がさらに文字列として包むので、
+ * 二重になっていることがある。文字列である限り戻し続ける
+ */
 function parseJson<T>(value: unknown): T {
-  return (typeof value === "string" ? JSON.parse(value) : value) as T;
+  let v = value;
+  while (typeof v === "string") v = JSON.parse(v);
+  return v as T;
 }
 
 // excludeCityCodes: 同一セッション内で既に出題した自治体("prefCode:cityCode")。再出題を避ける

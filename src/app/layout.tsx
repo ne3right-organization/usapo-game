@@ -4,7 +4,6 @@ import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
 import ReturnPathTracker from "@/components/ReturnPathTracker";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
-import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,7 +47,6 @@ export default function RootLayout({
         {/* 各ページの main は min-h-full 前提なので、ヘッダーを除いた残りの高さを親にしてはみ出さないようにする */}
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {/* Vercel Web Analytics(ページ閲覧数)。ログインせずに遊んだ人はDBに記録が残らないため、利用状況はこちらで見る */}
-        <Analytics />
         <ServiceWorkerRegister />
       </body>
     </html>

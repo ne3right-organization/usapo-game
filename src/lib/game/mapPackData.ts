@@ -288,7 +288,9 @@ export function clearMapPackSessionSaves(difficulty: Difficulty, geojsonUrl?: st
 /** state(a.json)は文字列で書き、読むと文字列で返ることがあるので、どちらでも受け取れるようにする */
 function parseSnapshot(state: unknown): MapPackSnapshot | null {
   try {
-    const snap = (typeof state === "string" ? JSON.parse(state) : state) as MapPackSnapshot | null;
+    let value: unknown = state;
+    while (typeof value === "string") value = JSON.parse(value); // 二重に文字列化されていることがある
+    const snap = value as MapPackSnapshot | null;
     return snap?.version === 1 ? snap : null;
   } catch {
     return null;
