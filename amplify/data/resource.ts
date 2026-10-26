@@ -1,6 +1,7 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 import { claimZukanQuizAnswer } from "../functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
+import { setFollowing } from "../functions/set-following/resource";
 import { setNickname } from "../functions/set-nickname/resource";
 import { submitMapPackChallenge } from "../functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "../functions/submit-map-puzzle-challenge/resource";
@@ -261,6 +262,25 @@ const schema = a
       ])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
 
+    // ─── フォロー ───────────────────────────────────────────────────────────
+    // フォロー関係はフォローした本人とされた本人にしか見えない。フォロー・解除は「お互いにニックネーム設定済み」の
+    // 確認が要るので、カスタムミューテーション(setFollowing)だけが書く
+    GameFollow: a
+      .model({
+        followerId: a.id().required(),
+        followeeId: a.id().required(),
+        followedAt: a.datetime().required(),
+      })
+      .identifier(["followerId", "followeeId"])
+      .secondaryIndexes((index) => [
+        index("followerId").sortKeys(["followedAt"]).queryField("listFollowingByUser"),
+        index("followeeId").sortKeys(["followedAt"]).queryField("listFollowersByUser"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("followerId").identityClaim("sub").to(["read"]),
+        allow.ownerDefinedIn("followeeId").identityClaim("sub").to(["read"]),
+      ]),
+
     // ─── 最近のクリア(3ゲーム共通) ──────────────────────────────────────────
     // 各ゲームのトップに出す「最近クリアされたエリア」。誰がクリアしたかは持たない。未ログインでも読める。
     // game = map-puzzle / map-pack / zukan-quiz、areaKey はゲームごとのエリアのキー
@@ -383,6 +403,13 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(zukanComment)),
 
+    setFollowing: a
+      .mutation()
+      .arguments({ followeeId: a.id().required(), follow: a.boolean().required() })
+      .returns(a.boolean())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(setFollowing)),
+
     setNickname: a
       .mutation()
       .arguments({ nickname: a.string() })
@@ -398,6 +425,7 @@ const schema = a
     allow.resource(startZukanQuiz),
     allow.resource(claimZukanQuizAnswer),
     allow.resource(zukanComment),
+    allow.resource(setFollowing),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

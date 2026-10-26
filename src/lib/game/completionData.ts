@@ -1,15 +1,16 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
+import { data, unwrap } from "@/lib/amplify/data";
 import type { Difficulty } from "@/lib/game/mapPuzzleData";
 import { mapPackPlayHref, mapPuzzlePlayHref } from "@/lib/game/playLinks";
 import { ZUKAN_DIFFICULTIES } from "@/lib/game/zukanQuizDifficulty";
 
 // プロフィールのコンプリート表示用。ゲーム×レベルごとに、そのユーザーがクリアしたエリアを集める。
-// 公開範囲は各テーブルのRLSのまま(本人か、ニックネームを設定した人の記録だけが読める)。
-//   地図パズル: game_map_puzzle_best の全行(完成した挑戦しか記録しない)
-//   地図ポットン: game_map_pack_best のうち first_cleared_at がある行(あきらめた挑戦も記録するため)
-//   図鑑クイズ: game_zukan_collections。上の難易度で登録した市区町村は下の難易度でもクリア扱いにする
+// データは Amplify Data(ログインしていれば誰の記録でも読める。他人のプロフィールを開けるのは
+// ニックネームを設定した人だけ、という制限はプロフィールの画面側で行っている)。
+//   地図パズル: GameMapPuzzleBest の全件(完成した挑戦しか記録しない)
+//   地図ポットン: GameMapPackBest のうち firstClearedAt があるもの(あきらめた挑戦も記録するため)
+//   図鑑クイズ: GameZukanCollection。上の難易度で登録した市区町村は下の難易度でもクリア扱いにする
 
 export type CompletionGame = "map-puzzle" | "map-pack" | "zukan-quiz";
 
@@ -63,75 +64,71 @@ export function completionPlayHref(
   return area ? href({ difficulty: level, ...area }) : `/game/${game}/${level}`;
 }
 
-const PAGE_SIZE = 1000; // PostgREST が1回に返す行数の上限
-
 interface AreaRow {
   difficulty: Difficulty;
-  pref_code: string;
-  pref_name: string;
-  city_code: string | null;
-  city_name: string | null;
-  best_score: number;
+  prefCode: string;
+  prefName: string;
+  cityCode?: string | null;
+  cityName?: string | null;
+  bestScore: number;
 }
 
-async function fetchBestRows(table: "game_map_puzzle_best" | "game_map_pack_best", userId: string): Promise<AreaRow[]> {
-  const supabase = createClient();
+/** ある人のベスト記録を全部(ページを最後までたどる)。地図ポットンは完成させたものだけ */
+async function fetchBestRows(game: "map-puzzle" | "map-pack", userId: string): Promise<AreaRow[]> {
   const rows: AreaRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    let query = supabase
-      .from(table)
-      .select("difficulty, pref_code, pref_name, city_code, city_name, best_score")
-      .eq("user_id", userId)
-      .order("id", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (table === "game_map_pack_best") query = query.not("first_cleared_at", "is", null);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    rows.push(...((data ?? []) as AreaRow[]));
-    if (!data || data.length < PAGE_SIZE) return rows;
-  }
+  let nextToken: string | null | undefined;
+  do {
+    if (game === "map-puzzle") {
+      const page = await data.models.GameMapPuzzleBest.list({ userId, nextToken });
+      rows.push(...unwrap(page).map((b) => ({ ...b, difficulty: b.difficulty as Difficulty })));
+      nextToken = page.nextToken;
+    } else {
+      const page = await data.models.GameMapPackBest.list({ userId, nextToken });
+      rows.push(
+        ...unwrap(page)
+          .filter((b) => b.firstClearedAt != null)
+          .map((b) => ({ ...b, difficulty: b.difficulty as Difficulty }))
+      );
+      nextToken = page.nextToken;
+    }
+  } while (nextToken);
+  return rows;
 }
 
 function groupByLevel(rows: AreaRow[]): CompletionData {
   const out: CompletionData = { beginner: [], intermediate: [], advanced: [] };
   for (const r of rows) {
     out[r.difficulty].push({
-      prefCode: r.pref_code,
-      prefName: r.pref_name,
-      cityCode: r.city_code ?? undefined,
-      cityName: r.city_name ?? undefined,
-      bestScore: r.best_score,
+      prefCode: r.prefCode,
+      prefName: r.prefName,
+      cityCode: r.cityCode ?? undefined,
+      cityName: r.cityName ?? undefined,
+      bestScore: r.bestScore,
     });
   }
   return out;
 }
 
 async function fetchZukanCompletion(userId: string): Promise<CompletionData> {
-  const supabase = createClient();
   const out: CompletionData = { beginner: [], intermediate: [], advanced: [] };
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from("game_zukan_collections")
-      .select("pref_code, pref_name, city_code, city_name, best_difficulty")
-      .eq("user_id", userId)
-      .order("pref_code", { ascending: true })
-      .order("city_code", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(error.message);
-    for (const r of data ?? []) {
-      const area: ClearedArea = { prefCode: r.pref_code, prefName: r.pref_name, cityCode: r.city_code, cityName: r.city_name };
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameZukanCollection.list({ userId, nextToken });
+    for (const r of unwrap(page)) {
+      const area: ClearedArea = { prefCode: r.prefCode, prefName: r.prefName, cityCode: r.cityCode, cityName: r.cityName };
       // 上の難易度で登録したカードは、それより下の難易度でもクリア扱い
-      const rank = ZUKAN_DIFFICULTIES.indexOf(r.best_difficulty);
-      ZUKAN_DIFFICULTIES.forEach((d, i) => {
-        if (i <= rank) out[d].push(area);
+      const rank = ZUKAN_DIFFICULTIES.indexOf(r.bestDifficulty as (typeof ZUKAN_DIFFICULTIES)[number]);
+      ZUKAN_DIFFICULTIES.forEach((d, k) => {
+        if (k <= rank) out[d].push(area);
       });
     }
-    if (!data || data.length < PAGE_SIZE) return out;
-  }
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return out;
 }
 
 export async function fetchCompletion(game: CompletionGame, userId: string): Promise<CompletionData> {
   if (game === "zukan-quiz") return fetchZukanCompletion(userId);
-  const rows = await fetchBestRows(game === "map-puzzle" ? "game_map_puzzle_best" : "game_map_pack_best", userId);
+  const rows = await fetchBestRows(game, userId);
   return groupByLevel(rows);
 }

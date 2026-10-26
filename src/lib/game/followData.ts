@@ -1,17 +1,19 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import { currentUser } from "@/lib/auth";
+import { data, unwrap, type Schema } from "@/lib/amplify/data";
 
-// フォロー機能のデータアクセス(テーブルは supabase/migrations/20261023000001_follows.sql)。
-// RLS で「フォローした本人とされた本人にだけ見える」「フォロー・解除は本人だけ」を強制しているので、
-// クライアントから直接読み書きする
+// フォロー機能のデータアクセス(GameFollow)。フォロー関係はフォローした本人とされた本人にだけ見え
+// (モデルの認可)、フォロー・解除はカスタムミューテーション(amplify/functions/set-following)が
+// 「お互いにニックネーム設定済み」を確かめてから行う
 
 export interface FollowUser {
   userId: string;
   nickname: string | null;
   followedAt: string;
 }
+
+type FollowItem = Schema["GameFollow"]["type"];
 
 async function requireUserId(): Promise<string> {
   const user = await currentUser();
@@ -20,67 +22,50 @@ async function requireUserId(): Promise<string> {
 }
 
 export async function isFollowing(followeeId: string): Promise<boolean> {
-  const supabase = createClient();
-  const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from("game_follows")
-    .select("followee_id")
-    .eq("follower_id", userId)
-    .eq("followee_id", followeeId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data != null;
+  const followerId = await requireUserId();
+  return unwrap(await data.models.GameFollow.get({ followerId, followeeId })) != null;
 }
 
 export async function follow(followeeId: string): Promise<void> {
-  const supabase = createClient();
-  const userId = await requireUserId();
-  const { error } = await supabase.from("game_follows").insert({ follower_id: userId, followee_id: followeeId });
-  // 23505: すでにフォロー済み(別のタブで押した等)。結果は同じなのでエラーにしない
-  if (error && error.code !== "23505") throw new Error(error.message);
+  await requireUserId();
+  unwrap(await data.mutations.setFollowing({ followeeId, follow: true }));
 }
 
 export async function unfollow(followeeId: string): Promise<void> {
-  const supabase = createClient();
-  const userId = await requireUserId();
-  const { error } = await supabase
-    .from("game_follows")
-    .delete()
-    .eq("follower_id", userId)
-    .eq("followee_id", followeeId);
-  if (error) throw new Error(error.message);
+  await requireUserId();
+  unwrap(await data.mutations.setFollowing({ followeeId, follow: false }));
+}
+
+/** 自分のフォロワー(kind=followers)か、自分がフォローしている人(kind=following)を全部。新しい順 */
+async function listFollows(kind: "followers" | "following", userId: string): Promise<FollowItem[]> {
+  const items: FollowItem[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page =
+      kind === "followers"
+        ? await data.models.GameFollow.listFollowersByUser({ followeeId: userId }, { sortDirection: "DESC", nextToken })
+        : await data.models.GameFollow.listFollowingByUser({ followerId: userId }, { sortDirection: "DESC", nextToken });
+    items.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return items;
 }
 
 export async function fetchFollowCounts(): Promise<{ followers: number; following: number }> {
-  const supabase = createClient();
   const userId = await requireUserId();
-  const [followers, following] = await Promise.all([
-    supabase.from("game_follows").select("*", { count: "exact", head: true }).eq("followee_id", userId),
-    supabase.from("game_follows").select("*", { count: "exact", head: true }).eq("follower_id", userId),
-  ]);
-  if (followers.error) throw new Error(followers.error.message);
-  if (following.error) throw new Error(following.error.message);
-  return { followers: followers.count ?? 0, following: following.count ?? 0 };
+  const [followers, following] = await Promise.all([listFollows("followers", userId), listFollows("following", userId)]);
+  return { followers: followers.length, following: following.length };
 }
 
-/** 自分のフォロワー(kind=followers)か、自分がフォローしている人(kind=following)の一覧。新しい順 */
 export async function fetchFollowList(kind: "followers" | "following"): Promise<FollowUser[]> {
-  const supabase = createClient();
   const userId = await requireUserId();
-  // 相手のニックネームを外部キー経由で一緒に引く。ニックネームを消した人は game_profiles のRLSで見えず null になる
-  const query =
-    kind === "followers"
-      ? supabase
-          .from("game_follows")
-          .select("user_id:follower_id, created_at, profile:game_profiles!game_follows_follower_id_fkey(nickname)")
-          .eq("followee_id", userId)
-      : supabase
-          .from("game_follows")
-          .select("user_id:followee_id, created_at, profile:game_profiles!game_follows_followee_id_fkey(nickname)")
-          .eq("follower_id", userId);
-  const { data, error } = await query.order("created_at", { ascending: false }).limit(1000);
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as unknown as { user_id: string; created_at: string; profile: { nickname: string | null } | null }[]).map(
-    (row) => ({ userId: row.user_id, nickname: row.profile?.nickname ?? null, followedAt: row.created_at }),
+  const items = await listFollows(kind, userId);
+  // 相手のニックネームはプロフィールから引く(join が無いので1人ずつ)
+  return Promise.all(
+    items.map(async (item) => {
+      const otherId = kind === "followers" ? item.followerId : item.followeeId;
+      const profile = unwrap(await data.models.GameProfile.get({ userId: otherId }));
+      return { userId: otherId, nickname: profile?.nickname ?? null, followedAt: item.followedAt };
+    })
   );
 }

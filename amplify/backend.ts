@@ -4,6 +4,7 @@ import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
 import { claimZukanQuizAnswer } from "./functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
+import { setFollowing } from "./functions/set-following/resource";
 import { setNickname } from "./functions/set-nickname/resource";
 import { submitMapPackChallenge } from "./functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "./functions/submit-map-puzzle-challenge/resource";
@@ -20,6 +21,7 @@ const backend = defineBackend({
   startZukanQuiz,
   claimZukanQuizAnswer,
   zukanComment,
+  setFollowing,
 });
 
 // 回答されなかった図鑑クイズの出題は、期限(expiresAt)が過ぎたら DynamoDB が消す
