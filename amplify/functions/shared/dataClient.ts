@@ -1,0 +1,33 @@
+import { Amplify } from "aws-amplify";
+import { generateClient } from "aws-amplify/data";
+import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
+import type { Schema } from "../../data/resource";
+
+type FunctionEnv = Parameters<typeof getAmplifyDataClientConfig>[0];
+
+export type DataClient = ReturnType<typeof generateClient<Schema>>;
+
+let client: DataClient | null = null;
+
+/** Lambda から Amplify Data を IAM で読み書きするクライアント(スキーマの allow.resource で権限を付けている) */
+export async function dataClient(env: FunctionEnv): Promise<DataClient> {
+  if (client) return client;
+  const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+  Amplify.configure(resourceConfig, libraryOptions);
+  client = generateClient<Schema>();
+  return client;
+}
+
+/** Amplify Data の結果を、エラーなら例外にして中身だけ返す */
+export function unwrap<R extends { data: unknown; errors?: readonly { message: string }[] }>(res: R): R["data"] {
+  if (res.errors?.length) throw new Error(res.errors.map((e) => e.message).join("; "));
+  return res.data;
+}
+
+/** プロフィールが無ければ作る(初回ログインのトリガーより前からいる人や、トリガーが失敗した場合の保険) */
+export async function ensureProfile(c: DataClient, userId: string): Promise<{ nickname: string | null }> {
+  const existing = unwrap(await c.models.GameProfile.get({ userId }));
+  if (existing) return { nickname: existing.nickname ?? null };
+  unwrap(await c.models.GameProfile.create({ userId, totalScore: 0, areasPlayedCount: 0 }));
+  return { nickname: null };
+}

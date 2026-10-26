@@ -1,4 +1,5 @@
 import { defineAuth, secret } from "@aws-amplify/backend";
+import { createGameProfile } from "../functions/create-game-profile/resource";
 
 // Amplify のビルドでは AWS_BRANCH / AWS_APP_ID が入る。sandbox(手元)では入らない
 export const branch = (process.env.AWS_BRANCH ?? "sandbox").replace(/[^a-z0-9-]/gi, "-").toLowerCase();
@@ -33,4 +34,6 @@ export const auth = defineAuth({
       logoutUrls: origins.map((o) => `${o}/`),
     },
   },
+  // 初めてログインしたときにプロフィール(ニックネーム未設定)を作る
+  triggers: { postConfirmation: createGameProfile },
 });

@@ -1,14 +1,12 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import type { Difficulty } from "@/components/game/map-puzzle/MapPuzzleGame";
 import { currentUser } from "@/lib/auth";
+import { HAS_NICKNAME, areaKeyOf, data, rankingKeyOf, unwrap, type Schema } from "@/lib/amplify/data";
 
-// このファイルは元実装(team-kokuusa-platform-frontend)の
-// src/lib/game/{mapPuzzleClient,gameProfileClient,rankingClient}.ts に相当する。
-// 元実装はNext.js API RouteがAppSyncへのプロキシだったが、
-// Supabaseでは RLS (supabase/migrations 参照) がアクセス制御を担うため、
-// クライアントから直接 supabase-js で読み書きする構成にしている。
+// 地図パズルとプロフィールのデータ。Amplify Data(amplify/data/resource.ts)をブラウザから直接呼ぶ。
+// 得点・ベスト記録・合計はクライアントから書けず、記録の送信とニックネームの変更は
+// カスタムミューテーション(amplify/functions)が行う。設計は docs/amplify_data_migration.md
 
 export type { Difficulty };
 
@@ -99,109 +97,65 @@ export interface RankingPage {
 
 // ─── 変換ヘルパー ────────────────────────────────────────────────────────────
 
-interface ChallengeRow {
-  id: string;
-  difficulty: Difficulty;
-  pref_code: string;
-  pref_name: string;
-  city_code: string | null;
-  city_name: string | null;
-  total_pieces: number;
-  miss_count: number;
-  elapsed_seconds: number;
-  base_score: number;
-  time_bonus: number;
-  miss_penalty: number;
-  score: number;
-  is_new_best: boolean;
-  comment: string | null;
-  played_at: string;
-}
+type ChallengeItem = Schema["GameMapPuzzleChallenge"]["type"];
+type ProgressItem = Schema["GameMapPuzzleProgress"]["type"];
+type BestItem = Schema["GameMapPuzzleBest"]["type"];
 
-function rowToChallenge(row: ChallengeRow): ChallengeRecord {
+function areaOf(item: {
+  difficulty: Difficulty | null;
+  prefCode: string;
+  prefName: string;
+  cityCode?: string | null;
+  cityName?: string | null;
+}): AreaInfo {
   return {
-    id: row.id,
-    difficulty: row.difficulty,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code ?? undefined,
-    cityName: row.city_name ?? undefined,
-    totalPieces: row.total_pieces,
-    missCount: row.miss_count,
-    elapsedSeconds: row.elapsed_seconds,
-    baseScore: row.base_score,
-    timeBonus: row.time_bonus,
-    missPenalty: row.miss_penalty,
-    score: row.score,
-    isNewBest: row.is_new_best,
-    comment: row.comment,
-    playedAt: row.played_at,
+    difficulty: item.difficulty as Difficulty,
+    prefCode: item.prefCode,
+    prefName: item.prefName,
+    cityCode: item.cityCode ?? undefined,
+    cityName: item.cityName ?? undefined,
   };
 }
 
-interface ProgressRow {
-  id: string;
-  difficulty: Difficulty;
-  pref_code: string;
-  pref_name: string;
-  city_code: string | null;
-  city_name: string | null;
-  placed_ids: number[];
-  miss_count: number;
-  elapsed_seconds: number;
-  saved_at: string;
-}
-
-function rowToProgress(row: ProgressRow): SavedProgressRecord {
+function toChallenge(item: ChallengeItem): ChallengeRecord {
   return {
-    id: row.id,
-    difficulty: row.difficulty,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code ?? undefined,
-    cityName: row.city_name ?? undefined,
-    placedIds: row.placed_ids,
-    missCount: row.miss_count,
-    elapsedSeconds: row.elapsed_seconds,
-    savedAt: row.saved_at,
+    ...areaOf(item),
+    id: item.id,
+    totalPieces: item.totalPieces,
+    missCount: item.missCount,
+    elapsedSeconds: item.elapsedSeconds,
+    baseScore: item.baseScore,
+    timeBonus: item.timeBonus,
+    missPenalty: item.missPenalty,
+    score: item.score,
+    isNewBest: item.isNewBest,
+    comment: item.comment ?? null,
+    playedAt: item.playedAt,
   };
 }
 
-interface BestRow {
-  difficulty: Difficulty;
-  pref_code: string;
-  pref_name: string;
-  city_code: string | null;
-  city_name: string | null;
-  best_score: number;
-  play_count: number;
-  last_played_at: string;
-}
-
-function rowToBest(row: BestRow): BestRecord {
+function toProgress(item: ProgressItem): SavedProgressRecord {
   return {
-    difficulty: row.difficulty,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code ?? undefined,
-    cityName: row.city_name ?? undefined,
-    bestScore: row.best_score,
-    playCount: row.play_count,
-    lastPlayedAt: row.last_played_at,
+    ...areaOf(item),
+    id: item.areaKey,
+    placedIds: (item.placedIds ?? []).filter((n): n is number => n !== null),
+    missCount: item.missCount,
+    elapsedSeconds: item.elapsedSeconds,
+    savedAt: item.savedAt,
   };
 }
 
-interface RankingRow extends BestRow {
-  user_id: string;
-  nickname: string | null;
+function toBest(item: BestItem): BestRecord {
+  return {
+    ...areaOf(item),
+    bestScore: item.bestScore,
+    playCount: item.playCount,
+    lastPlayedAt: item.lastPlayedAt,
+  };
 }
 
-function rowToRanking(row: RankingRow): RankingEntry {
-  return {
-    ...rowToBest(row),
-    userId: row.user_id,
-    nickname: row.nickname,
-  };
+function toRanking(item: BestItem): RankingEntry {
+  return { ...toBest(item), userId: item.userId, nickname: item.nickname ?? null };
 }
 
 async function requireUserId(): Promise<string> {
@@ -210,246 +164,168 @@ async function requireUserId(): Promise<string> {
   return user.id;
 }
 
+/** ある人のベスト記録を全部(ページを最後までたどる)。prefix で難易度を絞れる */
+async function listAllBest(userId: string, areaKeyPrefix?: string): Promise<BestItem[]> {
+  const items: BestItem[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameMapPuzzleBest.list({
+      userId,
+      ...(areaKeyPrefix && { areaKey: { beginsWith: areaKeyPrefix } }),
+      nextToken,
+    });
+    items.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return items;
+}
+
 // ─── チャレンジ(挑戦結果)の送信・履歴 ──────────────────────────────────────────
 
-// スコア(baseScore/timeBonus/missPenalty/score)とisNewBestはDB側のトリガーが
-// サーバー側で再計算するため、ここでは送らない(クライアントの自己申告を信用しない)
+// 得点(baseScore/timeBonus/missPenalty/score)と isNewBest は Lambda(submit-map-puzzle-challenge)が
+// 計算し直すため、ここでは送らない(クライアントの自己申告を信用しない)
 export async function submitChallenge(payload: ChallengeSubmission): Promise<ChallengeRecord> {
-  const supabase = createClient();
-  const userId = await requireUserId();
-
-  const { data: profile } = await supabase
-    .from("game_profiles")
-    .select("nickname")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  const { data, error } = await supabase
-    .from("game_map_puzzle_challenges")
-    .insert({
-      user_id: userId,
-      nickname: profile?.nickname ?? null,
-      difficulty: payload.difficulty,
-      pref_code: payload.prefCode,
-      pref_name: payload.prefName,
-      city_code: payload.cityCode ?? null,
-      city_name: payload.cityName ?? null,
-      total_pieces: payload.totalPieces,
-      miss_count: payload.missCount,
-      elapsed_seconds: payload.elapsedSeconds,
-      comment: payload.comment?.trim().slice(0, 200) || null,
-    })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return rowToChallenge(data);
+  await requireUserId();
+  const res = await data.mutations.submitMapPuzzleChallenge({
+    difficulty: payload.difficulty,
+    prefCode: payload.prefCode,
+    prefName: payload.prefName,
+    cityCode: payload.cityCode ?? null,
+    cityName: payload.cityName ?? null,
+    totalPieces: payload.totalPieces,
+    missCount: payload.missCount,
+    elapsedSeconds: payload.elapsedSeconds,
+    comment: payload.comment?.trim() || null,
+  });
+  const item = unwrap(res);
+  if (!item) throw new Error("記録を保存できませんでした");
+  return toChallenge(item as ChallengeItem);
 }
 
 export async function fetchChallengeHistory(
   cursor?: string | null,
   limit = 20
 ): Promise<ChallengeHistoryPage> {
-  const supabase = createClient();
   const userId = await requireUserId();
-
-  let query = supabase
-    .from("game_map_puzzle_challenges")
-    .select("*")
-    .eq("user_id", userId)
-    .order("played_at", { ascending: false })
-    .limit(limit);
-
-  if (cursor) query = query.lt("played_at", cursor);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  const items = (data ?? []).map(rowToChallenge);
-  const nextCursor = items.length === limit ? items[items.length - 1].playedAt : null;
-  return { items, nextCursor };
+  const page = await data.models.GameMapPuzzleChallenge.listMapPuzzleChallengesByUser(
+    { userId },
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined }
+  );
+  return { items: unwrap(page).map(toChallenge), nextCursor: page.nextToken ?? null };
 }
 
 // ─── 途中保存 ────────────────────────────────────────────────────────────────
 
 export async function fetchSavedProgress(area: AreaInfo): Promise<SavedProgressRecord | null> {
-  const supabase = createClient();
   const userId = await requireUserId();
-
-  let query = supabase
-    .from("game_map_puzzle_progress")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("difficulty", area.difficulty)
-    .eq("pref_code", area.prefCode);
-
-  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
-
-  const { data, error } = await query.maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? rowToProgress(data) : null;
+  const item = unwrap(await data.models.GameMapPuzzleProgress.get({ userId, areaKey: areaKeyOf(area) }));
+  return item ? toProgress(item) : null;
 }
 
 export async function fetchAllSavedProgress(difficulty: Difficulty): Promise<SavedProgressRecord[]> {
-  const supabase = createClient();
   const userId = await requireUserId();
-
-  const { data, error } = await supabase
-    .from("game_map_puzzle_progress")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("difficulty", difficulty);
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToProgress);
+  const items: ProgressItem[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameMapPuzzleProgress.list({
+      userId,
+      areaKey: { beginsWith: `${difficulty}#` },
+      nextToken,
+    });
+    items.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return items.map(toProgress);
 }
 
 export async function saveProgress(payload: ProgressPayload): Promise<void> {
-  const supabase = createClient();
   const userId = await requireUserId();
-
-  const { error } = await supabase.from("game_map_puzzle_progress").upsert(
-    {
-      user_id: userId,
-      difficulty: payload.difficulty,
-      pref_code: payload.prefCode,
-      pref_name: payload.prefName,
-      city_code: payload.cityCode ?? null,
-      city_name: payload.cityName ?? null,
-      placed_ids: payload.placedIds,
-      miss_count: payload.missCount,
-      elapsed_seconds: payload.elapsedSeconds,
-      saved_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,difficulty,pref_code,city_code_key" }
+  const fields = {
+    userId,
+    areaKey: areaKeyOf(payload),
+    difficulty: payload.difficulty,
+    prefCode: payload.prefCode,
+    prefName: payload.prefName,
+    cityCode: payload.cityCode ?? null,
+    cityName: payload.cityName ?? null,
+    placedIds: payload.placedIds,
+    missCount: payload.missCount,
+    elapsedSeconds: payload.elapsedSeconds,
+    savedAt: new Date().toISOString(),
+  };
+  const existing = unwrap(await data.models.GameMapPuzzleProgress.get({ userId, areaKey: fields.areaKey }));
+  unwrap(
+    existing
+      ? await data.models.GameMapPuzzleProgress.update(fields)
+      : await data.models.GameMapPuzzleProgress.create(fields)
   );
-
-  if (error) throw new Error(error.message);
 }
 
 export async function discardProgress(area: AreaInfo): Promise<void> {
-  const supabase = createClient();
   const userId = await requireUserId();
-
-  let query = supabase
-    .from("game_map_puzzle_progress")
-    .delete()
-    .eq("user_id", userId)
-    .eq("difficulty", area.difficulty)
-    .eq("pref_code", area.prefCode);
-
-  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
-
-  const { error } = await query;
-  if (error) throw new Error(error.message);
+  unwrap(await data.models.GameMapPuzzleProgress.delete({ userId, areaKey: areaKeyOf(area) }));
 }
 
 // エリア選択マップの色分け用。指定難易度でクリア済みの(prefCode, cityCode)一覧を返す
-// (元実装はチャレンジ履歴を全件スキャンして重複排除していたが、Postgresでは
-// game_map_puzzle_best を直接引けば同じ結果がO(1クエリ)で得られる)
 export async function fetchClearedAreas(difficulty: Difficulty): Promise<AreaKey[]> {
-  const supabase = createClient();
   const userId = await requireUserId();
-
-  const { data, error } = await supabase
-    .from("game_map_puzzle_best")
-    .select("pref_code, city_code")
-    .eq("user_id", userId)
-    .eq("difficulty", difficulty);
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({ prefCode: r.pref_code, cityCode: r.city_code }));
+  const items = await listAllBest(userId, `${difficulty}#`);
+  return items.map((b) => ({ prefCode: b.prefCode, cityCode: b.cityCode ?? null }));
 }
 
 // ─── プロフィール ────────────────────────────────────────────────────────────
 
+/** 他人のプロフィールは、ニックネームを設定している人だけ返す(未設定なら null) */
 export async function fetchGameProfile(userId?: string): Promise<GameProfilePublic | null> {
-  const supabase = createClient();
-  const targetId = userId ?? (await requireUserId());
-
-  const { data, error } = await supabase
-    .from("game_profiles")
-    .select("*")
-    .eq("user_id", targetId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (!data) return null;
+  const me = await requireUserId();
+  const targetId = userId ?? me;
+  const item = unwrap(await data.models.GameProfile.get({ userId: targetId }));
+  if (!item) return null;
+  if (targetId !== me && !item.nickname) return null;
   return {
-    userId: data.user_id,
-    nickname: data.nickname,
-    totalScore: data.total_score,
-    areasPlayedCount: data.areas_played_count,
+    userId: item.userId,
+    nickname: item.nickname ?? null,
+    totalScore: item.totalScore,
+    areasPlayedCount: item.areasPlayedCount,
   };
 }
 
 export async function updateNickname(nickname: string): Promise<GameProfilePublic> {
-  const supabase = createClient();
-  const userId = await requireUserId();
+  await requireUserId();
   const trimmed = nickname.trim();
-
-  if (trimmed.length > 12) {
+  if ([...trimmed].length > 12) {
     throw new Error("ニックネームは12文字以内で入力してください");
   }
-
-  const { data, error } = await supabase
-    .from("game_profiles")
-    .upsert(
-      { user_id: userId, nickname: trimmed === "" ? null : trimmed },
-      { onConflict: "user_id" }
-    )
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
+  const item = unwrap(await data.mutations.setNickname({ nickname: trimmed }));
+  if (!item) throw new Error("ニックネームを保存できませんでした");
   return {
-    userId: data.user_id,
-    nickname: data.nickname,
-    totalScore: data.total_score,
-    areasPlayedCount: data.areas_played_count,
+    userId: item.userId,
+    nickname: item.nickname ?? null,
+    totalScore: item.totalScore,
+    areasPlayedCount: item.areasPlayedCount,
   };
 }
 
 export async function fetchBestList(userId?: string): Promise<BestRecord[]> {
-  const supabase = createClient();
   const targetId = userId ?? (await requireUserId());
-
-  const { data, error } = await supabase
-    .from("game_map_puzzle_best")
-    .select("*")
-    .eq("user_id", targetId)
-    .order("best_score", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToBest);
+  const items = await listAllBest(targetId);
+  return items.sort((a, b) => b.bestScore - a.bestScore).map(toBest);
 }
 
 // ─── ランキング ──────────────────────────────────────────────────────────────
+// ニックネームを設定した人だけを出す。cursor は Amplify Data の nextToken
 
 export async function fetchModeRanking(
   difficulty: Difficulty,
   cursor?: string | null,
   limit = 20
 ): Promise<RankingPage> {
-  const supabase = createClient();
-  await requireUserId(); // ランキング閲覧も要ログイン(元実装のCognito版と同様)
-
-  let query = supabase
-    .from("game_map_puzzle_best")
-    .select("*")
-    .eq("difficulty", difficulty)
-    .order("best_score", { ascending: false })
-    .order("id", { ascending: true })
-    .limit(limit);
-
-  if (cursor) query = query.lt("best_score", Number(cursor));
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  const items = (data ?? []).map(rowToRanking);
-  const nextCursor = items.length === limit ? String(items[items.length - 1].bestScore) : null;
-  return { items, nextCursor };
+  await requireUserId(); // ランキング閲覧も要ログイン
+  const page = await data.models.GameMapPuzzleBest.listMapPuzzleBestByDifficulty(
+    { difficulty },
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined, filter: HAS_NICKNAME }
+  );
+  return { items: unwrap(page).map(toRanking), nextCursor: page.nextToken ?? null };
 }
 
 export async function fetchAreaRanking(
@@ -457,26 +333,10 @@ export async function fetchAreaRanking(
   cursor?: string | null,
   limit = 20
 ): Promise<RankingPage> {
-  const supabase = createClient();
-  await requireUserId(); // ランキング閲覧も要ログイン(元実装のCognito版と同様)
-
-  let query = supabase
-    .from("game_map_puzzle_best")
-    .select("*")
-    .order("best_score", { ascending: false })
-    .order("id", { ascending: true })
-    .limit(limit);
-
-  query = area.cityCode
-    ? query.eq("city_code", area.cityCode)
-    : query.eq("pref_code", area.prefCode).eq("difficulty", area.difficulty);
-
-  if (cursor) query = query.lt("best_score", Number(cursor));
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  const items = (data ?? []).map(rowToRanking);
-  const nextCursor = items.length === limit ? String(items[items.length - 1].bestScore) : null;
-  return { items, nextCursor };
+  await requireUserId(); // ランキング閲覧も要ログイン
+  const page = await data.models.GameMapPuzzleBest.listMapPuzzleBestByRankingKey(
+    { rankingKey: rankingKeyOf(area) },
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined, filter: HAS_NICKNAME }
+  );
+  return { items: unwrap(page).map(toRanking), nextCursor: page.nextToken ?? null };
 }
