@@ -95,7 +95,7 @@ export default function FollowsPage({ searchParams }: Props) {
                   const row = (
                     <div className="bg-white rounded-xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-3.5 flex items-center justify-between gap-3">
                       <span className="text-sm font-semibold text-[#3c2a14] truncate">
-                        {u.nickname ? `👤 ${u.nickname}` : "ニックネーム未登録"}
+                        {u.nickname ? `👤 ${u.nickname}` : "ニックネーム未設定"}
                       </span>
                       <span className="shrink-0 text-[11px] text-[#a8937a]">{formatRelativeTime(u.followedAt)}</span>
                     </div>

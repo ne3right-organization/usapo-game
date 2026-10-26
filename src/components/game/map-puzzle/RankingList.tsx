@@ -46,7 +46,7 @@ export default function RankingList({
             <span className="w-7 text-center text-lg font-bold text-[#a8937a] shrink-0">{rankBadge(i)}</span>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-[#3c2a14] truncate">
-                {item.nickname ? `👤 ${item.nickname}` : "未登録"}
+                {item.nickname ? `👤 ${item.nickname}` : "未設定"}
               </div>
               {showArea && <div className="text-xs text-[#a8937a] truncate">{item.detail ?? areaLabelOf(item)}</div>}
             </div>

@@ -12,8 +12,8 @@ const schema = a
     GameDifficulty: a.enum(["beginner", "intermediate", "advanced"]),
 
     // ─── プロフィール(全ゲーム共通) ───────────────────────────────────────────
-    // 初めてログインしたときに作る(create-game-profile)。nickname が空なら「未設定」で、
-    // ランキング・フォローなど人を出す画面には出さない
+    // 初めてログインしたときに作る(create-game-profile)。nickname が空なら「未設定」。ランキングには
+    // 「未設定」のまま出し、他人のプロフィールやフォローはニックネームを設定した人だけ
     GameProfile: a
       .model({
         userId: a.id().required(),

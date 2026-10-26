@@ -85,7 +85,7 @@ export default function ZukanPublicCollectionView({ targetUserId }: Props) {
     <div className="flex flex-col gap-4">
       <div className="text-center">
         <span className="text-base font-bold text-[#3c2a14]">
-          {state.profile?.nickname ? `👤 ${state.profile.nickname}` : "未登録"} の図鑑
+          {state.profile?.nickname ? `👤 ${state.profile.nickname}` : "未設定"} の図鑑
         </span>
         <p className="text-xs text-[#a8937a] mt-1">獲得済みカード {state.collections.length}枚</p>
       </div>

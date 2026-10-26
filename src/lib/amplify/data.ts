@@ -26,6 +26,3 @@ export function rankingKeyOf(area: { difficulty: string; prefCode: string; cityC
     ? `${area.difficulty}#${area.prefCode}#${area.cityCode ?? ""}`
     : `${area.difficulty}#${area.prefCode}`;
 }
-
-/** ランキングなど人を出す一覧で、ニックネーム未設定の人を外すフィルタ(空・null・未設定はどれも "" より大きくない) */
-export const HAS_NICKNAME = { nickname: { gt: "" } } as const;

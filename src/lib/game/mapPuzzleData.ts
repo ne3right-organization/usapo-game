@@ -2,7 +2,7 @@
 
 import type { Difficulty } from "@/components/game/map-puzzle/MapPuzzleGame";
 import { currentUser } from "@/lib/auth";
-import { HAS_NICKNAME, areaKeyOf, data, rankingKeyOf, unwrap, type Schema } from "@/lib/amplify/data";
+import { areaKeyOf, data, rankingKeyOf, unwrap, type Schema } from "@/lib/amplify/data";
 
 // 地図パズルとプロフィールのデータ。Amplify Data(amplify/data/resource.ts)をブラウザから直接呼ぶ。
 // 得点・ベスト記録・合計はクライアントから書けず、記録の送信とニックネームの変更は
@@ -313,7 +313,7 @@ export async function fetchBestList(userId?: string): Promise<BestRecord[]> {
 }
 
 // ─── ランキング ──────────────────────────────────────────────────────────────
-// ニックネームを設定した人だけを出す。cursor は Amplify Data の nextToken
+// ログインして遊んだ人は全員出す(ニックネームが無ければ「未設定」と表示)。cursor は Amplify Data の nextToken
 
 export async function fetchModeRanking(
   difficulty: Difficulty,
@@ -323,7 +323,7 @@ export async function fetchModeRanking(
   await requireUserId(); // ランキング閲覧も要ログイン
   const page = await data.models.GameMapPuzzleBest.listMapPuzzleBestByDifficulty(
     { difficulty },
-    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined, filter: HAS_NICKNAME }
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined }
   );
   return { items: unwrap(page).map(toRanking), nextCursor: page.nextToken ?? null };
 }
@@ -336,7 +336,7 @@ export async function fetchAreaRanking(
   await requireUserId(); // ランキング閲覧も要ログイン
   const page = await data.models.GameMapPuzzleBest.listMapPuzzleBestByRankingKey(
     { rankingKey: rankingKeyOf(area) },
-    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined, filter: HAS_NICKNAME }
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined }
   );
   return { items: unwrap(page).map(toRanking), nextCursor: page.nextToken ?? null };
 }

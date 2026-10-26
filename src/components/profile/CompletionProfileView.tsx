@@ -160,7 +160,7 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
           <span className="text-lg font-bold text-[#3c2a14] truncate">
-            {view.nickname ? `👤 ${view.nickname}` : "ニックネーム未登録"}
+            {view.nickname ? `👤 ${view.nickname}` : "ニックネーム未設定"}
           </span>
           {view.isSelf ? (
             <Link href="/nickname" className="shrink-0 text-xs text-[#78716c] underline underline-offset-2">

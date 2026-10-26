@@ -89,7 +89,7 @@ export default function GameProfileView({ targetUserId }: GameProfileViewProps) 
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5">
         <div className="flex items-center justify-between mb-4">
           <span className="text-lg font-bold text-[#3c2a14]">
-            {profile?.nickname ? `👤 ${profile.nickname}` : "未登録"}
+            {profile?.nickname ? `👤 ${profile.nickname}` : "未設定"}
           </span>
           {isSelf && (
             <Link
