@@ -4,9 +4,17 @@ import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setNickname } from "./functions/set-nickname/resource";
+import { submitMapPackChallenge } from "./functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "./functions/submit-map-puzzle-challenge/resource";
 
-const backend = defineBackend({ auth, data, createGameProfile, setNickname, submitMapPuzzleChallenge });
+const backend = defineBackend({
+  auth,
+  data,
+  createGameProfile,
+  setNickname,
+  submitMapPuzzleChallenge,
+  submitMapPackChallenge,
+});
 
 // メール・パスワードでの自己登録を止める(Google でのログインはこの設定の影響を受けない)
 backend.auth.resources.cfnResources.cfnUserPool.adminCreateUserConfig = {

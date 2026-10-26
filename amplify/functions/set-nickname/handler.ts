@@ -5,7 +5,7 @@ import { dataClient, ensureProfile, unwrap } from "../shared/dataClient";
 
 const MAX_LENGTH = 12;
 
-// ニックネームを変え、ランキングに出しているベスト記録のニックネームも書き直す
+// ニックネームを変え、ランキングに出しているベスト記録(地図パズル・地図ポットン)のニックネームも書き直す
 // (Supabase 版のトリガー game_profiles_propagate_nickname に当たる)
 export const handler: Schema["setNickname"]["functionHandler"] = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
@@ -22,6 +22,22 @@ export const handler: Schema["setNickname"]["functionHandler"] = async (event) =
     const page = await c.models.GameMapPuzzleBest.list({ userId, nextToken });
     for (const best of unwrap(page)) {
       unwrap(await c.models.GameMapPuzzleBest.update({ userId, areaKey: best.areaKey, nickname }));
+    }
+    nextToken = page.nextToken;
+  } while (nextToken);
+
+  do {
+    const page = await c.models.GameMapPackBest.list({ userId, nextToken });
+    for (const best of unwrap(page)) {
+      unwrap(await c.models.GameMapPackBest.update({ userId, areaKey: best.areaKey, nickname }));
+    }
+    nextToken = page.nextToken;
+  } while (nextToken);
+
+  do {
+    const page = await c.models.GameMapPackUserTotal.list({ userId, nextToken });
+    for (const total of unwrap(page)) {
+      unwrap(await c.models.GameMapPackUserTotal.update({ userId, difficulty: total.difficulty, nickname }));
     }
     nextToken = page.nextToken;
   } while (nextToken);

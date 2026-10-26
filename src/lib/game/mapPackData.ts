@@ -1,13 +1,13 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import type { Difficulty, RankingEntry, RankingPage } from "@/lib/game/mapPuzzleData";
 import { currentUser } from "@/lib/auth";
+import { areaKeyOf, data, rankingKeyOf, unwrap, type Schema } from "@/lib/amplify/data";
 
-// 地図ポットンの挑戦結果の送信とランキング取得。地図パズル(mapPuzzleData.ts)と同じく、
-// RLS (supabase/migrations/20261019000000_map_pack_schema.sql) がアクセス制御を担うため
-// クライアントから直接 supabase-js で読み書きする。
-// ランキングは地図パズルとは別集計(game_map_pack_best)。game_profiles.total_score(地図パズルの合計)には含めない
+// 地図ポットンの挑戦結果の送信とランキング取得。Amplify Data(amplify/data/resource.ts)をブラウザから直接呼ぶ。
+// 得点・ベスト記録・人ごとの合計はクライアントから書けず、記録の送信はカスタムミューテーション
+// (amplify/functions/submit-map-pack-challenge)が行う。
+// ランキングは地図パズルとは別集計。GameProfile の合計(地図パズルの合計)には含めない
 
 export interface MapPackArea {
   difficulty: Difficulty;
@@ -35,29 +35,32 @@ export interface MapPackSubmitResult {
   isNewBest: boolean;
 }
 
-interface BestRow {
-  user_id: string;
-  nickname: string | null;
-  difficulty: Difficulty;
-  pref_code: string;
-  pref_name: string;
-  city_code: string | null;
-  city_name: string | null;
-  best_score: number;
-  last_played_at: string;
+type BestItem = Schema["GameMapPackBest"]["type"];
+type ProgressItem = Schema["GameMapPackProgress"]["type"];
+
+function areaOf(item: {
+  difficulty: Difficulty | null;
+  prefCode: string;
+  prefName: string;
+  cityCode?: string | null;
+  cityName?: string | null;
+}): MapPackArea {
+  return {
+    difficulty: item.difficulty as Difficulty,
+    prefCode: item.prefCode,
+    prefName: item.prefName,
+    cityCode: item.cityCode ?? undefined,
+    cityName: item.cityName ?? undefined,
+  };
 }
 
-function rowToRanking(row: BestRow): RankingEntry {
+function toRanking(item: BestItem): RankingEntry {
   return {
-    difficulty: row.difficulty,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code ?? undefined,
-    cityName: row.city_name ?? undefined,
-    userId: row.user_id,
-    nickname: row.nickname,
-    bestScore: row.best_score,
-    lastPlayedAt: row.last_played_at,
+    ...areaOf(item),
+    userId: item.userId,
+    nickname: item.nickname ?? null,
+    bestScore: item.bestScore,
+    lastPlayedAt: item.lastPlayedAt,
   };
 }
 
@@ -73,39 +76,26 @@ export async function currentUserId(): Promise<string | null> {
   return user?.id ?? null;
 }
 
-// score / clear_bonus / is_new_best は DB 側のトリガーが送られた値から計算し直すため、ここでは送らない
+// score / clearBonus / isNewBest は Lambda が送られた値から計算し直すため、ここでは送らない
 export async function submitMapPackChallenge(payload: MapPackSubmission): Promise<MapPackSubmitResult> {
-  const supabase = createClient();
-  const userId = await requireUserId();
-
-  const { data: profile } = await supabase
-    .from("game_profiles")
-    .select("nickname")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  const { data, error } = await supabase
-    .from("game_map_pack_challenges")
-    .insert({
-      user_id: userId,
-      nickname: profile?.nickname ?? null,
+  await requireUserId();
+  const result = unwrap(
+    await data.mutations.submitMapPackChallenge({
       difficulty: payload.difficulty,
-      pref_code: payload.prefCode,
-      pref_name: payload.prefName,
-      city_code: payload.cityCode ?? null,
-      city_name: payload.cityName ?? null,
-      total_pieces: payload.totalPieces,
-      merge_points: payload.mergePoints,
-      restack_count: payload.restackCount,
-      split_count: payload.splitCount,
+      prefCode: payload.prefCode,
+      prefName: payload.prefName,
+      cityCode: payload.cityCode ?? null,
+      cityName: payload.cityName ?? null,
+      totalPieces: payload.totalPieces,
+      mergePoints: payload.mergePoints,
+      restackCount: payload.restackCount,
+      splitCount: payload.splitCount,
       cleared: payload.cleared,
-      elapsed_seconds: payload.elapsedSeconds,
+      elapsedSeconds: payload.elapsedSeconds,
     })
-    .select("score, is_new_best")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return { score: data.score, isNewBest: data.is_new_best };
+  );
+  if (!result) throw new Error("記録を保存できませんでした");
+  return { score: result.score, isNewBest: result.isNewBest };
 }
 
 // ─── 遊んだ履歴 ──────────────────────────────────────────────────────────────
@@ -121,90 +111,65 @@ export interface MapPackHistoryRecord extends MapPackArea {
   playedAt: string;
 }
 
+/** cursor は Amplify Data の nextToken */
 export async function fetchMapPackHistory(
   cursor?: string | null,
   limit = 20,
 ): Promise<{ items: MapPackHistoryRecord[]; nextCursor: string | null }> {
-  const supabase = createClient();
   const userId = await requireUserId();
-  let query = supabase
-    .from("game_map_pack_challenges")
-    .select(
-      "id, difficulty, pref_code, pref_name, city_code, city_name, score, cleared, total_pieces, restack_count, elapsed_seconds, is_new_best, played_at",
-    )
-    .eq("user_id", userId)
-    .order("played_at", { ascending: false })
-    .limit(limit);
-  if (cursor) query = query.lt("played_at", cursor);
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  const items: MapPackHistoryRecord[] = (data ?? []).map((row) => ({
-    id: row.id,
-    difficulty: row.difficulty,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code ?? undefined,
-    cityName: row.city_name ?? undefined,
-    score: row.score,
-    cleared: row.cleared,
-    totalPieces: row.total_pieces,
-    restackCount: row.restack_count,
-    elapsedSeconds: row.elapsed_seconds,
-    isNewBest: row.is_new_best,
-    playedAt: row.played_at,
+  const page = await data.models.GameMapPackChallenge.listMapPackChallengesByUser(
+    { userId },
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined }
+  );
+  const items: MapPackHistoryRecord[] = unwrap(page).map((item) => ({
+    ...areaOf(item),
+    id: item.id,
+    score: item.score,
+    cleared: item.cleared,
+    totalPieces: item.totalPieces,
+    restackCount: item.restackCount,
+    elapsedSeconds: item.elapsedSeconds,
+    isNewBest: item.isNewBest,
+    playedAt: item.playedAt,
   }));
-  return { items, nextCursor: items.length === limit ? items[items.length - 1].playedAt : null };
+  return { items, nextCursor: page.nextToken ?? null };
 }
 
 /**
  * 難易度別ランキング(1人1行)。その難易度のエリアごとの自己ベストの合計点で並べ、一番点の高いエリアを
- * 代表として返す(bestScore は合計点、エリアは一番点の高いエリア)。cursor は読み飛ばす件数
+ * 代表として返す(bestScore は合計点、エリアは一番点の高いエリア)。cursor は Amplify Data の nextToken。
+ * ログインして遊んだ人は全員出す(ニックネームが無ければ「未設定」と表示)
  */
 export async function fetchMapPackModeRanking(
   difficulty: Difficulty,
   cursor?: string | null,
   limit = 20,
 ): Promise<RankingPage> {
-  const supabase = createClient();
-  await requireUserId(); // 閲覧は要ログイン(anon には実行を許可していない)
-  const offset = cursor ? Number(cursor) : 0;
-  const { data, error } = await supabase.rpc("fetch_map_pack_user_ranking", {
-    p_difficulty: difficulty,
-    p_limit: limit,
-    p_offset: offset,
-  });
-  if (error) throw new Error(error.message);
-  const items: RankingEntry[] = ((data ?? []) as {
-    user_id: string;
-    nickname: string | null;
-    total_score: number;
-    areas_count: number;
-    top_pref_code: string;
-    top_pref_name: string;
-    top_city_code: string | null;
-    top_city_name: string | null;
-    top_score: number;
-    last_played_at: string;
-  }[]).map((row) => {
+  await requireUserId(); // 閲覧は要ログイン
+  const page = await data.models.GameMapPackUserTotal.listMapPackUserTotalsByDifficulty(
+    { difficulty },
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined }
+  );
+  const items: RankingEntry[] = unwrap(page).map((row) => {
     const top = {
       difficulty,
-      prefCode: row.top_pref_code,
-      prefName: row.top_pref_name,
-      cityCode: row.top_city_code ?? undefined,
-      cityName: row.top_city_name ?? undefined,
+      prefCode: row.topPrefCode,
+      prefName: row.topPrefName,
+      cityCode: row.topCityCode ?? undefined,
+      cityName: row.topCityName ?? undefined,
     };
     const topLabel = difficulty === "beginner" ? "全国" : top.cityName ? `${top.prefName} ${top.cityName}` : top.prefName;
     return {
       ...top,
-      userId: row.user_id,
-      nickname: row.nickname,
-      bestScore: row.total_score,
-      lastPlayedAt: row.last_played_at,
-      detail: `🏅 最高 ${row.top_score.toLocaleString()}点（${topLabel}）`,
-      scoreCaption: `${row.areas_count}エリア合計`,
+      userId: row.userId,
+      nickname: row.nickname ?? null,
+      bestScore: row.totalScore,
+      lastPlayedAt: row.lastPlayedAt,
+      detail: `🏅 最高 ${row.topScore.toLocaleString()}点（${topLabel}）`,
+      scoreCaption: `${row.areasCount}エリア合計`,
     };
   });
-  return { items, nextCursor: items.length === limit ? String(offset + limit) : null };
+  return { items, nextCursor: page.nextToken ?? null };
 }
 
 /** ランキングのカードを開いたときに出す、その人のその難易度のエリア一覧(点数の高い順) */
@@ -215,25 +180,21 @@ export interface MapPackUserArea extends MapPackArea {
 }
 
 export async function fetchMapPackUserAreas(userId: string, difficulty: Difficulty): Promise<MapPackUserArea[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("game_map_pack_best")
-    .select("pref_code, pref_name, city_code, city_name, best_score, first_cleared_at, play_count")
-    .eq("user_id", userId)
-    .eq("difficulty", difficulty)
-    .order("best_score", { ascending: false })
-    .limit(1000);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({
-    difficulty,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code ?? undefined,
-    cityName: row.city_name ?? undefined,
-    bestScore: row.best_score,
-    cleared: row.first_cleared_at != null,
-    playCount: row.play_count,
-  }));
+  const items: BestItem[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameMapPackBest.list({ userId, areaKey: { beginsWith: `${difficulty}#` }, nextToken });
+    items.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return items
+    .sort((a, b) => b.bestScore - a.bestScore)
+    .map((item) => ({
+      ...areaOf(item),
+      bestScore: item.bestScore,
+      cleared: item.firstClearedAt != null,
+      playCount: item.playCount,
+    }));
 }
 
 export async function fetchMapPackAreaRanking(
@@ -241,25 +202,12 @@ export async function fetchMapPackAreaRanking(
   cursor?: string | null,
   limit = 20,
 ): Promise<RankingPage> {
-  const supabase = createClient();
   await requireUserId();
-
-  // city_code は都道府県内の3桁コードなので、都道府県コードと組み合わせないと別の県の同じコードと混ざる
-  let query = supabase
-    .from("game_map_pack_best")
-    .select("*")
-    .eq("difficulty", area.difficulty)
-    .eq("pref_code", area.prefCode)
-    .order("best_score", { ascending: false })
-    .order("id", { ascending: true })
-    .limit(limit);
-  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
-  if (cursor) query = query.lt("best_score", Number(cursor));
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  const items = (data ?? []).map(rowToRanking);
-  return { items, nextCursor: items.length === limit ? String(items[items.length - 1].bestScore) : null };
+  const page = await data.models.GameMapPackBest.listMapPackBestByRankingKey(
+    { rankingKey: rankingKeyOf(area) },
+    { sortDirection: "DESC", limit, nextToken: cursor ?? undefined }
+  );
+  return { items: unwrap(page).map(toRanking), nextCursor: page.nextToken ?? null };
 }
 
 // ─── 途中保存(中断) ──────────────────────────────────────────────────────────
@@ -337,42 +285,44 @@ export function clearMapPackSessionSaves(difficulty: Difficulty, geojsonUrl?: st
   }
 }
 
+/** state(a.json)は文字列で書き、読むと文字列で返ることがあるので、どちらでも受け取れるようにする */
+function parseSnapshot(state: unknown): MapPackSnapshot | null {
+  try {
+    const snap = (typeof state === "string" ? JSON.parse(state) : state) as MapPackSnapshot | null;
+    return snap?.version === 1 ? snap : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveMapPackProgress(area: MapPackArea, snapshot: MapPackSnapshot): Promise<void> {
-  const supabase = createClient();
   const userId = await requireUserId();
-  const { error } = await supabase.from("game_map_pack_progress").upsert(
-    {
-      user_id: userId,
-      difficulty: area.difficulty,
-      pref_code: area.prefCode,
-      pref_name: area.prefName,
-      city_code: area.cityCode ?? null,
-      city_name: area.cityName ?? null,
-      state: snapshot,
-      elapsed_seconds: snapshot.elapsedSec,
-      saved_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,difficulty,pref_code,city_code_key" },
+  const fields = {
+    userId,
+    areaKey: areaKeyOf(area),
+    difficulty: area.difficulty,
+    prefCode: area.prefCode,
+    prefName: area.prefName,
+    cityCode: area.cityCode ?? null,
+    cityName: area.cityName ?? null,
+    state: JSON.stringify(snapshot),
+    elapsedSeconds: snapshot.elapsedSec,
+    savedAt: new Date().toISOString(),
+  };
+  const existing = unwrap(await data.models.GameMapPackProgress.get({ userId, areaKey: fields.areaKey }));
+  unwrap(
+    existing
+      ? await data.models.GameMapPackProgress.update(fields)
+      : await data.models.GameMapPackProgress.create(fields)
   );
-  if (error) throw new Error(error.message);
 }
 
 /** 未ログインなら null(ゲスト扱い) */
 export async function fetchMapPackProgress(area: MapPackArea): Promise<MapPackSnapshot | null> {
   const userId = await currentUserId();
   if (!userId) return null;
-  const supabase = createClient();
-  let query = supabase
-    .from("game_map_pack_progress")
-    .select("state")
-    .eq("user_id", userId)
-    .eq("difficulty", area.difficulty)
-    .eq("pref_code", area.prefCode);
-  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
-  const { data, error } = await query.maybeSingle();
-  if (error) throw new Error(error.message);
-  const state = data?.state as MapPackSnapshot | undefined;
-  return state?.version === 1 ? state : null;
+  const item = unwrap(await data.models.GameMapPackProgress.get({ userId, areaKey: areaKeyOf(area) }));
+  return item ? parseSnapshot(item.state) : null;
 }
 
 /** 中断中のゲームの一覧の1行(どこを中断したか思い出せるように、トップに並べる) */
@@ -405,24 +355,18 @@ export async function fetchMapPackSavedGames(): Promise<MapPackSavedGame[]> {
 
   const userId = await currentUserId();
   if (userId) {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("game_map_pack_progress")
-      .select("difficulty, pref_code, pref_name, city_code, city_name, saved_at, state")
-      .eq("user_id", userId)
-      .order("saved_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
+    const items: ProgressItem[] = [];
+    let nextToken: string | null | undefined;
+    do {
+      const page = await data.models.GameMapPackProgress.list({ userId, nextToken });
+      items.push(...unwrap(page));
+      nextToken = page.nextToken;
+    } while (nextToken);
+    for (const item of items) {
       list.push({
-        area: {
-          difficulty: row.difficulty,
-          prefCode: row.pref_code,
-          prefName: row.pref_name,
-          cityCode: row.city_code ?? undefined,
-          cityName: row.city_name ?? undefined,
-        },
-        savedAt: new Date(row.saved_at).getTime(),
-        dropped: (row.state as MapPackSnapshot | null)?.dropped ?? 0,
+        area: areaOf(item),
+        savedAt: new Date(item.savedAt).getTime(),
+        dropped: parseSnapshot(item.state)?.dropped ?? 0,
         source: "server",
       });
     }
@@ -440,16 +384,7 @@ export async function fetchMapPackSavedGames(): Promise<MapPackSavedGame[]> {
 export async function discardMapPackProgress(area: MapPackArea): Promise<void> {
   const userId = await currentUserId();
   if (!userId) return;
-  const supabase = createClient();
-  let query = supabase
-    .from("game_map_pack_progress")
-    .delete()
-    .eq("user_id", userId)
-    .eq("difficulty", area.difficulty)
-    .eq("pref_code", area.prefCode);
-  query = area.cityCode ? query.eq("city_code", area.cityCode) : query.is("city_code", null);
-  const { error } = await query;
-  if (error) throw new Error(error.message);
+  unwrap(await data.models.GameMapPackProgress.delete({ userId, areaKey: areaKeyOf(area) }));
 }
 
 export { mapPackPlayHref } from "@/lib/game/playLinks";

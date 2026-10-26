@@ -24,6 +24,18 @@ export function unwrap<R extends { data: unknown; errors?: readonly { message: s
   return res.data;
 }
 
+/**
+ * 難易度×エリアのキー(中断データ・ベスト記録の主キーの一部)と、エリア別ランキングのキー(上級だけ市区町村まで含める)。
+ * 画面側の src/lib/amplify/data.ts と同じ形
+ */
+export function areaKeysOf(area: { difficulty: string; prefCode: string; cityCode?: string | null }) {
+  const city = area.cityCode ?? "";
+  return {
+    areaKey: `${area.difficulty}#${area.prefCode}#${city}`,
+    rankingKey: area.difficulty === "advanced" ? `${area.difficulty}#${area.prefCode}#${city}` : `${area.difficulty}#${area.prefCode}`,
+  };
+}
+
 /** プロフィールが無ければ作る(初回ログインのトリガーより前からいる人や、トリガーが失敗した場合の保険) */
 export async function ensureProfile(c: DataClient, userId: string): Promise<{ nickname: string | null }> {
   const existing = unwrap(await c.models.GameProfile.get({ userId }));

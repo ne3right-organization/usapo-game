@@ -1,7 +1,7 @@
 import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/submit-map-puzzle-challenge";
-import { dataClient, ensureProfile, unwrap } from "../shared/dataClient";
+import { areaKeysOf, dataClient, ensureProfile, unwrap } from "../shared/dataClient";
 
 const MAX_PIECES = 10000;
 const MAX_COMMENT_LENGTH = 200;
@@ -29,8 +29,7 @@ export const handler: Schema["submitMapPuzzleChallenge"]["functionHandler"] = as
   const missPenalty = a.missCount * 5;
   const score = Math.max(0, baseScore + timeBonus - missPenalty);
 
-  const areaKey = `${a.difficulty}#${a.prefCode}#${cityCode ?? ""}`;
-  const rankingKey = a.difficulty === "advanced" ? `${a.difficulty}#${a.prefCode}#${cityCode}` : `${a.difficulty}#${a.prefCode}`;
+  const { areaKey, rankingKey } = areaKeysOf({ difficulty: a.difficulty, prefCode: a.prefCode, cityCode });
   const now = new Date().toISOString();
 
   const c = await dataClient(env);
