@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { currentUser, signOutUser } from "@/lib/auth";
 import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
 
 // 元実装(team-kokuusa-platform-frontend)の NicknameBadge 相当。
@@ -16,9 +16,8 @@ export default function AuthStatus() {
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
 
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    currentUser().then(async (user) => {
       if (cancelled) return;
       if (!user) {
         setState({ status: "signed-out" });
@@ -38,9 +37,8 @@ export default function AuthStatus() {
   }, []);
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.reload();
+    // Cognito のログアウト画面を経由してトップに戻る
+    await signOutUser();
   };
 
   if (state.status === "loading") {

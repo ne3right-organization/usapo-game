@@ -3,9 +3,9 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
 import { formatRelativeTime } from "@/lib/game/format";
+import { currentUser } from "@/lib/auth";
 
 type Tab = "followers" | "following";
 type Props = { searchParams: Promise<{ tab?: string }> };
@@ -26,9 +26,7 @@ export default function FollowsPage({ searchParams }: Props) {
     setItems(null);
     setErrorMsg("");
     (async () => {
-      const {
-        data: { user },
-      } = await createClient().auth.getUser();
+      const user = await currentUser();
       if (!user) {
         if (!cancelled) setNeedsLogin(true);
         return;

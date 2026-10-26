@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import {
   fetchGameProfile,
   fetchBestList,
@@ -10,6 +9,7 @@ import {
   type BestRecord,
 } from "@/lib/game/mapPuzzleData";
 import { DIFFICULTY_LABELS, DIFFICULTY_BADGE_CLASS, areaLabelOf, formatRelativeTime } from "@/lib/game/format";
+import { currentUser } from "@/lib/auth";
 
 export interface GameProfileViewProps {
   targetUserId?: string;
@@ -28,10 +28,7 @@ export default function GameProfileView({ targetUserId }: GameProfileViewProps) 
     let cancelled = false;
 
     (async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await currentUser();
 
       if (!user) {
         if (!cancelled) setState({ status: "needs-login" });

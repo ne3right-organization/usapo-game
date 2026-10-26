@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { GeoJsonGeometry, ZukanQuizDifficulty } from "@/lib/game/zukanQuizData";
+import { currentUser } from "@/lib/auth";
 
 export type { GeoJsonGeometry, ZukanQuizDifficulty };
 
@@ -116,10 +117,7 @@ export async function submitZukanQuizAnswer(
 }
 
 async function requireUserId(): Promise<string> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) throw new Error("認証が必要です。ログインしてください");
   return user.id;
 }
@@ -212,9 +210,7 @@ export async function fetchZukanCollections(userId?: string): Promise<ZukanColle
   const supabase = createClient();
   let targetId = userId;
   if (!targetId) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) return [];
     targetId = user.id;
   }

@@ -2,13 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import {
-  RETURN_PATH_COOKIE,
-  RETURN_PATH_COOKIE_MAX_AGE,
-  RETURN_PATH_STORAGE_KEY,
-  safeReturnPath,
-} from "@/lib/loginReturn";
+import { Hub } from "aws-amplify/utils";
+import { currentUser, signInWithGoogle } from "@/lib/auth";
+import { RETURN_PATH_STORAGE_KEY, safeReturnPath } from "@/lib/loginReturn";
 
 /** ログインボタンを押した画面(ReturnPathTracker が覚えているURL)。無ければサイトのトップ */
 function returnPath(): string {
@@ -24,11 +20,19 @@ export default function LoginPage() {
   const [status, setStatus] = useState<"idle" | "redirecting" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Google から戻ってくるのもこの画面(Cognito の戻り先)。ログイン済みなら、ログイン前の画面に戻す
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    const stop = Hub.listen("auth", ({ payload }) => {
+      if (payload.event === "signInWithRedirect") router.replace(returnPath());
+      if (payload.event === "signInWithRedirect_failure") {
+        setStatus("error");
+        setErrorMsg("ログインに失敗しました。もう一度お試しください");
+      }
+    });
+    currentUser().then((user) => {
       if (user) router.replace(returnPath());
     });
+    return stop;
   }, [router]);
 
   const handleGoogleLogin = async () => {
@@ -36,22 +40,13 @@ export default function LoginPage() {
     setStatus("redirecting");
     setErrorMsg("");
 
-    // Googleから戻ってきたあと、認証のコールバック(サーバー側)でここに転送する
-    document.cookie = `${RETURN_PATH_COOKIE}=${encodeURIComponent(returnPath())}; Path=/; Max-Age=${RETURN_PATH_COOKIE_MAX_AGE}; SameSite=Lax`;
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
+    try {
+      await signInWithGoogle();
+      // 成功時はGoogleのログイン画面にリダイレクトされるのでここでは何もしない
+    } catch (e) {
       setStatus("error");
-      setErrorMsg(error.message);
+      setErrorMsg(e instanceof Error ? e.message : String(e));
     }
-    // 成功時はGoogleのログイン画面にリダイレクトされるのでここでは何もしない
   };
 
   return (

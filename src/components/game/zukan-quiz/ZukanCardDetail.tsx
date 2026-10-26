@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import MunicipalitySilhouette from "@/components/game/zukan-quiz/MunicipalitySilhouette";
 import {
   fetchZukanCollectionEntry,
@@ -19,6 +18,7 @@ import {
 import { ZUKAN_DIFFICULTY_META } from "@/lib/game/zukanQuizDifficulty";
 import { TRIVIA_FIELD_LABELS } from "@/lib/game/zukanQuizTrivia";
 import { formatRelativeTime } from "@/lib/game/format";
+import { currentUser } from "@/lib/auth";
 
 interface Props {
   prefCode: string;
@@ -56,10 +56,7 @@ export default function ZukanCardDetail({ prefCode, cityCode, targetUserId, back
     let cancelled = false;
     (async () => {
       setState({ status: "loading" });
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await currentUser();
 
       const resolvedTargetId = targetUserId ?? user?.id;
       if (!resolvedTargetId) {

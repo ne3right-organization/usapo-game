@@ -23,8 +23,9 @@ export const auth = defineAuth({
         scopes: ["openid", "email", "profile"],
         attributeMapping: { email: "email" },
       },
-      callbackUrls: origins.map((o) => `${o}/api/auth/sign-in-callback`),
-      logoutUrls: origins.map((o) => `${o}/api/auth/sign-out-callback`),
+      // ログインはブラウザ側(signInWithRedirect)で行う。戻り先のログイン画面が、ログイン前の画面に転送する
+      callbackUrls: origins.map((o) => `${o}/login`),
+      logoutUrls: origins.map((o) => `${o}/`),
     },
   },
 });

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { Difficulty, RankingEntry, RankingPage } from "@/lib/game/mapPuzzleData";
+import { currentUser } from "@/lib/auth";
 
 // 地図ポットンの挑戦結果の送信とランキング取得。地図パズル(mapPuzzleData.ts)と同じく、
 // RLS (supabase/migrations/20261019000000_map_pack_schema.sql) がアクセス制御を担うため
@@ -61,20 +62,14 @@ function rowToRanking(row: BestRow): RankingEntry {
 }
 
 async function requireUserId(): Promise<string> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) throw new Error("認証が必要です。ログインしてください");
   return user.id;
 }
 
 /** 未ログインなら null を返す(ゲストプレイ) */
 export async function currentUserId(): Promise<string | null> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser();
   return user?.id ?? null;
 }
 

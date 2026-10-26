@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { currentUser } from "@/lib/auth";
 
 // フォロー機能のデータアクセス(テーブルは supabase/migrations/20261023000001_follows.sql)。
 // RLS で「フォローした本人とされた本人にだけ見える」「フォロー・解除は本人だけ」を強制しているので、
@@ -13,9 +14,7 @@ export interface FollowUser {
 }
 
 async function requireUserId(): Promise<string> {
-  const {
-    data: { user },
-  } = await createClient().auth.getUser();
+  const user = await currentUser();
   if (!user) throw new Error("認証が必要です。ログインしてください");
   return user.id;
 }

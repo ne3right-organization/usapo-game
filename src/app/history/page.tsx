@@ -7,7 +7,6 @@ import { Suspense, useCallback, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import HistoryShell from "@/components/game/history/HistoryShell";
-import { createClient } from "@/lib/supabase/client";
 import { fetchChallengeHistory, type ChallengeRecord } from "@/lib/game/mapPuzzleData";
 import { fetchMapPackHistory, type MapPackHistoryRecord } from "@/lib/game/mapPackData";
 import { fetchZukanCollections, type ZukanCollectionEntry } from "@/lib/game/zukanQuizClient";
@@ -20,6 +19,7 @@ import {
   formatDuration,
   formatRelativeTime,
 } from "@/lib/game/format";
+import { currentUser } from "@/lib/auth";
 
 const TABS = [
   { id: "map-puzzle", label: "🗺️ 地図パズル" },
@@ -118,8 +118,8 @@ function ZukanItem({ item }: { item: ZukanCollectionEntry }) {
 // 件数はそれほど多くないので一括で読む。未ログインなら他のタブと同じくログインを案内する
 async function loadZukan(cursor?: string | null) {
   if (cursor) return { items: [] as ZukanCollectionEntry[], nextCursor: null };
-  const { data } = await createClient().auth.getUser();
-  if (!data.user) throw new Error("認証が必要です。ログインしてください");
+  const user = await currentUser();
+  if (!user) throw new Error("認証が必要です。ログインしてください");
   return { items: await fetchZukanCollections(), nextCursor: null };
 }
 

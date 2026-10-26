@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { Difficulty } from "@/components/game/map-puzzle/MapPuzzleGame";
+import { currentUser } from "@/lib/auth";
 
 // このファイルは元実装(team-kokuusa-platform-frontend)の
 // src/lib/game/{mapPuzzleClient,gameProfileClient,rankingClient}.ts に相当する。
@@ -204,10 +205,7 @@ function rowToRanking(row: RankingRow): RankingEntry {
 }
 
 async function requireUserId(): Promise<string> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) throw new Error("認証が必要です。ログインしてください");
   return user.id;
 }

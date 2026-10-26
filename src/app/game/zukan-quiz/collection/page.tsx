@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import {
   fetchZukanCollections,
   fetchGeometriesForCollections,
@@ -10,6 +9,7 @@ import {
   type GeoJsonGeometry,
 } from "@/lib/game/zukanQuizClient";
 import ZukanCardGrid from "@/components/game/zukan-quiz/ZukanCardGrid";
+import { currentUser } from "@/lib/auth";
 
 type ViewState =
   | { status: "loading" }
@@ -27,10 +27,7 @@ export default function ZukanCollectionPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) {
         if (!cancelled) setState({ status: "needs-login" });
         return;

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { fetchGameProfile, type Difficulty } from "@/lib/game/mapPuzzleData";
 import {
   COMPLETION_GAMES,
@@ -19,6 +18,7 @@ import {
 import { areaLabelOf } from "@/lib/game/format";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
 import { FollowButton, FollowSummary } from "@/components/profile/FollowControls";
+import { currentUser } from "@/lib/auth";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`;
@@ -80,9 +80,7 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const {
-        data: { user },
-      } = await createClient().auth.getUser();
+      const user = await currentUser();
       if (!user) {
         if (!cancelled) setView({ status: "needs-login" });
         return;
