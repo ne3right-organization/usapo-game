@@ -159,7 +159,7 @@ const CONFIRM_MS = 3000;              // やり直す・あきらめるを1回�
 // ===== 得点 =====
 // 合体1回ごとに「合体後のピースの地域数 × MERGE_POINT」。大きなかたまりに足していくほど伸びる。
 // 得点 = max(0, 合体の点 - 積み直し回数 × RESTACK_PENALTY) + 完成ボーナス。
-// DB側(supabase/migrations/20261019000000_map_pack_schema.sql のトリガー)でも同じ式で計算し直すので、変えるときは両方そろえること
+// サーバー側(amplify/functions/submit-map-pack-challenge)でも同じ式で計算し直すので、変えるときは両方そろえること
 const MERGE_POINT = 10;
 const CLEAR_BONUS = 1000;
 const TIME_BONUS_SEC = 300;           // 完成までこの秒数を切った分だけ、1秒あたり TIME_BONUS_PER_SEC 点

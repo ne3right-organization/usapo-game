@@ -1,7 +1,7 @@
 import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/submit-map-puzzle-challenge";
-import { areaKeysOf, dataClient, ensureProfile, unwrap } from "../shared/dataClient";
+import { areaKeysOf, dataClient, ensureProfile, touchRecentClear, unwrap } from "../shared/dataClient";
 
 const MAX_PIECES = 10000;
 const MAX_COMMENT_LENGTH = 200;
@@ -91,6 +91,17 @@ export const handler: Schema["submitMapPuzzleChallenge"]["functionHandler"] = as
       })
     );
   }
+
+  // 地図パズルの記録はクリアしたときだけ送られる
+  await touchRecentClear(c, {
+    game: "map-puzzle",
+    areaKey,
+    difficulty: a.difficulty,
+    prefCode: a.prefCode,
+    prefName: a.prefName,
+    cityCode,
+    cityName: a.cityName || null,
+  });
 
   // クリアしたエリアの中断データは要らない(無ければ何もしない)
   await c.models.GameMapPuzzleProgress.delete({ userId, areaKey });

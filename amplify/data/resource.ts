@@ -1,8 +1,11 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
+import { claimZukanQuizAnswer } from "../functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
 import { setNickname } from "../functions/set-nickname/resource";
 import { submitMapPackChallenge } from "../functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "../functions/submit-map-puzzle-challenge/resource";
+import { startZukanQuiz } from "../functions/start-zukan-quiz/resource";
+import { zukanComment } from "../functions/zukan-comment/resource";
 
 // Supabase(supabase/migrations)から移しているゲームのデータ。設計は docs/amplify_data_migration.md。
 // ユーザーIDは Cognito の sub。得点・ベスト記録・合計など「クライアントの自己申告を信用しない」ものは
@@ -189,6 +192,118 @@ const schema = a
       ])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
 
+    // ─── 図鑑クイズ ─────────────────────────────────────────────────────────
+    // 出題1問ぶんの正答。クライアントからは読み書きできず、出題の Lambda が作り、回答の Lambda が
+    // 消して(=1回きり)判定する。回答されなかったものは expiresAt(TTL)で消える
+    GameZukanQuizSession: a
+      .model({
+      prefCode: a.string().required(),
+      prefName: a.string().required(),
+      cityCode: a.string().required(),
+      cityName: a.string().required(),
+      population: a.integer(),
+      households: a.integer(),
+      difficulty: a.string().required(),
+      hintFields: a.string().array().required(), // 出題時に実際に見せたヒントの項目
+      issuedAt: a.datetime().required(),
+      expiresAt: a.integer().required(), // TTL(UNIX秒)
+    })
+      // モデルには認可ルールが1つ必要なので、誰も入っていない admin グループだけにしておく(=クライアントからは触れない)
+      .authorization((allow) => [allow.group("admin")]),
+
+    // 図鑑のカード(ユーザー×市区町村)。areaKey = `${prefCode}#${cityCode}`
+    GameZukanCollection: a
+      .model({
+        userId: a.id().required(),
+        areaKey: a.string().required(),
+        prefCode: a.string().required(),
+        prefName: a.string().required(),
+        cityCode: a.string().required(),
+        cityName: a.string().required(),
+        population: a.integer(),
+        households: a.integer(),
+        correctCount: a.integer().required(),
+        bestDifficulty: a.string().required(), // 一番上の難易度で正解したもの
+        hintFields: a.string().array().required(), // 直近に正解したときに見せたヒント(上書き)
+        firstAcquiredAt: a.datetime().required(),
+        lastAcquiredAt: a.datetime().required(),
+      })
+      .identifier(["userId", "areaKey"])
+      .secondaryIndexes((index) => [
+        index("userId").sortKeys(["lastAcquiredAt"]).queryField("listZukanCollectionsByUser"),
+      ])
+      .authorization((allow) => [allow.authenticated().to(["read"])]),
+
+    // 市区町村ごとの全ユーザー横断の正答率(ゲストの回答も数える)。回答の Lambda だけが読み書きする
+    GameZukanMunicipalityStat: a
+      .model({
+        areaKey: a.string().required(),
+        attemptCount: a.integer().required(),
+        correctCount: a.integer().required(),
+      })
+      .identifier(["areaKey"])
+      .authorization((allow) => [allow.group("admin")]), // クライアントからは触れない(GameZukanQuizSession と同じ)
+
+    // カードへの「ヒントの提案」(1ユーザー1カードにつき1件)。そのカードを持っている人だけ書ける
+    // (確認が要るので書き込みはカスタムミューテーション経由)
+    GameZukanComment: a
+      .model({
+        areaKey: a.string().required(),
+        userId: a.id().required(),
+        nickname: a.string(),
+        body: a.string().required(),
+        postedAt: a.datetime().required(),
+        editedAt: a.datetime().required(),
+      })
+      .identifier(["areaKey", "userId"])
+      .secondaryIndexes((index) => [
+        index("areaKey").sortKeys(["postedAt"]).queryField("listZukanCommentsByArea"),
+      ])
+      .authorization((allow) => [allow.authenticated().to(["read"])]),
+
+    // ─── 最近のクリア(3ゲーム共通) ──────────────────────────────────────────
+    // 各ゲームのトップに出す「最近クリアされたエリア」。誰がクリアしたかは持たない。未ログインでも読める。
+    // game = map-puzzle / map-pack / zukan-quiz、areaKey はゲームごとのエリアのキー
+    GameRecentClear: a
+      .model({
+        game: a.string().required(),
+        areaKey: a.string().required(),
+        difficulty: a.string(), // 図鑑クイズは持たない
+        prefCode: a.string().required(),
+        prefName: a.string().required(),
+        cityCode: a.string(),
+        cityName: a.string(),
+        lastClearedAt: a.datetime().required(),
+      })
+      .identifier(["game", "areaKey"])
+      .secondaryIndexes((index) => [
+        index("game").sortKeys(["lastClearedAt"]).queryField("listRecentClearsByGame"),
+      ])
+      .authorization((allow) => [allow.guest().to(["read"]), allow.authenticated().to(["read"])]),
+
+    ZukanQuizQuestion: a.customType({
+      sessionId: a.id().required(),
+      difficulty: a.string().required(),
+      silhouette: a.json().required(),
+      choices: a.json().required(),
+      trivia: a.json().required(),
+      population: a.integer().required(),
+      households: a.integer().required(),
+    }),
+
+    ZukanQuizAnswerResult: a.customType({
+      isCorrect: a.boolean().required(),
+      prefCode: a.string().required(),
+      prefName: a.string().required(),
+      cityCode: a.string().required(),
+      cityName: a.string().required(),
+      population: a.integer(),
+      households: a.integer(),
+      attemptCount: a.integer().required(),
+      correctCount: a.integer().required(),
+      difficulty: a.string().required(),
+    }),
+
     MapPackSubmitResult: a.customType({
       score: a.integer().required(),
       isNewBest: a.boolean().required(),
@@ -231,6 +346,43 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(submitMapPackChallenge)),
 
+    // 図鑑クイズは未ログイン(ゲスト)でも遊べる。図鑑に登録されるのはログインしている時だけ
+    startZukanQuiz: a
+      .mutation()
+      .arguments({
+        difficulty: a.string().required(),
+        // 同じセッションで出題済みの市区町村("prefCode:cityCode")。再出題を避ける
+        excludeCityCodes: a.string().array(),
+      })
+      .returns(a.ref("ZukanQuizQuestion"))
+      .authorization((allow) => [allow.guest(), allow.authenticated()])
+      .handler(a.handler.function(startZukanQuiz)),
+
+    claimZukanQuizAnswer: a
+      .mutation()
+      .arguments({
+        sessionId: a.id().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+      })
+      .returns(a.ref("ZukanQuizAnswerResult"))
+      .authorization((allow) => [allow.guest(), allow.authenticated()])
+      .handler(a.handler.function(claimZukanQuizAnswer)),
+
+    upsertZukanComment: a
+      .mutation()
+      .arguments({ prefCode: a.string().required(), cityCode: a.string().required(), body: a.string().required() })
+      .returns(a.ref("GameZukanComment"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(zukanComment)),
+
+    deleteZukanComment: a
+      .mutation()
+      .arguments({ prefCode: a.string().required(), cityCode: a.string().required() })
+      .returns(a.boolean())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(zukanComment)),
+
     setNickname: a
       .mutation()
       .arguments({ nickname: a.string() })
@@ -243,6 +395,9 @@ const schema = a
     allow.resource(setNickname),
     allow.resource(submitMapPuzzleChallenge),
     allow.resource(submitMapPackChallenge),
+    allow.resource(startZukanQuiz),
+    allow.resource(claimZukanQuizAnswer),
+    allow.resource(zukanComment),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

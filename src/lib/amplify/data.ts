@@ -2,12 +2,21 @@
 
 import "@/lib/amplify/configure";
 import { generateClient } from "aws-amplify/data";
+import { currentUser } from "@/lib/auth";
 import type { Schema } from "../../../amplify/data/resource";
 
 export type { Schema };
 
 // ブラウザから Amplify Data(AppSync)を呼ぶクライアント。認可はログイン中の Cognito ユーザー
 export const data = generateClient<Schema>();
+
+/**
+ * 未ログインでも呼べる API(図鑑クイズ・最近のクリア)用の認証方式。
+ * ログインしていれば Cognito のユーザー、していなければ Identity Pool のゲストとして呼ぶ
+ */
+export async function guestOrUserAuthMode(): Promise<"userPool" | "identityPool"> {
+  return (await currentUser()) ? "userPool" : "identityPool";
+}
 
 /** Amplify Data の結果を、エラーなら例外にして中身だけ返す */
 export function unwrap<R extends { data: unknown; errors?: readonly { message: string }[] }>(res: R): R["data"] {

@@ -1,16 +1,15 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import type { GeoJsonGeometry, ZukanQuizDifficulty } from "@/lib/game/zukanQuizData";
 import { currentUser } from "@/lib/auth";
+import { data, guestOrUserAuthMode, unwrap, type Schema } from "@/lib/amplify/data";
 
 export type { GeoJsonGeometry, ZukanQuizDifficulty };
 
 // このファイルは mapPuzzleData.ts のクイズ版に相当する。
-// 出題生成(/api/zukan-quiz)だけはサーバー側で正答を隠しつつ組み立てる必要があるためAPI Route経由、
-// 回答判定はDBのclaim_zukan_quiz_answer関数(security definer)をRPCで直接呼ぶ
-// (地図パズルのスコア計算がトリガーで行われているのと同じ考え方: クライアントの
-// 「正解でした」という自己申告は一切信用しない)。
+// 出題(startZukanQuiz)と回答の判定(claimZukanQuizAnswer)は Lambda のカスタムミューテーションで、
+// 正答はサーバーにだけ置く(クライアントの「正解でした」という自己申告は一切信用しない)。
+// 未ログインでも遊べるよう、ログインしていなければ Identity Pool のゲストとして呼ぶ
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 
@@ -42,22 +41,29 @@ export interface ZukanQuizQuestion {
   households: number;
 }
 
-// excludeCityCodes: 同一セッション内で既に出題した自治体("prefCode:cityCode")。
-// 再出題を避けるためRoute Handler側の候補から除外してもらう
+/** a.json の項目は文字列で返ることがあるので、どちらでも受け取れるようにする */
+function parseJson<T>(value: unknown): T {
+  return (typeof value === "string" ? JSON.parse(value) : value) as T;
+}
+
+// excludeCityCodes: 同一セッション内で既に出題した自治体("prefCode:cityCode")。再出題を避ける
 export async function startZukanQuiz(
   difficulty: ZukanQuizDifficulty,
   excludeCityCodes: string[] = []
 ): Promise<ZukanQuizQuestion> {
-  const res = await fetch("/api/zukan-quiz", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ difficulty, excludeCityCodes }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? "問題の取得に失敗しました");
-  }
-  return res.json();
+  const q = unwrap(
+    await data.mutations.startZukanQuiz({ difficulty, excludeCityCodes }, { authMode: await guestOrUserAuthMode() })
+  );
+  if (!q) throw new Error("問題の取得に失敗しました");
+  return {
+    sessionId: q.sessionId,
+    difficulty: q.difficulty as ZukanQuizDifficulty,
+    silhouette: parseJson<GeoJsonGeometry>(q.silhouette),
+    choices: parseJson<ZukanQuizChoice[]>(q.choices),
+    trivia: parseJson<ZukanQuizTrivia>(q.trivia),
+    population: q.population,
+    households: q.households,
+  };
 }
 
 export interface ZukanQuizAnswerResult {
@@ -73,46 +79,26 @@ export interface ZukanQuizAnswerResult {
   difficulty: ZukanQuizDifficulty;
 }
 
-interface ClaimAnswerRow {
-  is_correct: boolean;
-  pref_code: string;
-  pref_name: string;
-  city_code: string;
-  city_name: string;
-  population: number | null;
-  households: number | null;
-  attempt_count: number;
-  correct_count: number;
-  difficulty: ZukanQuizDifficulty;
-}
-
 export async function submitZukanQuizAnswer(
   sessionId: string,
   prefCode: string,
   cityCode: string
 ): Promise<ZukanQuizAnswerResult> {
-  const supabase = createClient();
-  const { data, error } = await supabase.rpc("claim_zukan_quiz_answer", {
-    p_session_id: sessionId,
-    p_answer_pref_code: prefCode,
-    p_answer_city_code: cityCode,
-  });
-  if (error) throw new Error(error.message);
-
-  const row = (data as ClaimAnswerRow[] | null)?.[0];
+  const row = unwrap(
+    await data.mutations.claimZukanQuizAnswer({ sessionId, prefCode, cityCode }, { authMode: await guestOrUserAuthMode() })
+  );
   if (!row) throw new Error("回答結果を取得できませんでした");
-
   return {
-    isCorrect: row.is_correct,
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code,
-    cityName: row.city_name,
-    population: row.population,
-    households: row.households,
-    attemptCount: row.attempt_count,
-    correctCount: row.correct_count,
-    difficulty: row.difficulty,
+    isCorrect: row.isCorrect,
+    prefCode: row.prefCode,
+    prefName: row.prefName,
+    cityCode: row.cityCode,
+    cityName: row.cityName,
+    population: row.population ?? null,
+    households: row.households ?? null,
+    attemptCount: row.attemptCount,
+    correctCount: row.correctCount,
+    difficulty: row.difficulty as ZukanQuizDifficulty,
   };
 }
 
@@ -124,8 +110,8 @@ async function requireUserId(): Promise<string> {
 
 // ─── トップページ: 最近図鑑に登録された自治体 ───────────────────────────────────────
 //
-// 誰が獲得したかは一切特定せず、自治体名+最終登録時刻のみをsecurity definer関数
-// (fetch_recent_zukan_registrations)経由で取得する。むずかしいはトリビア登録の
+// 誰が獲得したかは一切特定せず、自治体名+最終登録時刻のみを GameRecentClear(game = zukan-quiz)から
+// 取得する(回答の Lambda が更新する。未ログインでも読める)。むずかしいはトリビア登録の
 // 有無を問わず出題されるため、ここに出た自治体をきっかけにトリビア登録を促す狙い
 
 export interface RecentZukanRegistration {
@@ -136,24 +122,17 @@ export interface RecentZukanRegistration {
   lastAcquiredAt: string;
 }
 
-interface RecentRegistrationRow {
-  pref_code: string;
-  pref_name: string;
-  city_code: string;
-  city_name: string;
-  last_acquired_at: string;
-}
-
 export async function fetchRecentZukanRegistrations(limit = 8): Promise<RecentZukanRegistration[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase.rpc("fetch_recent_zukan_registrations", { p_limit: limit });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as RecentRegistrationRow[]).map((row) => ({
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code,
-    cityName: row.city_name,
-    lastAcquiredAt: row.last_acquired_at,
+  const page = await data.models.GameRecentClear.listRecentClearsByGame(
+    { game: "zukan-quiz" },
+    { sortDirection: "DESC", limit, authMode: await guestOrUserAuthMode() }
+  );
+  return unwrap(page).map((item) => ({
+    prefCode: item.prefCode,
+    prefName: item.prefName,
+    cityCode: item.cityCode ?? "",
+    cityName: item.cityName ?? "",
+    lastAcquiredAt: item.lastClearedAt,
   }));
 }
 
@@ -173,56 +152,41 @@ export interface ZukanCollectionEntry {
   lastAcquiredAt: string;
 }
 
-interface CollectionRow {
-  pref_code: string;
-  pref_name: string;
-  city_code: string;
-  city_name: string;
-  population: number | null;
-  households: number | null;
-  correct_count: number;
-  best_difficulty: ZukanQuizDifficulty;
-  hint_fields: string[];
-  first_acquired_at: string;
-  last_acquired_at: string;
-}
+type CollectionItem = Schema["GameZukanCollection"]["type"];
 
-function rowToCollectionEntry(row: CollectionRow): ZukanCollectionEntry {
+function toCollectionEntry(item: CollectionItem): ZukanCollectionEntry {
   return {
-    prefCode: row.pref_code,
-    prefName: row.pref_name,
-    cityCode: row.city_code,
-    cityName: row.city_name,
-    population: row.population,
-    households: row.households,
-    correctCount: row.correct_count,
-    bestDifficulty: row.best_difficulty,
-    hintFields: row.hint_fields ?? [],
-    firstAcquiredAt: row.first_acquired_at,
-    lastAcquiredAt: row.last_acquired_at,
+    prefCode: item.prefCode,
+    prefName: item.prefName,
+    cityCode: item.cityCode,
+    cityName: item.cityName,
+    population: item.population ?? null,
+    households: item.households ?? null,
+    correctCount: item.correctCount,
+    bestDifficulty: item.bestDifficulty as ZukanQuizDifficulty,
+    hintFields: (item.hintFields ?? []).filter((f): f is string => !!f),
+    firstAcquiredAt: item.firstAcquiredAt,
+    lastAcquiredAt: item.lastAcquiredAt,
   };
 }
 
 // userIdを省略すると自分の図鑑を返す(未ログインなら空配列。ゲストは図鑑を持たないため)。
-// userIdを指定した場合は他ユーザーの図鑑(nickname公開済みならRLSで閲覧可、
-// 非公開または存在しなければ単に空配列になる)
+// userIdを指定した場合は他ユーザーの図鑑
 export async function fetchZukanCollections(userId?: string): Promise<ZukanCollectionEntry[]> {
-  const supabase = createClient();
-  let targetId = userId;
-  if (!targetId) {
-    const user = await currentUser();
-    if (!user) return [];
-    targetId = user.id;
-  }
-
-  const { data, error } = await supabase
-    .from("game_zukan_collections")
-    .select("*")
-    .eq("user_id", targetId)
-    .order("last_acquired_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToCollectionEntry);
+  const me = await currentUser();
+  if (!me) return [];
+  const targetId = userId ?? me.id;
+  const items: CollectionItem[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameZukanCollection.listZukanCollectionsByUser(
+      { userId: targetId },
+      { sortDirection: "DESC", nextToken }
+    );
+    items.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return items.map(toCollectionEntry);
 }
 
 export async function fetchZukanCollectionEntry(
@@ -230,17 +194,8 @@ export async function fetchZukanCollectionEntry(
   prefCode: string,
   cityCode: string
 ): Promise<ZukanCollectionEntry | null> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("game_zukan_collections")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("pref_code", prefCode)
-    .eq("city_code", cityCode)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data ? rowToCollectionEntry(data) : null;
+  const item = unwrap(await data.models.GameZukanCollection.get({ userId, areaKey: `${prefCode}#${cityCode}` }));
+  return item ? toCollectionEntry(item) : null;
 }
 
 // ─── カード詳細用: シルエット・トリビアをCloudFrontから直接取得 ───────────────────
@@ -327,21 +282,15 @@ export interface ZukanCollectionComment {
   updatedAt: string;
 }
 
-interface CommentRow {
-  user_id: string;
-  nickname: string | null;
-  body: string;
-  created_at: string;
-  updated_at: string;
-}
+type CommentItem = Schema["GameZukanComment"]["type"];
 
-function rowToComment(row: CommentRow): ZukanCollectionComment {
+function toComment(item: CommentItem): ZukanCollectionComment {
   return {
-    userId: row.user_id,
-    nickname: row.nickname,
-    body: row.body,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    userId: item.userId,
+    nickname: item.nickname ?? null,
+    body: item.body,
+    createdAt: item.postedAt,
+    updatedAt: item.editedAt,
   };
 }
 
@@ -349,65 +298,36 @@ export async function fetchZukanCollectionComments(
   prefCode: string,
   cityCode: string
 ): Promise<ZukanCollectionComment[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("game_zukan_collection_comments")
-    .select("*")
-    .eq("pref_code", prefCode)
-    .eq("city_code", cityCode)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToComment);
+  const items: CommentItem[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameZukanComment.listZukanCommentsByArea(
+      { areaKey: `${prefCode}#${cityCode}` },
+      { sortDirection: "DESC", nextToken }
+    );
+    items.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return items.map(toComment);
 }
 
+// カードを持っているかの確認は Lambda(zukan-comment)が行う
 export async function upsertZukanCollectionComment(
   prefCode: string,
   cityCode: string,
   body: string
 ): Promise<ZukanCollectionComment> {
-  const supabase = createClient();
-  const userId = await requireUserId();
+  await requireUserId();
   const trimmed = body.trim();
   if (trimmed.length === 0 || trimmed.length > 200) {
     throw new Error("コメントは1〜200文字で入力してください");
   }
-
-  const { data: profile } = await supabase
-    .from("game_profiles")
-    .select("nickname")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  const { data, error } = await supabase
-    .from("game_zukan_collection_comments")
-    .upsert(
-      {
-        user_id: userId,
-        pref_code: prefCode,
-        city_code: cityCode,
-        nickname: profile?.nickname ?? null,
-        body: trimmed,
-      },
-      { onConflict: "user_id,pref_code,city_code" }
-    )
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return rowToComment(data);
+  const item = unwrap(await data.mutations.upsertZukanComment({ prefCode, cityCode, body: trimmed }));
+  if (!item) throw new Error("保存できませんでした");
+  return toComment(item as CommentItem);
 }
 
 export async function deleteZukanCollectionComment(prefCode: string, cityCode: string): Promise<void> {
-  const supabase = createClient();
-  const userId = await requireUserId();
-
-  const { error } = await supabase
-    .from("game_zukan_collection_comments")
-    .delete()
-    .eq("user_id", userId)
-    .eq("pref_code", prefCode)
-    .eq("city_code", cityCode);
-
-  if (error) throw new Error(error.message);
+  await requireUserId();
+  unwrap(await data.mutations.deleteZukanComment({ prefCode, cityCode }));
 }

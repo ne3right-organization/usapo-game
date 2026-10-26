@@ -2,10 +2,13 @@ import { defineBackend } from "@aws-amplify/backend";
 import { CfnUserPoolDomain } from "aws-cdk-lib/aws-cognito";
 import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
+import { claimZukanQuizAnswer } from "./functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setNickname } from "./functions/set-nickname/resource";
 import { submitMapPackChallenge } from "./functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "./functions/submit-map-puzzle-challenge/resource";
+import { startZukanQuiz } from "./functions/start-zukan-quiz/resource";
+import { zukanComment } from "./functions/zukan-comment/resource";
 
 const backend = defineBackend({
   auth,
@@ -14,7 +17,16 @@ const backend = defineBackend({
   setNickname,
   submitMapPuzzleChallenge,
   submitMapPackChallenge,
+  startZukanQuiz,
+  claimZukanQuizAnswer,
+  zukanComment,
 });
+
+// 回答されなかった図鑑クイズの出題は、期限(expiresAt)が過ぎたら DynamoDB が消す
+backend.data.resources.cfnResources.amplifyDynamoDbTables["GameZukanQuizSession"].timeToLiveAttribute = {
+  attributeName: "expiresAt",
+  enabled: true,
+};
 
 // メール・パスワードでの自己登録を止める(Google でのログインはこの設定の影響を受けない)
 backend.auth.resources.cfnResources.cfnUserPool.adminCreateUserConfig = {

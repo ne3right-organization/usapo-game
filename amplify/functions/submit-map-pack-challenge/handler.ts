@@ -1,7 +1,7 @@
 import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/submit-map-pack-challenge";
-import { areaKeysOf, dataClient, ensureProfile, unwrap, type DataClient } from "../shared/dataClient";
+import { areaKeysOf, dataClient, ensureProfile, touchRecentClear, unwrap, type DataClient } from "../shared/dataClient";
 
 // 得点の式はクライアント(MapPackGame.tsx)と同じ。変えるときは両方そろえる
 const RESTACK_PENALTY = 50;
@@ -100,6 +100,18 @@ export const handler: Schema["submitMapPackChallenge"]["functionHandler"] = asyn
         ...(isNewBest && { bestScore: score, bestChallengeId: challenge.id, prefName: a.prefName, cityName: a.cityName || null }),
       })
     );
+  }
+
+  if (a.cleared) {
+    await touchRecentClear(c, {
+      game: "map-pack",
+      areaKey,
+      difficulty: a.difficulty,
+      prefCode: a.prefCode,
+      prefName: a.prefName,
+      cityCode,
+      cityName: a.cityName || null,
+    });
   }
 
   // 終わったゲームは再開の対象にしない(あきらめた場合も同じ)

@@ -36,6 +36,24 @@ export function areaKeysOf(area: { difficulty: string; prefCode: string; cityCod
   };
 }
 
+/** 各ゲームのトップに出す「最近クリアされたエリア」を更新する(誰がクリアしたかは持たない) */
+export async function touchRecentClear(
+  c: DataClient,
+  clear: {
+    game: "map-puzzle" | "map-pack" | "zukan-quiz";
+    areaKey: string;
+    difficulty?: string | null;
+    prefCode: string;
+    prefName: string;
+    cityCode?: string | null;
+    cityName?: string | null;
+  }
+) {
+  const fields = { ...clear, lastClearedAt: new Date().toISOString() };
+  const existing = unwrap(await c.models.GameRecentClear.get({ game: clear.game, areaKey: clear.areaKey }));
+  unwrap(existing ? await c.models.GameRecentClear.update(fields) : await c.models.GameRecentClear.create(fields));
+}
+
 /** プロフィールが無ければ作る(初回ログインのトリガーより前からいる人や、トリガーが失敗した場合の保険) */
 export async function ensureProfile(c: DataClient, userId: string): Promise<{ nickname: string | null }> {
   const existing = unwrap(await c.models.GameProfile.get({ userId }));
