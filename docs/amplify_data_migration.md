@@ -1,5 +1,7 @@
 # Supabase → Amplify Data 移行: アクセスパターンと設計案
 
+> **2026-10-27 に移行完了**(本番は `game.usapo.net`)。以下は移行時の設計記録。実装は `amplify/` を正とする。
+
 Supabase(Postgres + RLS + トリガー/RPC)で持っているゲームのデータを、Amplify Gen2 の Data(AppSync + DynamoDB)に移すための洗い出し。
 2026-10-26 時点のコード(`src/lib/game/*Data.ts` ほか)と `supabase/migrations/` から機械的に拾ったもの。
 

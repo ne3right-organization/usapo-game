@@ -8,7 +8,7 @@ import { submitMapPuzzleChallenge } from "../functions/submit-map-puzzle-challen
 import { startZukanQuiz } from "../functions/start-zukan-quiz/resource";
 import { zukanComment } from "../functions/zukan-comment/resource";
 
-// Supabase(supabase/migrations)から移しているゲームのデータ。設計は docs/amplify_data_migration.md。
+// Supabase から移したゲームのデータ(Supabase 時代のスキーマは git 履歴の supabase/migrations)。設計は docs/amplify_data_migration.md。
 // ユーザーIDは Cognito の sub。得点・ベスト記録・合計など「クライアントの自己申告を信用しない」ものは
 // クライアントから書き込めないようにし、Lambda のカスタムミューテーションだけが書く
 

@@ -168,9 +168,9 @@
 
 - 得点 = max(0, 合体の点 − 積み直し回数×50) ＋ 完成ボーナス（1,000点＋300秒を切った分×5点）。合体の点は合体1回ごとに「合体後のピースの地域数×10点」
 - 完成時・あきらめた時に記録する（ログイン時のみ。1つも落とさずにあきらめた場合は記録しない）
-- DB: `supabase/migrations/20261019000000_map_pack_schema.sql`。地図パズルと同じ「挑戦履歴（不変ログ）→ INSERTトリガーで得点をDB側で計算し直す → エリア別ベストを更新」の構成。テーブルは `game_map_pack_challenges` / `game_map_pack_best`
-  - 地図パズルとは別集計にし、`game_profiles.total_score`（地図パズルの合計）には含めない。ニックネームと公開範囲（ニックネーム設定済みなら公開）は `game_profiles` を共用し、ニックネーム変更は専用トリガーで地図パックのベストにも伝播する
-  - 合体の点は「全ピースを1つのかたまりに足し続けた場合」を上限としてCHECK制約で弾く。それ以外（完成したか・タイム）は自己申告（地図パズルと同じ前提）
+- DB: Amplify Data の `GameMapPackChallenge` / `GameMapPackBest` / `GameMapPackUserTotal`(`amplify/data/resource.ts`)。地図パズルと同じ「挑戦履歴（不変ログ）→ 得点をサーバー側(Lambda `submit-map-pack-challenge`)で計算し直す → エリア別ベストを更新」の構成。2026-10-27 までは Supabase(`game_map_pack_challenges` / `game_map_pack_best`、トリガーで計算)だった
+  - 地図パズルとは別集計にし、`GameProfile.totalScore`（地図パズルの合計）には含めない。ニックネームと公開範囲（ニックネーム設定済みなら公開）は `game_profiles` を共用し、ニックネーム変更は専用トリガーで地図パックのベストにも伝播する
+  - 合体の点は「全ピースを1つのかたまりに足し続けた場合」を上限としてLambda で弾く。それ以外（完成したか・タイム）は自己申告（地図パズルと同じ前提）
   - テーブル・関数とも `anon` への権限を明示的にREVOKEしている（CLAUDE.md の教訓）
   - エリア別ランキングは `pref_code` と `city_code` の両方で絞る（`city_code` は都道府県内の3桁コードなので、単独だと別の県の同じコードと混ざる）
 - ランキングの行はプロフィールページへのリンクにしない（地図パックのプロフィールページは無いため。`RankingList` に `profileBasePath` を追加して切り替え）
