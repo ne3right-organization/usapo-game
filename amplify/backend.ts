@@ -33,15 +33,18 @@ const backend = defineBackend({
   chizuTaneSeeds,
 });
 
-// 地図タネの落ちているタネは早い者勝ちなので、拾う・落とす Lambda は拠点のテーブルを DynamoDB で直接(条件付きで)書き換える
+// 地図タネの落ちているタネ・実は早い者勝ちなので、拾う・落とす・実をもらう Lambda は拠点のテーブルを DynamoDB で直接(条件付きで)書き換える
 // (Amplify Data のクライアントでは条件付きの書き込みができないため。amplify/functions/shared/chizuTane.ts)
 const taneBaseTable = backend.data.resources.tables["GameTaneBase"];
 const taneHeldSeedTable = backend.data.resources.tables["GameTaneHeldSeed"];
+const taneItemTable = backend.data.resources.tables["GameTaneItem"];
 for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
   taneBaseTable.grantReadWriteData(fn.resources.lambda);
   taneHeldSeedTable.grantReadWriteData(fn.resources.lambda);
+  taneItemTable.grantReadWriteData(fn.resources.lambda);
   fn.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
   fn.addEnvironment("CHIZU_TANE_HELD_SEED_TABLE", taneHeldSeedTable.tableName);
+  fn.addEnvironment("CHIZU_TANE_ITEM_TABLE", taneItemTable.tableName);
 }
 
 // 回答されなかった図鑑クイズの出題は、期限(expiresAt)が過ぎたら DynamoDB が消す

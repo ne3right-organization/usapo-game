@@ -43,7 +43,7 @@ export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event)
     plantedAt: now.toISOString(),
     repLng: district.repLng,
     repLat: district.repLat,
-    waterCount: 0,
+    water: 0,
     droppedSeeds: 0,
   });
   if (res.errors?.length || !res.data) throw new Error("この地区にはもうタネがあります");

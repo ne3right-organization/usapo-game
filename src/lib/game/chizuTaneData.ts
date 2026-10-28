@@ -5,8 +5,8 @@ import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { GardenObject } from "@/lib/game/chizuTane/garden";
 import {
-  SPROUT_MS_DEV,
-  SPROUT_MS_PRODUCTION,
+  DAY_MS_DEV,
+  DAY_MS_PRODUCTION,
   findTownDistrict,
   municipalityCandidates,
   townDistrictUrl,
@@ -228,18 +228,23 @@ export async function placeBase(loc: Location, district: TownDistrict, itemId: s
 }
 
 export interface CheckInResult {
-  /** received: ほかの人のタネでもらえた / watered: 自分のタネに水やり / harvested: 自分のタネを収穫 / already: 今日はもう来た */
-  status: "received" | "watered" | "harvested" | "already";
+  /** watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / already: 今日はもう来た */
+  status: "watered" | "ripened" | "fruit" | "already";
   townName: string;
   baseTypeId: string;
   itemId: string | null;
   /** もらったあとに持っている数 */
   quantity: number | null;
-  /** このチェックインでもらった数(収穫なら3) */
+  /** このチェックインでもらった実の数(1か0) */
   gainedItems: number | null;
+  /** ほかの人のタネに初めて来た(タネを1個もらえた) */
+  firstVisit: boolean;
+  /** チェックインのあとのたまった水と、残っている実の数 */
+  water: number;
+  fruits: number;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { itemId: string; count: number; reason: "checkin" | "harvest" | "level" }[];
+  seedsGained: { itemId: string; count: number; reason: "checkin" | "level" }[];
   /** チェックインのあと、この拠点に落ちているタネの数 */
   droppedSeeds: number;
   /** チェックインのあとの育ちの段階(growth.ts) */
@@ -260,6 +265,9 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
     itemId: res.itemId ?? null,
     quantity: res.quantity ?? null,
     gainedItems: res.gainedItems ?? null,
+    firstVisit: res.firstVisit ?? false,
+    water: res.water ?? 0,
+    fruits: res.fruits ?? 0,
     level: res.level ?? null,
     leveledUp: res.leveledUp ?? false,
     seedsGained: parseJson<CheckInResult["seedsGained"] | null>(res.seedsGained) ?? [],
@@ -267,6 +275,14 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
     stage: res.stage ?? null,
     rank: res.rank ?? null,
   };
+}
+
+/** 自分のタネに遠くから水をやる(タネごとに1日1回、効き目は現地の10分の1)。水をやったあとのタネを返す */
+export async function waterRemotely(areaKey: string): Promise<TaneBase> {
+  await requireUserId();
+  const base = unwrap(await data.mutations.waterTaneBaseRemotely({ areaKey }));
+  if (!base) throw new Error("水をやれませんでした");
+  return base;
 }
 
 /** いまいる地区のタネに落ちているタネを count 個拾う(誰でも早い者勝ち)。拾えた数を返す(先を越されたら0) */
@@ -314,9 +330,9 @@ export async function saveGarden(objects: GardenObject[]): Promise<GardenState> 
   return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects) })));
 }
 
-/** 「1日」の長さ。芽が出るまでの時間で、育ちの1段階もこの長さ。dev(devgame.usapo.net・手元)は5分、本番は24時間(Lambda 側も同じ値にしている) */
-export function sproutMs(): number {
-  return isLocationOverrideAllowed() ? SPROUT_MS_DEV : SPROUT_MS_PRODUCTION;
+/** 「1日」の長さ(1日1回の区切り)。dev(devgame.usapo.net・手元)は5分、本番は24時間(Lambda 側も同じ値にしている) */
+export function taneDayMs(): number {
+  return isLocationOverrideAllowed() ? DAY_MS_DEV : DAY_MS_PRODUCTION;
 }
 
 /** 開発用の位置指定を出してよい環境か(dev 環境と手元だけ。本番では出さない) */

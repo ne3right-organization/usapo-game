@@ -124,18 +124,17 @@ export function jstDate(d: Date): string {
   return new Date(d.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
 }
 
-/** 芽が出るまでの時間。本番は24時間、dev(devgame.usapo.net・手元)は試しやすいように5分 */
-export const SPROUT_MS_PRODUCTION = 24 * 3_600_000;
-export const SPROUT_MS_DEV = 5 * 60_000;
-
-/** 芽が出るまでのあと何ミリ秒か(出ていれば0)。まいてから sproutMs たつまでは、自分もほかの人もチェックインできない */
-export function msUntilSprout(plantedAt: string, now: Date, sproutMs: number): number {
-  return Math.max(0, new Date(plantedAt).getTime() + sproutMs - now.getTime());
+/**
+ * 「1日1回」の区切り。本番(1日が24時間)は日本時間の日付(YYYY-MM-DD)。dev は1日を短くしているので、
+ * その長さごとの通し番号にする(5分なら5分ごとに、もう一度チェックインできる)
+ */
+export function dayKey(d: Date, dayMs: number): string {
+  return dayMs >= 24 * 3_600_000 ? jstDate(d) : `t${Math.floor(d.getTime() / dayMs)}`;
 }
 
-/** 「あと3時間」「あと20分」のような残り時間の言い方 */
-export function formatRemaining(ms: number): string {
-  const minutes = Math.ceil(ms / 60_000);
-  if (minutes < 60) return `あと${minutes}分`;
-  return `あと${Math.ceil(minutes / 60)}時間`;
-}
+/**
+ * 「1日」の長さ。1日1回のチェックイン・遠くからの水やりの区切り(dayKey)に使う。
+ * 本番は24時間、dev(devgame.usapo.net・手元)は試しやすいように5分
+ */
+export const DAY_MS_PRODUCTION = 24 * 3_600_000;
+export const DAY_MS_DEV = 5 * 60_000;

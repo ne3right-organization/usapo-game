@@ -1,5 +1,6 @@
 import {
   ConditionalCheckFailedException,
+  GetItemCommand,
   DynamoDBClient,
   TransactionCanceledException,
   TransactWriteItemsCommand,
@@ -111,7 +112,7 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
 export interface SeedGain {
   itemId: string;
   count: number;
-  reason: "checkin" | "harvest" | "level";
+  reason: "checkin" | "level";
 }
 
 /** タネ(もの)を増やす(無ければ作る) */
@@ -166,6 +167,7 @@ export async function grantLevelSeeds(
 const ddb = new DynamoDBClient({});
 const BASE_TABLE = process.env.CHIZU_TANE_BASE_TABLE ?? "";
 const HELD_SEED_TABLE = process.env.CHIZU_TANE_HELD_SEED_TABLE ?? "";
+const ITEM_TABLE = process.env.CHIZU_TANE_ITEM_TABLE ?? "";
 
 /**
  * 拠点に落ちているタネを count 個拾う。「拠点から count 個減らす(count 個以上落ちているときだけ)」と
@@ -237,18 +239,127 @@ export async function dropSeed(areaKey: string, max: number): Promise<boolean> {
   }
 }
 
+// ─── 水やりと実(DynamoDB を直接さわる) ─────────────────────────────────
+// 実っていない拠点は fruits の項目が無い(または null)。実ると fruits を FRUITS_WHEN_RIPE にして water を0に戻し、
+// 実が全部取られると fruits を消してランクを上げる(芽に戻る)。どれも条件付きの書き込みなので、同時に来ても数がずれない
+
+const NOT_RIPE = "(attribute_not_exists(fruits) OR attribute_type(fruits, :nullType))";
+
+export interface WaterResult {
+  /** 水をやったあとのたまった水(実っていて水をやらなかったときは null) */
+  water: number | null;
+  /** この水で実った */
+  ripened: boolean;
+}
+
+/** 水をやる(実っていないときだけ)。たまって toRipe 以上になったら実らせる */
+export async function addWater(areaKey: string, amount: number, toRipe: number, fruitsWhenRipe: number): Promise<WaterResult> {
+  const now = new Date().toISOString();
+  let water: number;
+  try {
+    const res = await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression: "SET water = if_not_exists(water, :zero) + :n, updatedAt = :now",
+        ConditionExpression: `attribute_exists(areaKey) AND ${NOT_RIPE}`,
+        ExpressionAttributeValues: { ":zero": { N: "0" }, ":n": { N: String(amount) }, ":now": { S: now }, ":nullType": { S: "NULL" } },
+        ReturnValues: "UPDATED_NEW",
+      })
+    );
+    water = Number(res.Attributes?.water?.N ?? 0);
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return { water: null, ripened: false };
+    throw err;
+  }
+  if (water < toRipe) return { water, ripened: false };
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression: "SET fruits = :f, water = :zero, updatedAt = :now",
+        ConditionExpression: `water >= :ripe AND ${NOT_RIPE}`,
+        ExpressionAttributeValues: {
+          ":f": { N: String(fruitsWhenRipe) },
+          ":zero": { N: "0" },
+          ":ripe": { N: String(toRipe) },
+          ":now": { S: now },
+          ":nullType": { S: "NULL" },
+        },
+      })
+    );
+    return { water: 0, ripened: true };
+  } catch (err) {
+    // 同時に水をやったほかの人が先に実らせた
+    if (err instanceof ConditionalCheckFailedException) return { water: 0, ripened: false };
+    throw err;
+  }
+}
+
 /**
- * 拠点に水をやる(育ちの間のチェックインの数を1つ増やす)。ほかの人と同時にチェックインしても数え漏れないよう、
- * 読んでから書くのではなく DynamoDB の1回の書き込みで足す
+ * 実を1個もらう。「拠点の実を1個減らす(1個以上あるときだけ)」と「もらった人の実(GameTaneItem)を1個増やす」を
+ * 1つのトランザクションで行う。もらえたら、残りの実の数を返す(先にほかの人が取りきっていたら null)
  */
-export async function waterBase(areaKey: string): Promise<void> {
-  await ddb.send(
-    new UpdateItemCommand({
-      TableName: BASE_TABLE,
-      Key: { areaKey: { S: areaKey } },
-      UpdateExpression: "SET waterCount = if_not_exists(waterCount, :zero) + :one, updatedAt = :now",
-      ConditionExpression: "attribute_exists(areaKey)",
-      ExpressionAttributeValues: { ":zero": { N: "0" }, ":one": { N: "1" }, ":now": { S: new Date().toISOString() } },
-    })
-  );
+export async function takeFruit(areaKey: string, userId: string, itemId: string, areaName: string): Promise<number | null> {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: BASE_TABLE,
+              Key: { areaKey: { S: areaKey } },
+              UpdateExpression: "SET fruits = fruits - :one, updatedAt = :now",
+              ConditionExpression: "fruits >= :one",
+              ExpressionAttributeValues: { ":one": { N: "1" }, ":now": { S: now } },
+            },
+          },
+          {
+            // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
+            Update: {
+              TableName: ITEM_TABLE,
+              Key: { userId: { S: userId }, itemId: { S: itemId } },
+              UpdateExpression:
+                "SET quantity = if_not_exists(quantity, :zero) + :one, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now, " +
+                "firstAcquiredAt = if_not_exists(firstAcquiredAt, :now), firstAreaName = if_not_exists(firstAreaName, :area)",
+              ExpressionAttributeNames: { "#tn": "__typename" },
+              ExpressionAttributeValues: {
+                ":one": { N: "1" },
+                ":zero": { N: "0" },
+                ":tn": { S: "GameTaneItem" },
+                ":now": { S: now },
+                ":area": { S: areaName },
+              },
+            },
+          },
+        ],
+      })
+    );
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return null;
+    throw err;
+  }
+  const base = await ddb.send(new GetItemCommand({ TableName: BASE_TABLE, Key: { areaKey: { S: areaKey } }, ConsistentRead: true }));
+  return Number(base.Item?.fruits?.N ?? 0);
+}
+
+/** 実が全部取られた拠点を芽に戻し、ランクを上げる(1回だけ。先にほかの人が戻していれば何もしない) */
+export async function resetAfterFruits(areaKey: string, newRank: number): Promise<void> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression: "SET #rank = :rank, water = :zero, updatedAt = :now REMOVE fruits",
+        ConditionExpression: "fruits = :zero",
+        ExpressionAttributeNames: { "#rank": "rank" },
+        ExpressionAttributeValues: { ":rank": { N: String(newRank) }, ":zero": { N: "0" }, ":now": { S: new Date().toISOString() } },
+      })
+    );
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return;
+    throw err;
+  }
 }

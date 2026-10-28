@@ -339,15 +339,17 @@ const schema = a
         townName: a.string().required(),
         baseTypeId: a.string().required(),
         seedItemId: a.string().required(), // まいたタネのもの(梨の木など)。訪ねた人はこれをもらう
-        rank: a.integer().required(), // 収穫するたびに1つ上がる(10まで)
+        rank: a.integer().required(), // 実が全部取られて芽に戻るたびに1つ上がる(10まで)
         plantedAt: a.datetime().required(),
         // 地区の代表点(geojson の X_CODE / Y_CODE)。全国のタネ地図に出す。まいた人の実際の位置は保存しない
         repLng: a.float(),
         repLat: a.float(),
-        // 育ち方(src/lib/game/chizuTane/growth.ts)。growFrom はいまの育ちの始まり(空なら芽が出たとき)、
-        // waterCount はその間にあったチェックインの数。収穫すると growFrom を収穫したときにし、waterCount を0に戻す
-        growFrom: a.datetime(),
-        waterCount: a.integer(),
+        // 育ち方(src/lib/game/chizuTane/growth.ts)。water はたまった水(現地のチェックイン1回で10、遠くからの水やりで1)。
+        // たまると実って fruits(残っている実の数)が10になり、実が全部取られると water を0に戻して芽から育ち直す
+        water: a.integer(),
+        fruits: a.integer(),
+        // 持ち主が最後に遠くから水をやった日(1日1回。dev は「1日」が短い)
+        lastRemoteWaterOn: a.string(),
         // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
         droppedSeeds: a.integer(),
         // 持ち主が最後に自分のタネにチェックインした日(日本時間)。1日1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
@@ -409,16 +411,19 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      // received(ほかの人のタネでタネをもらえた) / watered(自分のタネに水やり) / harvested(自分のタネを収穫) / already(今日はもう来た)
+      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / already(今日はもう来た)
       status: a.string().required(),
       townName: a.string().required(),
       baseTypeId: a.string().required(),
       itemId: a.string(), // そのタネのもの(梨の木など)
-      quantity: a.integer(), // 収穫したとき: もらったあとに持っている数
-      gainedItems: a.integer(), // このチェックインでもらったもの(実)の数(収穫なら3、それ以外は0)
+      quantity: a.integer(), // 実をもらったとき: もらったあとに持っている数
+      gainedItems: a.integer(), // このチェックインでもらった実の数(1か0)
+      firstVisit: a.boolean(), // ほかの人のタネに初めてチェックインした(タネを1個もらえた)
+      water: a.integer(), // チェックインのあとのたまった水
+      fruits: a.integer(), // チェックインのあとに残っている実の数
       level: a.integer(), // もらえたときのレベル
       leveledUp: a.boolean(), // このチェックインでレベルが上がったか
-      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / harvest / level)
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / level)
       droppedSeeds: a.integer(), // チェックインのあと、この拠点に落ちているタネの数
       stage: a.integer(), // チェックインのあとの育ちの段階(growth.ts)
       rank: a.integer(), // チェックインのあとのランク
@@ -566,6 +571,14 @@ const schema = a
         cityCode: a.string().required(),
       })
       .returns(a.ref("TaneCheckInResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 自分のタネに遠くから水をやる(1日1回、現地の10分の1)
+    waterTaneBaseRemotely: a
+      .mutation()
+      .arguments({ areaKey: a.string().required() })
+      .returns(a.ref("GameTaneBase"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 

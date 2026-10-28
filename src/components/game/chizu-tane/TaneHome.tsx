@@ -17,13 +17,16 @@ import {
   fetchMySeeds,
   fetchVisitedCount,
   openGarden,
+  taneDayMs,
+  waterRemotely,
   startTane,
   type GardenState,
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
-import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
+import { dayKey } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のガーデンの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
@@ -235,19 +238,27 @@ function Home({ course }: { course: TaneCourse }) {
           {bases.map((b) => {
             const type = TANE_BASE_TYPE_BY_ID.get(b.baseTypeId);
             return (
-              <li key={b.areaKey} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-2xl">{type?.emoji}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[#3c2a14] truncate">
-                    {b.townName}の{type?.name ?? "タネ"}
-                  </p>
-                  <p className="text-xs text-[#a8937a] truncate">
-                    {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
-                  </p>
+              <li key={b.areaKey} className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{type?.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#3c2a14] truncate">
+                      {b.townName}の{type?.name ?? "タネ"}
+                    </p>
+                    <p className="text-xs text-[#a8937a] truncate">
+                      {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
+                    </p>
+                  </div>
+                  <span className="shrink-0">
+                    <GrowthBadge base={b} />
+                  </span>
                 </div>
-                <span className="shrink-0">
-                  <GrowthBadge base={b} />
-                </span>
+                <div className="flex items-center gap-2 mt-1 pl-9">
+                  <div className="flex-1 min-w-0">
+                    <WaterHint base={b} />
+                  </div>
+                  <RemoteWaterButton base={b} onWatered={(next) => setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null)} />
+                </div>
               </li>
             );
           })}
@@ -259,14 +270,49 @@ function Home({ course }: { course: TaneCourse }) {
         <ol className="list-decimal pl-5 space-y-1">
           <li>「おでかけ」で現在地の地区を調べます</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）</li>
-          <li>まいたタネは1日たつと芽が出て、芽 → 若葉 → つぼみ → 花 → 実り と育ちます。1日たつと1段階、誰かがチェックインするとさらに1段階進みます</li>
-          <li>ほかの人のタネにチェックインすると、そのタネを1個分けてもらえます（1つのタネから1日1回）。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
-          <li>自分のタネにチェックインすると水やりになります。実っていれば収穫で、実（梨の木など）が3つとタネ1個がもらえ、ランクが上がってまた芽から育ちます</li>
+          <li>まいたタネは、水をやると タネ → 芽 → 若葉 → つぼみ → 花 → 実り と育ちます（時間がたつだけでは育ちません）</li>
+          <li>現地でチェックインすると水やりになります（自分のタネでもほかの人のタネでも、1つのタネに1日1回）。自分のタネには、このページから遠くから水をやることもできます（1日1回、効き目は現地の10分の1）</li>
+          <li>実ると実が10個なり、現地でチェックインした人は誰でも1個もらえます（早い者勝ち）。実がなくなると芽に戻り、ランクが上がります</li>
+          <li>ほかの人のタネに初めてチェックインしたときだけ、そのタネを1個分けてもらえます。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「タネ地図」で、全国のどこにタネがあるか見られます</li>
           <li>ほかの人のタネをたずねた数でレベルが上がり、新しい種類のタネがもらえます</li>
         </ol>
       </div>
     </div>
+  );
+}
+
+/** 自分のタネに遠くから水をやるボタン(タネごとに1日1回、効き目は現地の10分の1)。実っている間は出さない */
+function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (next: TaneBase) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if ((base.fruits ?? 0) > 0) return null;
+  const done = base.lastRemoteWaterOn === dayKey(new Date(), taneDayMs());
+
+  const handle = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      onWatered(await waterRemotely(base.areaKey));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="shrink-0 text-right">
+      <button
+        type="button"
+        onClick={handle}
+        disabled={busy || done}
+        className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
+      >
+        {done ? "今日は水やり済み" : busy ? "水をやっています..." : "💧 遠くから水をやる"}
+      </button>
+      {error && <span className="block text-[10px] text-red-600 mt-0.5">{error}</span>}
+    </span>
   );
 }

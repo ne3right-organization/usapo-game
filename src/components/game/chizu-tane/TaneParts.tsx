@@ -9,9 +9,7 @@ import {
   type TaneCourse,
   type TaneItem,
 } from "@/lib/game/chizuTane/courses";
-import { formatRemaining, msUntilSprout } from "@/lib/game/chizuTane/geo";
-import { GROWTH_STAGES, RIPE_STAGE, growthStage, type GrowingBase } from "@/lib/game/chizuTane/growth";
-import { sproutMs } from "@/lib/game/chizuTaneData";
+import { GROWTH_STAGES, RIPE_STAGE, growthStage, waterUntilRipe, type GrowingBase } from "@/lib/game/chizuTane/growth";
 
 // 地図タネの画面で共通に使う小さな部品
 
@@ -176,8 +174,7 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
     <div className="text-sm text-[#78716c] leading-relaxed">
       <p className="mb-1">いまはまけるタネを持っていません。タネはこうすると増えます。</p>
       <ul className="list-disc pl-5 text-xs space-y-0.5">
-        <li>ほかの人のタネにチェックインする（1つのタネで1日1回、1個）</li>
-        <li>自分のタネが実ったら収穫する（タネが1個もらえる）</li>
+        <li>ほかの人のタネに初めてチェックインする（1つのタネで1回だけ、1個）</li>
         <li>タネに落ちているタネを拾う</li>
         <li>レベルを上げる（ほかの人のタネにチェックインし、いまのタネを3つともまくと、新しいタネが3つもらえる）</li>
       </ul>
@@ -186,16 +183,9 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
   );
 }
 
-/** まいたタネの育ち具合:「🌸 花 ●●●●○ · ランク2」。芽が出る前は残り時間 */
-export function GrowthBadge({ base, now = new Date() }: { base: GrowingBase & { rank: number }; now?: Date }) {
-  const stage = growthStage(base, now, sproutMs());
-  if (stage < 0) {
-    return (
-      <span className="text-[11px] text-emerald-700">
-        🌰 {formatRemaining(msUntilSprout(base.plantedAt, now, sproutMs()))}で芽が出ます
-      </span>
-    );
-  }
+/** まいたタネの育ち具合:「🌸 花 ●●●●●○ · ランク2」。実ったら残っている実の数 */
+export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) {
+  const stage = growthStage(base);
   const s = GROWTH_STAGES[stage];
   return (
     <span className={`text-xs ${stage === RIPE_STAGE ? "font-bold text-amber-600" : "text-emerald-700"}`}>
@@ -203,7 +193,22 @@ export function GrowthBadge({ base, now = new Date() }: { base: GrowingBase & { 
       <span className="ml-1 tracking-tighter text-[10px]" aria-hidden>
         {GROWTH_STAGES.map((_, i) => (i <= stage ? "●" : "○")).join("")}
       </span>
+      {stage === RIPE_STAGE && <span className="ml-1">実{base.fruits ?? 0}個</span>}
       <span className="ml-1 text-[#a8937a] font-normal">· ランク{base.rank}</span>
     </span>
+  );
+}
+
+/** 実るまで、あと何回水をやればよいか(実っていれば、もらい方) */
+export function WaterHint({ base, remote = true }: { base: GrowingBase; remote?: boolean }) {
+  const need = waterUntilRipe(base);
+  if (!need) {
+    return <p className="text-[11px] text-amber-700">現地でチェックインすると、実を1個もらえます（1人1日1回、早い者勝ち）</p>;
+  }
+  return (
+    <p className="text-[11px] text-[#78716c]">
+      💧 あと現地で<span className="font-bold text-[#3c2a14]">{need.onsite}回</span>
+      {remote && <>（遠くからなら{need.remote}回）</>}水をやると実ります
+    </p>
   );
 }
