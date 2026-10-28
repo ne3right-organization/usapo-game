@@ -8,7 +8,7 @@ import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chi
 /**
  * いまいる地区にタネ(拠点)をまく。1地区に1つ、早い者勝ち。
  * 持っているタネ(もの)を1つ使い、そのものの種類の拠点を作る(梨の木のタネ → 果樹園)。種類やレベルの制限は無い。
- * 初期試作では拠点が育たないのでランクは1
+ * ランク1から始まり、実って収穫するたびに上がる(src/lib/game/chizuTane/growth.ts)
  */
 export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
@@ -41,6 +41,9 @@ export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event)
     seedItemId: item.itemId,
     rank: 1,
     plantedAt: now.toISOString(),
+    repLng: district.repLng,
+    repLat: district.repLat,
+    waterCount: 0,
     droppedSeeds: 0,
   });
   if (res.errors?.length || !res.data) throw new Error("この地区にはもうタネがあります");

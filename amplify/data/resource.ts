@@ -339,9 +339,16 @@ const schema = a
         townName: a.string().required(),
         baseTypeId: a.string().required(),
         seedItemId: a.string().required(), // まいたタネのもの(梨の木など)。訪ねた人はこれをもらう
-        rank: a.integer().required(),
+        rank: a.integer().required(), // 収穫するたびに1つ上がる(10まで)
         plantedAt: a.datetime().required(),
-        // 落ちているタネ(まかれたタネと同じもの)。チェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
+        // 地区の代表点(geojson の X_CODE / Y_CODE)。全国のタネ地図に出す。まいた人の実際の位置は保存しない
+        repLng: a.float(),
+        repLat: a.float(),
+        // 育ち方(src/lib/game/chizuTane/growth.ts)。growFrom はいまの育ちの始まり(空なら芽が出たとき)、
+        // waterCount はその間にあったチェックインの数。収穫すると growFrom を収穫したときにし、waterCount を0に戻す
+        growFrom: a.datetime(),
+        waterCount: a.integer(),
+        // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
         droppedSeeds: a.integer(),
         // 持ち主が最後に自分のタネにチェックインした日(日本時間)。1日1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
         lastOwnerVisitOn: a.string(),
@@ -401,15 +408,19 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      status: a.string().required(), // received(もらえた) / already(今日はもうもらった)
+      // received(ほかの人のタネでもらえた) / watered(自分のタネに水やり) / harvested(自分のタネを収穫) / already(今日はもう来た)
+      status: a.string().required(),
       townName: a.string().required(),
       baseTypeId: a.string().required(),
       itemId: a.string(),
-      quantity: a.integer(),
+      quantity: a.integer(), // もらったあとに持っている数
+      gainedItems: a.integer(), // このチェックインでもらった数(収穫なら3)
       level: a.integer(), // もらえたときのレベル
       leveledUp: a.boolean(), // このチェックインでレベルが上がったか
-      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / level)
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / harvest / level)
       droppedSeeds: a.integer(), // チェックインのあと、この拠点に落ちているタネの数
+      stage: a.integer(), // チェックインのあとの育ちの段階(growth.ts)
+      rank: a.integer(), // チェックインのあとのランク
     }),
 
     TaneGardenState: a.customType({

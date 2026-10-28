@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { formatRemaining, msUntilSprout, type TownDistrict } from "@/lib/game/chizuTane/geo";
+import { HARVEST_ITEMS, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/growth";
 import {
   checkIn,
   fetchBasesInCity,
@@ -20,7 +21,7 @@ import {
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
-import { ErrorText, ItemIcon, Loading, NeedStart, NoSeedsHelp, TaneBackLink, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 const OWN_FILL: FillStyle = { color: "#10b981", opacity: 0.55 };
@@ -33,7 +34,6 @@ export default function HereView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <TaneBackLink />
       <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🚶 おでかけ</h1>
       <p className="text-xs text-[#a8937a] mb-4">いまいる地区でタネをまいたり、ほかの人のタネを訪ねたりできます</p>
       {state.status === "loading" && <Loading />}
@@ -124,6 +124,18 @@ function Here({ userId }: { userId: string }) {
     }
   };
 
+  // 開発用: タネ地図の「ここへ行く」から ?lat=&lng= で来たら、その点にいることにする
+  useEffect(() => {
+    if (!overrideAllowed) return;
+    const q = new URLSearchParams(window.location.search);
+    const lat = Number(q.get("lat"));
+    const lng = Number(q.get("lng"));
+    if (!q.get("lat") || !q.get("lng") || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    void Promise.resolve().then(() => applyLocation({ lat, lng }));
+    // 開いたときに1回だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleLocate = async () => {
     setLocating(true);
     try {
@@ -192,16 +204,31 @@ function Here({ userId }: { userId: string }) {
     setNotice(null);
     try {
       const res = await checkIn(loc, district);
-      const checkinSeeds = res.seedsGained.filter((g) => g.reason === "checkin");
+      const checkinSeeds = res.seedsGained.filter((g) => g.reason === "checkin" || g.reason === "harvest");
       const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
+      const item = res.itemId ? TANE_ITEM_BY_ID.get(res.itemId) : undefined;
       if (res.status === "received" && res.itemId) {
-        const item = TANE_ITEM_BY_ID.get(res.itemId);
         const parts = [`${item?.name ?? "おすそわけ"}をもらいました！（${res.quantity ?? 1}個目）`];
         if (checkinSeeds.length > 0) parts.push(`${describeSeeds(checkinSeeds)}ももらいました。ここにもタネが1個落ちました。`);
+        parts.push("チェックインで、このタネが1段階育ちました。");
         if (res.leveledUp && res.level) parts.push(`レベルが上がって Lv.${res.level} になりました！ ${describeSeeds(levelSeeds)}をもらいました。`);
         setNotice({ kind: "ok", text: parts.join(" "), itemId: res.itemId });
+      } else if (res.status === "harvested" && res.itemId) {
+        setNotice({
+          kind: "ok",
+          text: `🧺 収穫しました！ ${item?.name ?? ""}を${res.gainedItems ?? HARVEST_ITEMS}つと、${describeSeeds(checkinSeeds)}をもらいました。タネはランク${res.rank ?? ""}になって、また芽から育ちます`,
+          itemId: res.itemId,
+        });
+      } else if (res.status === "watered") {
+        setNotice({
+          kind: "ok",
+          text:
+            res.stage === RIPE_STAGE
+              ? "💧 水をやりました。実りました！ 明日また来ると収穫できます"
+              : "💧 水をやりました。1段階育ちました。実ったら、ここで収穫できます",
+        });
       } else {
-        setNotice({ kind: "info", text: "このタネからは今日はもうもらいました。また明日来てください" });
+        setNotice({ kind: "info", text: "このタネには今日はもう来ました。また明日来てください" });
       }
       if (res.seedsGained.length > 0) await reloadSeeds();
       await reloadBases(district);
@@ -313,11 +340,13 @@ function Here({ userId }: { userId: string }) {
                     <span className="text-xl mr-1">{typeHere?.emoji}</span>
                     {district.townName}の{typeHere?.name ?? "タネ"}
                     <span className="ml-1 text-xs text-[#a8937a]">（{TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}）</span>
-                    <span className="ml-2 text-xs font-bold text-emerald-700">Lv.{baseHere.rank}</span>
                     {baseHere.ownerId === userId && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
                   </p>
-                  {/* チェックインは自分のタネでもほかの人のタネでも同じ(1日1回、もの1つとタネ1個。拠点にも1個落ちる)。
-                      まいてから24時間は芽が出ていないので、誰もチェックインできない */}
+                  <p className="mb-2">
+                    <GrowthBadge base={baseHere} />
+                  </p>
+                  {/* 1人1日1回。ほかの人のタネならもの1つとタネ1個(拠点にも1個落ちる)、自分のタネなら水やりか、実っていれば収穫。
+                      どちらも1段階育つ。まいてから1日は芽が出ていないので、誰もチェックインできない */}
                   {msUntilSprout(baseHere.plantedAt, new Date(), sproutMs()) === 0 ? (
                     <button
                       type="button"
@@ -325,7 +354,13 @@ function Here({ userId }: { userId: string }) {
                       disabled={busy}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
                     >
-                      {busy ? "チェックイン中..." : "🎁 チェックインしておすそわけをもらう"}
+                      {busy
+                        ? "チェックイン中..."
+                        : baseHere.ownerId !== userId
+                          ? "🎁 チェックインしておすそわけをもらう"
+                          : growthStage(baseHere, new Date(), sproutMs()) === RIPE_STAGE
+                            ? `🧺 収穫する（${TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}×${HARVEST_ITEMS}とタネ）`
+                            : "💧 水をやる（チェックイン）"}
                     </button>
                   ) : (
                     <p className="rounded-xl bg-emerald-50 text-emerald-800 px-3 py-2.5 text-sm">

@@ -5,7 +5,7 @@ import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { countPlaced, type GardenObject } from "@/lib/game/chizuTane/garden";
 import { openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
-import { ErrorText, ItemIcon, Loading, NeedStart, TaneBackLink, TaneScreen } from "./TaneParts";
+import { ErrorText, ItemIcon, Loading, NeedStart, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // タネニワ(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う
@@ -14,7 +14,6 @@ export default function TaneGardenView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <TaneBackLink />
       <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🏡 タネニワ</h1>
       <p className="text-xs text-[#a8937a] mb-4">集めたものを、持っている数まで飾れます</p>
       {state.status === "loading" && <Loading />}
@@ -53,14 +52,18 @@ function Garden() {
     };
   }, []);
 
-  // 保存していない変更があるときは、画面を離れる前に確かめる
+  // 保存していない変更があるときは、画面を離れる前に確かめる(ブラウザを閉じる・再読み込みと、下のタブでの移動)
   useEffect(() => {
     if (!dirty) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    setTaneLeaveGuard(() => "保存していない変更があります。保存せずに移りますか？");
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      setTaneLeaveGuard(null);
+    };
   }, [dirty]);
 
   const placedCounts = useMemo(() => countPlaced(objects), [objects]);

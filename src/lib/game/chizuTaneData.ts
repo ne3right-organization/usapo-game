@@ -76,6 +76,21 @@ export async function fetchBasesInCity(prefCode: string, cityCode: string): Prom
   return bases;
 }
 
+/**
+ * 全国のタネ(全国のタネ地図用)。試作の規模なので全件を読む。遊ぶ人が増えたら、都道府県・市区町村ごとの数をまとめた行を持つなどに変える
+ */
+export async function fetchAllBases(): Promise<TaneBase[]> {
+  await requireUserId();
+  const bases: TaneBase[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneBase.list({ limit: 1000, nextToken });
+    bases.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return bases;
+}
+
 export async function fetchMyItems(): Promise<TaneOwnedItem[]> {
   const userId = await requireUserId();
   const items: TaneOwnedItem[] = [];
@@ -213,16 +228,23 @@ export async function placeBase(loc: Location, district: TownDistrict, itemId: s
 }
 
 export interface CheckInResult {
-  status: "received" | "already";
+  /** received: ほかの人のタネでもらえた / watered: 自分のタネに水やり / harvested: 自分のタネを収穫 / already: 今日はもう来た */
+  status: "received" | "watered" | "harvested" | "already";
   townName: string;
   baseTypeId: string;
   itemId: string | null;
+  /** もらったあとに持っている数 */
   quantity: number | null;
+  /** このチェックインでもらった数(収穫なら3) */
+  gainedItems: number | null;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { itemId: string; count: number; reason: "checkin" | "level" }[];
+  seedsGained: { itemId: string; count: number; reason: "checkin" | "harvest" | "level" }[];
   /** チェックインのあと、この拠点に落ちているタネの数 */
   droppedSeeds: number;
+  /** チェックインのあとの育ちの段階(growth.ts) */
+  stage: number | null;
+  rank: number | null;
 }
 
 export async function checkIn(loc: Location, district: TownDistrict): Promise<CheckInResult> {
@@ -237,10 +259,13 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
     baseTypeId: res.baseTypeId,
     itemId: res.itemId ?? null,
     quantity: res.quantity ?? null,
+    gainedItems: res.gainedItems ?? null,
     level: res.level ?? null,
     leveledUp: res.leveledUp ?? false,
     seedsGained: parseJson<CheckInResult["seedsGained"] | null>(res.seedsGained) ?? [],
     droppedSeeds: res.droppedSeeds ?? 0,
+    stage: res.stage ?? null,
+    rank: res.rank ?? null,
   };
 }
 
@@ -289,7 +314,7 @@ export async function saveGarden(objects: GardenObject[]): Promise<GardenState> 
   return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects) })));
 }
 
-/** 芽が出るまでの時間。dev(devgame.usapo.net・手元)は5分、本番は24時間(Lambda 側も同じ値にしている) */
+/** 「1日」の長さ。芽が出るまでの時間で、育ちの1段階もこの長さ。dev(devgame.usapo.net・手元)は5分、本番は24時間(Lambda 側も同じ値にしている) */
 export function sproutMs(): number {
   return isLocationOverrideAllowed() ? SPROUT_MS_DEV : SPROUT_MS_PRODUCTION;
 }

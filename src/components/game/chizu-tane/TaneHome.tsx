@@ -16,16 +16,14 @@ import {
   fetchMyBases,
   fetchMySeeds,
   fetchVisitedCount,
-  sproutMs,
   openGarden,
   startTane,
   type GardenState,
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
-import { formatRemaining, msUntilSprout } from "@/lib/game/chizuTane/geo";
 import GardenSvg from "./GardenSvg";
-import { ErrorText, Loading, NextLevelHint, NoSeedsHelp, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のタネニワの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
@@ -195,18 +193,12 @@ function Home({ course }: { course: TaneCourse }) {
 
       <Link
         href="/game/chizu-tane/here"
-        className="block text-center bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl py-5 mb-3 shadow-[0_4px_16px_rgba(5,150,105,0.25)] active:scale-[0.98] transition-all"
+        className="block text-center bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl py-5 mb-8 shadow-[0_4px_16px_rgba(5,150,105,0.25)] active:scale-[0.98] transition-all"
       >
         <span className="text-lg font-bold">🚶 おでかけ</span>
         <span className="block text-xs text-emerald-50 mt-1">いまいる地区でタネをまく・ほかの人のタネを訪ねる</span>
       </Link>
 
-      <Link
-        href="/game/chizu-tane/collection"
-        className="block text-center bg-white rounded-2xl border-2 border-emerald-50 hover:border-emerald-200 py-3 mb-8"
-      >
-        <span className="text-sm font-bold text-[#3c2a14]">🧺 集めたもの</span>
-      </Link>
 
       <h2 className="text-sm font-bold text-[#3c2a14] mb-2">持っているタネ</h2>
       {seeds === null ? (
@@ -253,13 +245,9 @@ function Home({ course }: { course: TaneCourse }) {
                     {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
                   </p>
                 </div>
-                {msUntilSprout(b.plantedAt, new Date(), sproutMs()) === 0 ? (
-                  <span className="text-xs font-bold text-emerald-700">Lv.{b.rank}</span>
-                ) : (
-                  <span className="text-[11px] text-emerald-700">
-                    🌱 {formatRemaining(msUntilSprout(b.plantedAt, new Date(), sproutMs()))}で芽が出ます
-                  </span>
-                )}
+                <span className="shrink-0">
+                  <GrowthBadge base={b} />
+                </span>
               </li>
             );
           })}
@@ -271,8 +259,10 @@ function Home({ course }: { course: TaneCourse }) {
         <ol className="list-decimal pl-5 space-y-1">
           <li>「おでかけ」で現在地の地区を調べます</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）</li>
-          <li>タネがある地区では、チェックインするとお裾分けとそのタネがもらえます（1つのタネから1日1回。自分のタネでも同じ）</li>
-          <li>チェックインのたびに、そのタネの場所にもタネが1個落ちます（3個まで）。落ちているタネは、誰でも早い者勝ちで拾えます</li>
+          <li>まいたタネは1日たつと芽が出て、芽 → 若葉 → つぼみ → 花 → 実り と育ちます。1日たつと1段階、誰かがチェックインするとさらに1段階進みます</li>
+          <li>ほかの人のタネにチェックインすると、お裾分けとそのタネがもらえます（1つのタネから1日1回）。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
+          <li>自分のタネにチェックインすると水やりになります。実っていれば収穫で、お裾分け3つとタネ1個がもらえ、ランクが上がってまた芽から育ちます</li>
+          <li>下の「タネ地図」で、全国のどこにタネがあるか見られます</li>
           <li>ほかの人のタネをたずねた数でレベルが上がり、新しい種類のタネがもらえます</li>
           <li>集めたものは「タネニワ」に飾れます</li>
         </ol>

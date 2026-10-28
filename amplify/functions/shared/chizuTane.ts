@@ -111,7 +111,7 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
 export interface SeedGain {
   itemId: string;
   count: number;
-  reason: "checkin" | "level";
+  reason: "checkin" | "harvest" | "level";
 }
 
 /** タネ(もの)を増やす(無ければ作る) */
@@ -235,4 +235,20 @@ export async function dropSeed(areaKey: string, max: number): Promise<boolean> {
     if (err instanceof ConditionalCheckFailedException) return false;
     throw err;
   }
+}
+
+/**
+ * 拠点に水をやる(育ちの間のチェックインの数を1つ増やす)。ほかの人と同時にチェックインしても数え漏れないよう、
+ * 読んでから書くのではなく DynamoDB の1回の書き込みで足す
+ */
+export async function waterBase(areaKey: string): Promise<void> {
+  await ddb.send(
+    new UpdateItemCommand({
+      TableName: BASE_TABLE,
+      Key: { areaKey: { S: areaKey } },
+      UpdateExpression: "SET waterCount = if_not_exists(waterCount, :zero) + :one, updatedAt = :now",
+      ConditionExpression: "attribute_exists(areaKey)",
+      ExpressionAttributeValues: { ":zero": { N: "0" }, ":one": { N: "1" }, ":now": { S: new Date().toISOString() } },
+    })
+  );
 }

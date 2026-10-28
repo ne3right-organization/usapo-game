@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_COURSES, TANE_ITEM_BY_ID, prototypeItems, type TaneItem } from "@/lib/game/chizuTane/courses";
 import { fetchMyItems, type TaneOwnedItem } from "@/lib/game/chizuTaneData";
-import { ErrorText, ItemIcon, Loading, NeedStart, TaneBackLink, TaneScreen } from "./TaneParts";
+import { ErrorText, ItemIcon, Loading, NeedStart, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 集めたもの: 持っているものの一覧。まだ持っていないものは影絵で出して、どこかのタネでもらえることが分かるようにする
@@ -11,7 +11,6 @@ export default function CollectionView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <TaneBackLink />
       <h1 className="text-xl font-bold text-[#3c2a14] mb-4">🧺 集めたもの</h1>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
