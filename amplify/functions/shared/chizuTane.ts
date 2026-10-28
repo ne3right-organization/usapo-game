@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
-import { levelForVisitCount, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import { levelFor, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import {
   findTownDistrict,
   isCityCode,
@@ -124,6 +124,18 @@ export async function addSeeds(c: DataClient, userId: string, itemId: string, co
   );
 }
 
+/** 自分の拠点にまいたことのあるタネ(もの)。レベルの条件(今のレベルのタネを3つともまいたか)に使う */
+export async function plantedItemIds(c: DataClient, userId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneBase.listTaneBasesByOwner({ ownerId: userId }, { nextToken });
+    for (const b of unwrap(page)) ids.add(b.seedItemId);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return ids;
+}
+
 /**
  * まだタネを渡していないレベルに上がっていたら、そのレベルの種類のもの3つのタネを1個ずつ渡す。
  * 渡したタネと今のレベルを返す
@@ -132,7 +144,7 @@ export async function grantLevelSeeds(
   c: DataClient,
   player: { userId: string; course: string; grantedLevel?: number | null }
 ): Promise<{ level: number; gains: SeedGain[] }> {
-  const level = levelForVisitCount(await countVisitedBases(c, player.userId));
+  const level = levelFor(player.course as TaneCourse, await countVisitedBases(c, player.userId), await plantedItemIds(c, player.userId));
   const granted = player.grantedLevel ?? 1;
   const gains: SeedGain[] = [];
   if (level <= granted) return { level, gains };

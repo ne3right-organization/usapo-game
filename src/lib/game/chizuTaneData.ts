@@ -5,6 +5,8 @@ import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { GardenObject } from "@/lib/game/chizuTane/garden";
 import {
+  SPROUT_MS_DEV,
+  SPROUT_MS_PRODUCTION,
   findTownDistrict,
   municipalityCandidates,
   townDistrictUrl,
@@ -105,7 +107,7 @@ export async function fetchMySeeds(): Promise<TaneSeedCount[]> {
   return seeds;
 }
 
-/** たずねた(もらったことのある)ほかの人のタネの数。レベルはこれで決まる(courses.ts の levelForVisitCount) */
+/** たずねた(もらったことのある)ほかの人のタネの数。レベルの条件の1つ(courses.ts の levelFor) */
 export async function fetchVisitedCount(): Promise<number> {
   const userId = await requireUserId();
   let count = 0;
@@ -285,6 +287,11 @@ export async function openGarden(): Promise<GardenState> {
 export async function saveGarden(objects: GardenObject[]): Promise<GardenState> {
   await requireUserId();
   return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects) })));
+}
+
+/** 芽が出るまでの時間。dev(devgame.usapo.net・手元)は5分、本番は24時間(Lambda 側も同じ値にしている) */
+export function sproutMs(): number {
+  return isLocationOverrideAllowed() ? SPROUT_MS_DEV : SPROUT_MS_PRODUCTION;
 }
 
 /** 開発用の位置指定を出してよい環境か(dev 環境と手元だけ。本番では出さない) */

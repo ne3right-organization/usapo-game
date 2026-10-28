@@ -13,7 +13,9 @@ import {
   type SeedGain,
 } from "../shared/chizuTane";
 import { DROPPED_SEEDS_MAX, SEEDS_PER_CHECKIN, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
-import { jstDate } from "../../../src/lib/game/chizuTane/geo";
+import { SPROUT_MS_PRODUCTION, formatRemaining, jstDate, msUntilSprout } from "../../../src/lib/game/chizuTane/geo";
+
+const SPROUT_MS = Number(process.env.CHIZU_TANE_SPROUT_MS ?? SPROUT_MS_PRODUCTION);
 
 /**
  * いまいる地区のタネ(拠点)にチェックインする。自分の拠点でもほかの人の拠点でも同じルールで、拠点ごとに1日1回(日本時間)、
@@ -33,6 +35,9 @@ export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (even
 
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
   if (!base) throw new Error("この地区にはまだタネがありません");
+  // まいてから24時間は芽が出ていないので、自分もほかの人もチェックインできない
+  const untilSprout = msUntilSprout(base.plantedAt, now, SPROUT_MS);
+  if (untilSprout > 0) throw new Error(`まだ芽が出ていません（${formatRemaining(untilSprout)}で芽が出ます）`);
   await rememberPosition(c, userId, district, now);
 
   const isOwn = base.ownerId === userId;

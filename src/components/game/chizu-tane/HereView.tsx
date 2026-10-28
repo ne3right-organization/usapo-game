@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
-import type { TownDistrict } from "@/lib/game/chizuTane/geo";
+import { formatRemaining, msUntilSprout, type TownDistrict } from "@/lib/game/chizuTane/geo";
 import {
   checkIn,
   fetchBasesInCity,
@@ -13,13 +13,14 @@ import {
   locateTownDistrict,
   pickUpSeeds,
   placeBase,
+  sproutMs,
   townDistrictGeojsonUrl,
   type Location,
   type CheckInResult,
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
-import { ErrorText, ItemIcon, Loading, NeedStart, TaneBackLink, TaneScreen } from "./TaneParts";
+import { ErrorText, ItemIcon, Loading, NeedStart, NoSeedsHelp, TaneBackLink, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 const OWN_FILL: FillStyle = { color: "#10b981", opacity: 0.55 };
@@ -264,9 +265,10 @@ function Here({ userId }: { userId: string }) {
               {!baseHere && (
                 <>
                   {seeds !== null && seeds.length === 0 ? (
-                    <p className="text-sm text-[#78716c]">
-                      この地区にはまだタネがありません。いまはまけるタネを持っていません（ほかの人のタネを初めて訪ねたり、自分のタネに人が来てくれたりすると増えます）。
-                    </p>
+                    <>
+                      <p className="text-sm text-[#78716c] mb-2">この地区にはまだタネがありません。</p>
+                      <NoSeedsHelp onMap />
+                    </>
                   ) : (
                     <p className="text-sm text-[#78716c] mb-2">この地区にはまだタネがありません。どのタネをまきますか？</p>
                   )}
@@ -314,15 +316,22 @@ function Here({ userId }: { userId: string }) {
                     <span className="ml-2 text-xs font-bold text-emerald-700">Lv.{baseHere.rank}</span>
                     {baseHere.ownerId === userId && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
                   </p>
-                  {/* チェックインは自分のタネでもほかの人のタネでも同じ(1日1回、もの1つとタネ1個。拠点にも1個落ちる) */}
-                  <button
-                    type="button"
-                    onClick={handleCheckIn}
-                    disabled={busy}
-                    className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
-                  >
-                    {busy ? "チェックイン中..." : "🎁 チェックインしておすそわけをもらう"}
-                  </button>
+                  {/* チェックインは自分のタネでもほかの人のタネでも同じ(1日1回、もの1つとタネ1個。拠点にも1個落ちる)。
+                      まいてから24時間は芽が出ていないので、誰もチェックインできない */}
+                  {msUntilSprout(baseHere.plantedAt, new Date(), sproutMs()) === 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleCheckIn}
+                      disabled={busy}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
+                    >
+                      {busy ? "チェックイン中..." : "🎁 チェックインしておすそわけをもらう"}
+                    </button>
+                  ) : (
+                    <p className="rounded-xl bg-emerald-50 text-emerald-800 px-3 py-2.5 text-sm">
+                      🌱 まだ芽が出ていません（{formatRemaining(msUntilSprout(baseHere.plantedAt, new Date(), sproutMs()))}で芽が出ます）
+                    </p>
+                  )}
                   {(baseHere.droppedSeeds ?? 0) > 0 && (
                     <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3">
                       <p className="text-sm text-amber-900 mb-2">

@@ -8,23 +8,24 @@ import {
   TANE_BASE_TYPE_BY_ID,
   TANE_COURSES,
   TANE_COURSE_BY_ID,
-  levelForVisitCount,
+  levelFor,
   seedsForLevel,
-  visitsToNextLevel,
   type TaneCourse,
 } from "@/lib/game/chizuTane/courses";
 import {
   fetchMyBases,
   fetchMySeeds,
   fetchVisitedCount,
+  sproutMs,
   openGarden,
   startTane,
   type GardenState,
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
+import { formatRemaining, msUntilSprout } from "@/lib/game/chizuTane/geo";
 import GardenSvg from "./GardenSvg";
-import { ErrorText, Loading, TaneScreen } from "./TaneParts";
+import { ErrorText, Loading, NextLevelHint, NoSeedsHelp, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のタネニワの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
@@ -135,6 +136,8 @@ function Home({ course }: { course: TaneCourse }) {
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [error, setError] = useState("");
   const courseDef = TANE_COURSE_BY_ID.get(course);
+  // まいたことのあるタネ(レベルの条件「いまのタネを3つともまく」に使う)
+  const plantedIds = new Set((bases ?? []).map((b) => b.seedItemId));
 
   useEffect(() => {
     let cancelled = false;
@@ -166,16 +169,16 @@ function Home({ course }: { course: TaneCourse }) {
         {visitedCount !== null && (
           <>
             <span className="mx-2">·</span>
-            <span className="font-bold text-emerald-700">Lv.{levelForVisitCount(visitedCount)}</span>
-            （たずねたタネ {visitedCount}か所
-            {(() => {
-              const next = visitsToNextLevel(visitedCount);
-              return next ? `・あと${next.remaining}か所で Lv.${next.nextLevel}` : "";
-            })()}
-            ）
+            <span className="font-bold text-emerald-700">Lv.{levelFor(course, visitedCount, plantedIds)}</span>
+            （たずねたタネ {visitedCount}か所）
           </>
         )}
       </p>
+      {visitedCount !== null && (
+        <div className="bg-white rounded-xl px-3 py-2 mb-4 text-center">
+          <NextLevelHint course={course} visitedCount={visitedCount} plantedItemIds={plantedIds} />
+        </div>
+      )}
 
       <Link href="/game/chizu-tane/garden" className="block bg-[#eaf6ea] rounded-2xl p-2 mb-1 active:scale-[0.99] transition-transform">
         {garden ? (
@@ -209,9 +212,9 @@ function Home({ course }: { course: TaneCourse }) {
       {seeds === null ? (
         <Loading />
       ) : seeds.length === 0 ? (
-        <p className="text-sm text-[#78716c] bg-white rounded-2xl p-4 mb-8">
-          いまはまけるタネがありません。どこかのタネにチェックインしたり、落ちているタネを拾ったりすると増えます。
-        </p>
+        <div className="bg-white rounded-2xl p-4 mb-8">
+          <NoSeedsHelp />
+        </div>
       ) : (
         <div className="flex flex-wrap gap-2 mb-8">
           {seeds.map((sd) => {
@@ -250,7 +253,13 @@ function Home({ course }: { course: TaneCourse }) {
                     {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
                   </p>
                 </div>
-                <span className="text-xs font-bold text-emerald-700">Lv.{b.rank}</span>
+                {msUntilSprout(b.plantedAt, new Date(), sproutMs()) === 0 ? (
+                  <span className="text-xs font-bold text-emerald-700">Lv.{b.rank}</span>
+                ) : (
+                  <span className="text-[11px] text-emerald-700">
+                    🌱 {formatRemaining(msUntilSprout(b.plantedAt, new Date(), sproutMs()))}で芽が出ます
+                  </span>
+                )}
               </li>
             );
           })}

@@ -123,3 +123,19 @@ export function isTooFast(
 export function jstDate(d: Date): string {
   return new Date(d.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
 }
+
+/** 芽が出るまでの時間。本番は24時間、dev(devgame.usapo.net・手元)は試しやすいように5分 */
+export const SPROUT_MS_PRODUCTION = 24 * 3_600_000;
+export const SPROUT_MS_DEV = 5 * 60_000;
+
+/** 芽が出るまでのあと何ミリ秒か(出ていれば0)。まいてから sproutMs たつまでは、自分もほかの人もチェックインできない */
+export function msUntilSprout(plantedAt: string, now: Date, sproutMs: number): number {
+  return Math.max(0, new Date(plantedAt).getTime() + sproutMs - now.getTime());
+}
+
+/** 「あと3時間」「あと20分」のような残り時間の言い方 */
+export function formatRemaining(ms: number): string {
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return `あと${minutes}分`;
+  return `あと${Math.ceil(minutes / 60)}時間`;
+}

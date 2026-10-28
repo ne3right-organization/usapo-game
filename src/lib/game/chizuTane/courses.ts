@@ -146,25 +146,42 @@ export const TANE_ITEM_BY_ID = new Map(TANE_ITEMS.map((i) => [i.itemId, i]));
 export const PROTOTYPE_MAX_LEVEL = 3;
 
 /**
- * レベル n になるのに要る「たずねた拠点の数」(TANE_LEVEL_THRESHOLDS[n - 1])。同じ拠点は何度たずねても1つと数える。
+ * レベル n になるのに要る「たずねたほかの人の拠点の数」(TANE_LEVEL_THRESHOLDS[n - 1])。同じ拠点は何度たずねても1つと数える。
  * 試作では試しやすいように少なくしている(1か所で Lv.2、3か所で Lv.3)。数は詳細を詰めるときに見直す
  */
 export const TANE_LEVEL_THRESHOLDS = [0, 1, 3, 6, 10, 15, 25, 40, 60, 100];
 
-/** たずねた拠点の数からレベル(試作の上限まで) */
-export function levelForVisitCount(count: number): number {
+const maxLevel = () => Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL);
+
+/**
+ * レベル。Lv.n → n+1 に上がるには、(1) ほかの人の拠点を TANE_LEVEL_THRESHOLDS[n] か所たずねていて、
+ * (2) 自分のコースの Lv.n の種類のタネを3つとも、一度はまいていること(まかずにタネがたまっていくのを防ぐ)
+ * @param plantedItemIds 自分の拠点にまいたことのあるタネ(もの)
+ */
+export function levelFor(course: TaneCourse, visitCount: number, plantedItemIds: ReadonlySet<string>): number {
   let level = 1;
-  for (let n = 2; n <= Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL); n++) {
-    if (count >= TANE_LEVEL_THRESHOLDS[n - 1]) level = n;
+  while (level < maxLevel()) {
+    const enoughVisits = visitCount >= TANE_LEVEL_THRESHOLDS[level];
+    const allPlanted = seedsForLevel(course, level).every((i) => plantedItemIds.has(i.itemId));
+    if (!enoughVisits || !allPlanted) break;
+    level++;
   }
   return level;
 }
 
-/** 次のレベルまであと何か所たずねればよいか。上限なら null */
-export function visitsToNextLevel(count: number): { nextLevel: number; remaining: number } | null {
-  const nextLevel = levelForVisitCount(count) + 1;
-  if (nextLevel > Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL)) return null;
-  return { nextLevel, remaining: TANE_LEVEL_THRESHOLDS[nextLevel - 1] - count };
+/** 次のレベルに上がるのに足りないもの。上限なら null */
+export function nextLevelNeeds(
+  course: TaneCourse,
+  visitCount: number,
+  plantedItemIds: ReadonlySet<string>
+): { nextLevel: number; visitsRemaining: number; unplanted: TaneItem[] } | null {
+  const level = levelFor(course, visitCount, plantedItemIds);
+  if (level >= maxLevel()) return null;
+  return {
+    nextLevel: level + 1,
+    visitsRemaining: Math.max(0, TANE_LEVEL_THRESHOLDS[level] - visitCount),
+    unplanted: seedsForLevel(course, level).filter((i) => !plantedItemIds.has(i.itemId)),
+  };
 }
 
 // ─── タネ(持ち物) ───────────────────────────────────────────────────────

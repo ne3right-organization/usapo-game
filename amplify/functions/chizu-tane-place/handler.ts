@@ -2,7 +2,7 @@ import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-place";
 import { dataClient, unwrap } from "../shared/dataClient";
-import { assertNotTooFast, locateTownDistrict, rememberPosition, requirePlayer } from "../shared/chizuTane";
+import { assertNotTooFast, grantLevelSeeds, locateTownDistrict, rememberPosition, requirePlayer } from "../shared/chizuTane";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
 
 /**
@@ -45,6 +45,8 @@ export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event)
   });
   if (res.errors?.length || !res.data) throw new Error("この地区にはもうタネがあります");
   unwrap(await c.models.GameTaneHeldSeed.update({ userId, itemId: item.itemId, quantity: seed.quantity - 1 }));
+  // 今のレベルのタネを3つともまき終えたら、たずねた数しだいでレベルが上がり、次のタネがもらえる
+  await grantLevelSeeds(c, player);
 
   await rememberPosition(c, userId, district, now);
   return res.data;
