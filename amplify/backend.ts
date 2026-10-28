@@ -1,6 +1,6 @@
 import { defineBackend } from "@aws-amplify/backend";
 import { Tags } from "aws-cdk-lib";
-import { CfnUserPoolDomain } from "aws-cdk-lib/aws-cognito";
+import { CfnManagedLoginBranding, CfnUserPoolDomain } from "aws-cdk-lib/aws-cognito";
 import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
 import { chizuTaneCheckin } from "./functions/chizu-tane-checkin/resource";
@@ -48,6 +48,19 @@ backend.auth.resources.cfnResources.cfnUserPool.adminCreateUserConfig = {
 
 // Cognito のドメインは Gen2 だと自動生成の名前になるので、決まった名前に上書きする。
 // Google の承認済みリダイレクトURIに https://usapo-game-<ブランチ>.auth.ap-northeast-1.amazoncognito.com/oauth2/idpresponse を登録している
+//
+// ドメインは managed login(バージョン2)にする。classic の hosted UI では prompt パラメータが使えず、
+// ログインのたびに Google のアカウントを選ばせる(src/lib/auth.ts の prompt: "SELECT_ACCOUNT")ことができないため。
+// managed login にはアプリクライアントごとのデザイン設定が要るので、Cognito 標準のものを付ける
+// (ログインは Google の画面に直接飛ぶので、Cognito の画面はほとんど出ない)
 for (const c of backend.auth.resources.userPool.node.findAll()) {
-  if (c instanceof CfnUserPoolDomain) c.domain = `usapo-game-${branch}`;
+  if (c instanceof CfnUserPoolDomain) {
+    c.domain = `usapo-game-${branch}`;
+    c.managedLoginVersion = 2;
+  }
 }
+new CfnManagedLoginBranding(backend.auth.resources.userPool, "ManagedLoginBranding", {
+  userPoolId: backend.auth.resources.userPool.userPoolId,
+  clientId: backend.auth.resources.userPoolClient.userPoolClientId,
+  useCognitoProvidedValues: true,
+});

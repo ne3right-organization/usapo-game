@@ -51,6 +51,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 
 - ログインは Google のみ。Gen2 の `defineAuth` は email の指定が必須なので入れているが、メール・パスワードの自己登録は止めている（`allowAdminCreateUserOnly`）
 - Cognito のドメインは `usapo-game-<ブランチ名>`（Gen2 は自動生成の名前になるので `backend.ts` で上書きしている）
+- **ドメインは managed login（バージョン2）**（2026-10-28〜。`backend.ts` で設定し、Cognito 標準のデザイン設定 `CfnManagedLoginBranding` を付けている）。ログインのたびに Google のアカウントを選ばせる `prompt: "SELECT_ACCOUNT"`（`src/lib/auth.ts`）は classic の hosted UI では使えないため。複数の Google アカウントを持っていても切り替えられる。managed login はユーザープールのプランが Essentials 以上で使える
 - Google OAuth クライアント（Cognito 用、ウェブアプリケーション）の承認済みリダイレクトURIに、各ブランチの `https://usapo-game-<ブランチ>.auth.ap-northeast-1.amazoncognito.com/oauth2/idpresponse` を登録している
 - Cognito の戻り先（ログイン後 `/login`、ログアウト後 `/`）は `amplify/auth/resource.ts` の `CUSTOM_DOMAINS`（ブランチ→独自ドメイン）・`*.amplifyapp.com`・`localhost:3000`。**独自ドメインを足したら `CUSTOM_DOMAINS` にも足す**（足さないと「redirect is coming from a different origin」で失敗する）
 - 初めてログインしたときに Post confirmation トリガー（`create-game-profile`）がプロフィール（ニックネーム空）を作る。各 Lambda も `ensureProfile` で保険をかけている
