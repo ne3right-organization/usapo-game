@@ -3,6 +3,9 @@ import { Tags } from "aws-cdk-lib";
 import { CfnUserPoolDomain } from "aws-cdk-lib/aws-cognito";
 import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
+import { chizuTaneCheckin } from "./functions/chizu-tane-checkin/resource";
+import { chizuTanePlace } from "./functions/chizu-tane-place/resource";
+import { chizuTanePlayer } from "./functions/chizu-tane-player/resource";
 import { claimZukanQuizAnswer } from "./functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setFollowing } from "./functions/set-following/resource";
@@ -23,6 +26,9 @@ const backend = defineBackend({
   claimZukanQuizAnswer,
   zukanComment,
   setFollowing,
+  chizuTanePlayer,
+  chizuTanePlace,
+  chizuTaneCheckin,
 });
 
 // 回答されなかった図鑑クイズの出題は、期限(expiresAt)が過ぎたら DynamoDB が消す

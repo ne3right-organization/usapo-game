@@ -94,6 +94,27 @@ export default function Home() {
               <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
             </div>
           </Link>
+
+          <Link
+            href="/game/chizu-tane"
+            className="block bg-white rounded-2xl border-2 border-emerald-100 hover:border-emerald-300
+              shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(5,150,105,0.12)]
+              transition-all duration-150 p-5 active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="text-3xl shrink-0">🌱</div>
+              <div className="flex-1 min-w-0">
+                <span className="font-bold text-[#3c2a14] text-sm block mb-1">
+                  地図タネ
+                  <span className="ml-2 text-[10px] font-bold text-emerald-600 align-middle">プロトタイプ</span>
+                </span>
+                <p className="text-sm text-[#78716c] leading-snug">
+                  街の地区にタネをまき、ほかの人のタネを現地で訪ねてお裾分けを集める位置情報ゲーム（ログインが必要）
+                </p>
+              </div>
+              <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
+            </div>
+          </Link>
         </div>
 
         {/* ログインについて */}

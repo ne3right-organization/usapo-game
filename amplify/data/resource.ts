@@ -1,4 +1,7 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
+import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
+import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
+import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
 import { claimZukanQuizAnswer } from "../functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
 import { setFollowing } from "../functions/set-following/resource";
@@ -301,6 +304,99 @@ const schema = a
       ])
       .authorization((allow) => [allow.guest().to(["read"]), allow.authenticated().to(["read"])]),
 
+    // ─── 地図タネ(初期試作) ─────────────────────────────────────────────────
+    // 設計書は docs/地図タネ_全体設計書.md と docs/地図タネ_初期試作設計書.md。画面での呼び名は 拠点＝タネ、箱庭＝タネニワ、町丁＝地区。
+    // コースの表とアイテムの定義はコードの中のマスターデータ(src/lib/game/chizuTane/courses.ts)。
+    // 1地区1つ・1日1回・所持数などを守るため、どのモデルもクライアントからは読むだけにし、書くのは chizu-tane-* の Lambda だけ
+
+    // プレイヤー。最後に位置を使った地区の代表点と日時は、移動の速さの確認に使う(実際の位置は保存しない)
+    GameTanePlayer: a
+      .model({
+        userId: a.id().required(),
+        course: a.string().required(),
+        lastAreaKey: a.string(),
+        lastLng: a.float(),
+        lastLat: a.float(),
+        lastMovedAt: a.datetime(),
+      })
+      .identifier(["userId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 拠点(画面では「タネ」)。1地区に1つで、主キーは町丁のコード(e-Stat 小地域の KEY_CODE)。
+    // ログインしていれば誰でも読める(持ち主の ID は画面に出さない)。cityKey = `${prefCode}${cityCode}`
+    GameTaneBase: a
+      .model({
+        areaKey: a.string().required(),
+        ownerId: a.id().required(),
+        cityKey: a.string().required(),
+        prefCode: a.string().required(),
+        prefName: a.string().required(),
+        cityCode: a.string().required(),
+        cityName: a.string().required(),
+        townName: a.string().required(),
+        baseTypeId: a.string().required(),
+        rank: a.integer().required(),
+        plantedAt: a.datetime().required(),
+      })
+      .identifier(["areaKey"])
+      .secondaryIndexes((index) => [
+        index("ownerId").sortKeys(["plantedAt"]).queryField("listTaneBasesByOwner"),
+        index("cityKey").queryField("listTaneBasesByCity"),
+      ])
+      .authorization((allow) => [allow.authenticated().to(["read"])]),
+
+    // 訪問(ユーザー×拠点)。lastReceivedOn は最後にもらった日(日本時間の YYYY-MM-DD)で、1日1回の判定に使う。
+    // のちにレベル(たずねた拠点の数)を数えるのにも使える
+    GameTaneVisit: a
+      .model({
+        userId: a.id().required(),
+        areaKey: a.string().required(),
+        firstVisitedAt: a.datetime().required(),
+        lastReceivedOn: a.string(),
+        visitCount: a.integer().required(),
+      })
+      .identifier(["userId", "areaKey"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 持っているもの(ユーザー×アイテム)。firstAreaName は初めてもらった地区(「○○区 ○○町」。始めたときに渡したものは空)
+    GameTaneItem: a
+      .model({
+        userId: a.id().required(),
+        itemId: a.string().required(),
+        quantity: a.integer().required(),
+        firstAcquiredAt: a.datetime().required(),
+        firstAreaName: a.string(),
+      })
+      .identifier(["userId", "itemId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 箱庭(画面では「タネニワ」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
+    // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む
+    GameTaneGarden: a
+      .model({
+        userId: a.id().required(),
+        width: a.integer().required(),
+        height: a.integer().required(),
+        objects: a.json().required(),
+      })
+      .identifier(["userId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    TaneCheckInResult: a.customType({
+      status: a.string().required(), // received(もらえた) / already(今日はもうもらった) / own(自分のタネ)
+      townName: a.string().required(),
+      baseTypeId: a.string().required(),
+      itemId: a.string(),
+      quantity: a.integer(),
+    }),
+
+    TaneGardenState: a.customType({
+      width: a.integer().required(),
+      height: a.integer().required(),
+      objects: a.json().required(), // GardenObject[]
+      items: a.json().required(), // { itemId, quantity }[]
+    }),
+
     ZukanQuizQuestion: a.customType({
       sessionId: a.id().required(),
       difficulty: a.string().required(),
@@ -403,6 +499,54 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(zukanComment)),
 
+    // 地図タネ: コースを選んで始める(もう始めていればそのまま返す)
+    startTane: a
+      .mutation()
+      .arguments({ course: a.string().required() })
+      .returns(a.ref("GameTanePlayer"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
+
+    // 地図タネ: いまいる地区にタネをまく。位置と、ブラウザで調べた市区町村(探す範囲を絞るためだけに使う)を送る
+    placeTaneBase: a
+      .mutation()
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+      })
+      .returns(a.ref("GameTaneBase"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlace)),
+
+    // 地図タネ: いまいる地区のタネにチェックインする
+    checkInTaneBase: a
+      .mutation()
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+      })
+      .returns(a.ref("TaneCheckInResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    openTaneGarden: a
+      .mutation()
+      .returns(a.ref("TaneGardenState"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
+
+    // 配置を丸ごと保存する(所持数・範囲・1マス1個を Lambda で確かめる)
+    saveTaneGarden: a
+      .mutation()
+      .arguments({ objects: a.json().required() })
+      .returns(a.ref("TaneGardenState"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
+
     setFollowing: a
       .mutation()
       .arguments({ followeeId: a.id().required(), follow: a.boolean().required() })
@@ -426,6 +570,9 @@ const schema = a
     allow.resource(claimZukanQuizAnswer),
     allow.resource(zukanComment),
     allow.resource(setFollowing),
+    allow.resource(chizuTanePlayer),
+    allow.resource(chizuTanePlace),
+    allow.resource(chizuTaneCheckin),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;
