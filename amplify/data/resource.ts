@@ -306,7 +306,7 @@ const schema = a
       .authorization((allow) => [allow.guest().to(["read"]), allow.authenticated().to(["read"])]),
 
     // ─── 地図タネ(初期試作) ─────────────────────────────────────────────────
-    // 設計書は docs/地図タネ_全体設計書.md と docs/地図タネ_初期試作設計書.md。画面での呼び名は 拠点＝タネ、箱庭＝タネニワ、町丁＝地区。
+    // 設計書は docs/地図タネ_全体設計書.md と docs/地図タネ_初期試作設計書.md。画面での呼び名は 拠点＝タネ、箱庭＝ガーデン、町丁＝地区。
     // コースの表とアイテムの定義はコードの中のマスターデータ(src/lib/game/chizuTane/courses.ts)。
     // 1地区1つ・1日1回・所持数などを守るため、どのモデルもクライアントからは読むだけにし、書くのは chizu-tane-* の Lambda だけ
 
@@ -396,7 +396,7 @@ const schema = a
       .identifier(["userId", "itemId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
-    // 箱庭(画面では「タネニワ」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
+    // 箱庭(画面では「ガーデン」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
     // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む
     GameTaneGarden: a
       .model({

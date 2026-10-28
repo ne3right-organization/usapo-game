@@ -15,7 +15,7 @@ import {
   type TownDistrictFeature,
 } from "@/lib/game/chizuTane/geo";
 
-// 地図タネのデータアクセス。書き込み(始める・タネをまく・チェックイン・タネニワの保存)はすべて Lambda の
+// 地図タネのデータアクセス。書き込み(始める・タネをまく・チェックイン・ガーデンの保存)はすべて Lambda の
 // カスタムミューテーションで、所持数・1地区1つ・1日1回などはサーバーで確かめる。モデルはクライアントからは読むだけ
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
@@ -285,7 +285,7 @@ export async function pickUpSeeds(loc: Location, district: TownDistrict, count: 
   );
 }
 
-// ─── タネニワ ─────────────────────────────────────────────────────────────
+// ─── ガーデン ─────────────────────────────────────────────────────────────
 
 export interface GardenState {
   width: number;
@@ -295,7 +295,7 @@ export interface GardenState {
 }
 
 function toGardenState(res: Schema["TaneGardenState"]["type"] | null | undefined): GardenState {
-  if (!res) throw new Error("タネニワを読み込めませんでした");
+  if (!res) throw new Error("ガーデンを読み込めませんでした");
   return {
     width: res.width,
     height: res.height,

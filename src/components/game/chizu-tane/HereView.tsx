@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { formatRemaining, msUntilSprout, type TownDistrict } from "@/lib/game/chizuTane/geo";
 import { HARVEST_ITEMS, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/growth";
@@ -22,10 +21,10 @@ import {
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneScreen } from "./TaneParts";
+import HereMap from "./HereMap";
+import { OTHER_COLOR, OWN_COLOR } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
-const OWN_FILL: FillStyle = { color: "#10b981", opacity: 0.55 };
-const OTHER_FILL: FillStyle = { color: "#f59e0b", opacity: 0.55 };
 
 // itemId があれば絵を出す。seed ならタネの絵、そうでなければ実(もの)の絵
 type Notice = { kind: "ok" | "info"; text: string; itemId?: string; seed?: boolean };
@@ -163,20 +162,6 @@ function Here({ userId }: { userId: string }) {
   };
 
   const baseHere = district ? bases.find((b) => b.areaKey === district.areaKey) ?? null : null;
-  const baseByArea = useMemo(() => new Map(bases.map((b) => [b.areaKey, b])), [bases]);
-
-  const fillFor = useCallback(
-    (code: string): FillStyle | null => {
-      const b = baseByArea.get(code);
-      if (!b) return null;
-      return b.ownerId === userId ? OWN_FILL : OTHER_FILL;
-    },
-    [baseByArea, userId]
-  );
-  const featureKey = useCallback((feature: unknown): MapFeatureKey | null => {
-    const p = (feature as { properties?: Record<string, unknown> })?.properties;
-    return typeof p?.KEY_CODE === "string" ? { code: p.KEY_CODE, name: String(p.S_NAME ?? "") } : null;
-  }, []);
 
   const handlePlant = async () => {
     if (!loc || !district || busy || !chosenItemId) return;
@@ -287,8 +272,37 @@ function Here({ userId }: { userId: string }) {
             <p className="text-xs text-[#a8937a]">{district.cityName}</p>
             <p className="text-lg font-bold text-[#3c2a14]">{district.townName}</p>
             <p className="text-[11px] text-[#a8937a] mt-1">位置情報には誤差があります。違う地区になっていたら、少し動いてから調べ直してください。</p>
+          </div>
 
-            <div className="mt-3 pt-3 border-t border-[#f3ece0]">
+          <HereMap
+            geojsonUrl={townDistrictGeojsonUrl(district.prefCode, district.cityCode)}
+            selectedCode={district.areaKey}
+            location={loc}
+            bases={bases}
+            userId={userId}
+            onPointSelect={overrideAllowed ? handleMapPoint : undefined}
+          />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mt-2 mb-3">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OWN_COLOR }} />
+              あなたのタネ
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OTHER_COLOR }} />
+              ほかの人のタネ
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded-full bg-blue-600 border-2 border-white shadow" />
+              現在地
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded-sm border-2 border-blue-700" />
+              いまいる地区
+            </span>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4">
+            <div>
               {!baseHere && (
                 <>
                   {seeds !== null && seeds.length === 0 ? (
@@ -299,7 +313,7 @@ function Here({ userId }: { userId: string }) {
                   ) : (
                     <p className="text-sm text-[#78716c] mb-2">この地区にはまだタネがありません。どのタネをまきますか？</p>
                   )}
-                  <div className="flex flex-col gap-1.5 mb-3">
+                  <div className="flex flex-col gap-1.5 mb-3 max-h-[16.5rem] overflow-y-auto overscroll-contain pr-1">
                     {(seeds ?? []).map((sd) => {
                       const item = TANE_ITEM_BY_ID.get(sd.itemId);
                       const type = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
@@ -411,27 +425,6 @@ function Here({ userId }: { userId: string }) {
             )}
           </div>
 
-          <CompletionMap
-            geojsonUrl={townDistrictGeojsonUrl(district.prefCode, district.cityCode)}
-            featureKey={featureKey}
-            fillFor={fillFor}
-            selectedCode={district.areaKey}
-            onPointSelect={overrideAllowed ? handleMapPoint : undefined}
-          />
-          <div className="flex items-center gap-4 text-[11px] text-[#78716c] mt-2 mb-4">
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded-sm" style={{ background: OWN_FILL.color }} />
-              あなたのタネ
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded-sm" style={{ background: OTHER_FILL.color }} />
-              ほかの人のタネ
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded-sm border-2 border-blue-700" />
-              いまいる地区
-            </span>
-          </div>
         </>
       )}
 

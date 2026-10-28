@@ -1,4 +1,4 @@
-// 地図タネの箱庭(画面では「タネニワ」)の配置データと、その検証。画面と Lambda の両方から使う
+// 地図タネの箱庭(画面では「ガーデン」)の配置データと、その検証。画面と Lambda の両方から使う
 import { TANE_ITEM_BY_ID } from "./courses";
 
 /** 箱庭の広さ(マス)。仮の値 */
@@ -49,7 +49,7 @@ export function validateGardenObjects(input: unknown, owned: ReadonlyMap<string,
     const x = o.x as number;
     const y = o.y as number;
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= GARDEN_WIDTH || y >= GARDEN_HEIGHT) {
-      throw new Error("タネニワの外に置かれています");
+      throw new Error("ガーデンの外に置かれています");
     }
     const cell = `${x},${y}`;
     if (cells.has(cell)) throw new Error("1つのマスに置けるのは1個までです");

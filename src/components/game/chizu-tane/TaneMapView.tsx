@@ -7,10 +7,9 @@ import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { fetchAllBases, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
 import { ErrorText, GrowthBadge, Loading, NeedStart, TaneScreen } from "./TaneParts";
+import { OTHER_COLOR, OWN_COLOR, taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
-const OWN_COLOR = "#10b981";
-const OTHER_COLOR = "#f59e0b";
 
 // タネ地図: 全国のタネを、地区の代表点に点で出す(まいた人の実際の位置ではない)。持ち主の名前は出さない
 export default function TaneMapView() {
@@ -79,16 +78,7 @@ function TaneMap({ userId }: { userId: string }) {
       mapRef.current = { map, Lmod };
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.6 }).addTo(map);
       for (const b of bases) {
-        // まかれたもの(梨の木など)の絵文字を、自分のタネは緑・ほかの人のタネは橙の丸で囲んで出す
-        const own = b.ownerId === userId;
-        const emoji = TANE_ITEM_BY_ID.get(b.seedItemId)?.emoji ?? TANE_BASE_TYPE_BY_ID.get(b.baseTypeId)?.emoji ?? "🌱";
-        const icon = Lmod.divIcon({
-          className: "",
-          html: `<div style="width:30px;height:30px;border-radius:9999px;background:#fff;border:3px solid ${own ? OWN_COLOR : OTHER_COLOR};display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.25)">${emoji}</div>`,
-          iconSize: [30, 30],
-          iconAnchor: [15, 15],
-        });
-        Lmod.marker([b.repLat, b.repLng], { icon })
+        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b, b.ownerId === userId) })
           .addTo(map)
           .on("click", () => setSelected(b.areaKey));
       }

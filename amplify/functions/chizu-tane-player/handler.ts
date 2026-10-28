@@ -21,7 +21,7 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const player = unwrap(await c.models.GameTanePlayer.get({ userId }));
   if (!player) throw new Error("先にコースを選んでください");
   const garden = unwrap(await c.models.GameTaneGarden.get({ userId }));
-  if (!garden) throw new Error("タネニワが見つかりません");
+  if (!garden) throw new Error("ガーデンが見つかりません");
   const owned = await listOwned(c, userId);
 
   let placed: GardenObject[];

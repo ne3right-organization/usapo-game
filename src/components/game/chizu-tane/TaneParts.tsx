@@ -66,10 +66,10 @@ const TANE_TABS = [
   { href: "/game/chizu-tane/here", label: "おでかけ", emoji: "🚶" },
   { href: "/game/chizu-tane/map", label: "タネ地図", emoji: "🗾" },
   { href: "/game/chizu-tane/collection", label: "集めたもの", emoji: "🧺" },
-  { href: "/game/chizu-tane/garden", label: "タネニワ", emoji: "🏡" },
+  { href: "/game/chizu-tane/garden", label: "ガーデン", emoji: "🏡" },
 ];
 
-// 画面を離れる前に確かめたいとき(タネニワの保存していない変更)に、確かめの文を返す関数を置く。
+// 画面を離れる前に確かめたいとき(ガーデンの保存していない変更)に、確かめの文を返す関数を置く。
 // beforeunload はアプリの中の移動(タブ)では起きないので、タブを押したときにここを見る
 let leaveGuard: (() => string | null) | null = null;
 
@@ -181,7 +181,7 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
         <li>タネに落ちているタネを拾う</li>
         <li>レベルを上げる（ほかの人のタネにチェックインし、いまのタネを3つともまくと、新しいタネが3つもらえる）</li>
       </ul>
-      {onMap && <p className="text-xs mt-1">地図の<span className="font-bold text-amber-600">橙色</span>の地区が、ほかの人のタネです。</p>}
+      {onMap && <p className="text-xs mt-1">地図の<span className="font-bold text-amber-600">橙色の丸</span>のアイコンが、ほかの人のタネです。</p>}
     </div>
   );
 }

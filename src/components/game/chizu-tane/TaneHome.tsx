@@ -26,7 +26,7 @@ import GardenSvg from "./GardenSvg";
 import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
-// 地図タネのトップ。初めてならコース選び、2回目からは自分のタネニワの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
+// 地図タネのトップ。初めてならコース選び、2回目からは自分のガーデンの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
 export default function TaneHome() {
   const [state, reload] = useTanePlayer();
 
@@ -182,12 +182,12 @@ function Home({ course }: { course: TaneCourse }) {
         {garden ? (
           <GardenSvg width={garden.width} height={garden.height} objects={garden.objects} />
         ) : (
-          <div className="aspect-[2/1] flex items-center justify-center text-sm text-[#a8937a]">タネニワを読み込み中...</div>
+          <div className="aspect-[2/1] flex items-center justify-center text-sm text-[#a8937a]">ガーデンを読み込み中...</div>
         )}
       </Link>
       <p className="text-right text-xs mb-5">
         <Link href="/game/chizu-tane/garden" className="text-emerald-700 underline underline-offset-2">
-          🏡 タネニワを飾る →
+          🏡 ガーデンを飾る →
         </Link>
       </p>
 
@@ -262,7 +262,7 @@ function Home({ course }: { course: TaneCourse }) {
           <li>まいたタネは1日たつと芽が出て、芽 → 若葉 → つぼみ → 花 → 実り と育ちます。1日たつと1段階、誰かがチェックインするとさらに1段階進みます</li>
           <li>ほかの人のタネにチェックインすると、そのタネを1個分けてもらえます（1つのタネから1日1回）。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
           <li>自分のタネにチェックインすると水やりになります。実っていれば収穫で、実（梨の木など）が3つとタネ1個がもらえ、ランクが上がってまた芽から育ちます</li>
-          <li>収穫した実が「集めたもの」になり、「タネニワ」に飾れます</li>
+          <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「タネ地図」で、全国のどこにタネがあるか見られます</li>
           <li>ほかの人のタネをたずねた数でレベルが上がり、新しい種類のタネがもらえます</li>
         </ol>
