@@ -341,9 +341,9 @@ const schema = a
         seedItemId: a.string().required(), // まいたタネのもの(梨の木など)。訪ねた人はこれをもらう
         rank: a.integer().required(),
         plantedAt: a.datetime().required(),
-        // 最後に持ち主のタネが増えた日時(訪ねられた・持ち主が訪ねた・時間で増えた)。誰も来ないまま3日たつごとに1個増える
-        lastSeedAt: a.datetime(),
-        // 持ち主が最後に自分のタネを訪ねてタネが増えた日(日本時間)。1日1回
+        // 落ちているタネ(まかれたタネと同じもの)。チェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
+        droppedSeeds: a.integer(),
+        // 持ち主が最後に自分のタネにチェックインした日(日本時間)。1日1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
         lastOwnerVisitOn: a.string(),
       })
       .identifier(["areaKey"])
@@ -401,14 +401,15 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      status: a.string().required(), // received(もらえた) / already(今日はもうもらった) / own(自分のタネ)
+      status: a.string().required(), // received(もらえた) / already(今日はもうもらった)
       townName: a.string().required(),
       baseTypeId: a.string().required(),
       itemId: a.string(),
       quantity: a.integer(),
       level: a.integer(), // もらえたときのレベル
       leveledUp: a.boolean(), // このチェックインでレベルが上がったか
-      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: visit / owner / level)
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / level)
+      droppedSeeds: a.integer(), // チェックインのあと、この拠点に落ちているタネの数
     }),
 
     TaneGardenState: a.customType({
@@ -556,11 +557,17 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
-    // 地図タネ: 自分のタネのうち、誰も来ないまま3日以上たったものからタネを受け取る(トップを開いたときに呼ぶ)。
-    // 増えたタネ { itemId, count, townName }[] を返す
-    collectTaneSeeds: a
+    // 地図タネ: いまいる地区のタネ(拠点)に落ちているタネを、選んだ数だけ拾う(誰でも早い者勝ち)。拾えた数を返す
+    pickUpTaneSeeds: a
       .mutation()
-      .returns(a.json())
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+        count: a.integer().required(),
+      })
+      .returns(a.integer())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneSeeds)),
 

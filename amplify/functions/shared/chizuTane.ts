@@ -1,3 +1,10 @@
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+  TransactionCanceledException,
+  TransactWriteItemsCommand,
+  UpdateItemCommand,
+} from "@aws-sdk/client-dynamodb";
 import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
 import { levelForVisitCount, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
@@ -89,7 +96,7 @@ export async function rememberPosition(c: DataClient, userId: string, district: 
   );
 }
 
-/** たずねた(もらったことのある)ほかの人の拠点の数。レベルの計算に使う */
+/** たずねた(もらったことのある)ほかの人の拠点の数。レベルの計算に使う(自分の拠点は訪問の記録に残さないので入らない) */
 export async function countVisitedBases(c: DataClient, userId: string): Promise<number> {
   let count = 0;
   let nextToken: string | null | undefined;
@@ -104,7 +111,7 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
 export interface SeedGain {
   itemId: string;
   count: number;
-  reason: "visit" | "owner" | "level";
+  reason: "checkin" | "level";
 }
 
 /** タネ(もの)を増やす(無ければ作る) */
@@ -137,4 +144,83 @@ export async function grantLevelSeeds(
   }
   unwrap(await c.models.GameTanePlayer.update({ userId: player.userId, grantedLevel: level }));
   return { level, gains };
+}
+
+// ─── 落ちているタネ(DynamoDB を直接さわる) ───────────────────────────────
+// Amplify Data のクライアントでは「前の値を返す」「条件付きで書く」ができず、読んでから書くまでの間に割り込まれる。
+// 落ちているタネは早い者勝ちなので、ここだけ DynamoDB の1回の書き込みで行う(同じ1件への書き込みは1つずつ順に処理されるので、
+// ロックが無くても2人に同じタネが渡ることは無い)。テーブル名と権限は amplify/backend.ts で渡す
+
+const ddb = new DynamoDBClient({});
+const BASE_TABLE = process.env.CHIZU_TANE_BASE_TABLE ?? "";
+const HELD_SEED_TABLE = process.env.CHIZU_TANE_HELD_SEED_TABLE ?? "";
+
+/**
+ * 拠点に落ちているタネを count 個拾う。「拠点から count 個減らす(count 個以上落ちているときだけ)」と
+ * 「拾った人のタネに count 個足す」を1つのトランザクションで行う(両方成功するか、両方なかったことになる)。
+ * 足りなかった(先にほかの人が拾った)ときは false
+ */
+export async function takeDroppedSeeds(areaKey: string, userId: string, itemId: string, count: number): Promise<boolean> {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: BASE_TABLE,
+              Key: { areaKey: { S: areaKey } },
+              UpdateExpression: "SET droppedSeeds = droppedSeeds - :n, updatedAt = :now",
+              ConditionExpression: "droppedSeeds >= :n",
+              ExpressionAttributeValues: { ":n": { N: String(count) }, ":now": { S: now } },
+            },
+          },
+          {
+            // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
+            Update: {
+              TableName: HELD_SEED_TABLE,
+              Key: { userId: { S: userId }, itemId: { S: itemId } },
+              UpdateExpression:
+                "SET quantity = if_not_exists(quantity, :zero) + :n, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now",
+              ExpressionAttributeNames: { "#tn": "__typename" },
+              ExpressionAttributeValues: {
+                ":n": { N: String(count) },
+                ":zero": { N: "0" },
+                ":tn": { S: "GameTaneHeldSeed" },
+                ":now": { S: now },
+              },
+            },
+          },
+        ],
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return false;
+    throw err;
+  }
+}
+
+/** 拠点にタネを1個落とす(max 個まで。すでに max 個なら何もしない)。落とせたら true */
+export async function dropSeed(areaKey: string, max: number): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression: "SET droppedSeeds = if_not_exists(droppedSeeds, :zero) + :one, updatedAt = :now",
+        ConditionExpression: "attribute_exists(areaKey) AND (attribute_not_exists(droppedSeeds) OR droppedSeeds < :max)",
+        ExpressionAttributeValues: {
+          ":zero": { N: "0" },
+          ":one": { N: "1" },
+          ":max": { N: String(max) },
+          ":now": { S: new Date().toISOString() },
+        },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
 }

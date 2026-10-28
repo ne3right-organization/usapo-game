@@ -11,6 +11,7 @@ import {
   getCurrentLocation,
   isLocationOverrideAllowed,
   locateTownDistrict,
+  pickUpSeeds,
   placeBase,
   townDistrictGeojsonUrl,
   type Location,
@@ -190,22 +191,41 @@ function Here({ userId }: { userId: string }) {
     setNotice(null);
     try {
       const res = await checkIn(loc, district);
-      const visitSeeds = res.seedsGained.filter((g) => g.reason === "visit");
+      const checkinSeeds = res.seedsGained.filter((g) => g.reason === "checkin");
       const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
       if (res.status === "received" && res.itemId) {
         const item = TANE_ITEM_BY_ID.get(res.itemId);
         const parts = [`${item?.name ?? "おすそわけ"}をもらいました！（${res.quantity ?? 1}個目）`];
-        if (visitSeeds.length > 0) parts.push(`はじめて訪ねたので、${describeSeeds(visitSeeds)}を分けてもらいました。`);
+        if (checkinSeeds.length > 0) parts.push(`${describeSeeds(checkinSeeds)}ももらいました。ここにもタネが1個落ちました。`);
         if (res.leveledUp && res.level) parts.push(`レベルが上がって Lv.${res.level} になりました！ ${describeSeeds(levelSeeds)}をもらいました。`);
         setNotice({ kind: "ok", text: parts.join(" "), itemId: res.itemId });
-      } else if (res.status === "already") {
-        setNotice({ kind: "info", text: "このタネからは今日はもうもらいました。また明日来てください" });
-      } else if (res.seedsGained.length > 0) {
-        setNotice({ kind: "ok", text: `あなたのタネです。${describeSeeds(res.seedsGained)}がとれました（1日1回）` });
       } else {
-        setNotice({ kind: "info", text: "あなたのタネです。今日はもうタネをとりました" });
+        setNotice({ kind: "info", text: "このタネからは今日はもうもらいました。また明日来てください" });
       }
       if (res.seedsGained.length > 0) await reloadSeeds();
+      await reloadBases(district);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePickUp = async (count: number) => {
+    if (!loc || !district || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice(null);
+    try {
+      const n = await pickUpSeeds(loc, district, count);
+      const item = baseHere ? TANE_ITEM_BY_ID.get(baseHere.seedItemId) : undefined;
+      setNotice(
+        n > 0
+          ? { kind: "ok", text: `落ちていた${item?.name ?? ""}のタネを${n}個拾いました！` }
+          : { kind: "info", text: "拾えませんでした（ほかの人が先に拾ったようです）。残っている数を確かめてください" }
+      );
+      await reloadSeeds();
+      await reloadBases(district);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -294,15 +314,36 @@ function Here({ userId }: { userId: string }) {
                     <span className="ml-2 text-xs font-bold text-emerald-700">Lv.{baseHere.rank}</span>
                     {baseHere.ownerId === userId && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
                   </p>
-                  {baseHere.ownerId !== userId && (
-                    <button
-                      type="button"
-                      onClick={handleCheckIn}
-                      disabled={busy}
-                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
-                    >
-                      {busy ? "チェックイン中..." : "🎁 チェックインしておすそわけをもらう"}
-                    </button>
+                  {/* チェックインは自分のタネでもほかの人のタネでも同じ(1日1回、もの1つとタネ1個。拠点にも1個落ちる) */}
+                  <button
+                    type="button"
+                    onClick={handleCheckIn}
+                    disabled={busy}
+                    className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
+                  >
+                    {busy ? "チェックイン中..." : "🎁 チェックインしておすそわけをもらう"}
+                  </button>
+                  {(baseHere.droppedSeeds ?? 0) > 0 && (
+                    <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3">
+                      <p className="text-sm text-amber-900 mb-2">
+                        🌰 ここに{TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}のタネが{baseHere.droppedSeeds}個落ちています。
+                        拾うか、次の人のために残しておくか選べます（早い者勝ち）
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from({ length: baseHere.droppedSeeds ?? 0 }, (_, i) => i + 1).map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => handlePickUp(n)}
+                            disabled={busy}
+                            className="rounded-lg px-3 py-1.5 text-sm font-semibold text-amber-800 bg-white border border-amber-300 hover:bg-amber-100 disabled:opacity-60"
+                          >
+                            {n}個拾う
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-amber-700 mt-2">拾わなければ、そのまま残ります</p>
+                    </div>
                   )}
                 </>
               )}

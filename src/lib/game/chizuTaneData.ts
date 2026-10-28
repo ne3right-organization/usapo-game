@@ -105,12 +105,6 @@ export async function fetchMySeeds(): Promise<TaneSeedCount[]> {
   return seeds;
 }
 
-/** 誰も来ないまま時間がたった自分のタネから、タネを受け取る。増えたタネを返す */
-export async function collectSeeds(): Promise<{ itemId: string; count: number; townName: string }[]> {
-  await requireUserId();
-  return parseJson(unwrap(await data.mutations.collectTaneSeeds())) ?? [];
-}
-
 /** たずねた(もらったことのある)ほかの人のタネの数。レベルはこれで決まる(courses.ts の levelForVisitCount) */
 export async function fetchVisitedCount(): Promise<number> {
   const userId = await requireUserId();
@@ -217,14 +211,16 @@ export async function placeBase(loc: Location, district: TownDistrict, itemId: s
 }
 
 export interface CheckInResult {
-  status: "received" | "already" | "own";
+  status: "received" | "already";
   townName: string;
   baseTypeId: string;
   itemId: string | null;
   quantity: number | null;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { itemId: string; count: number; reason: "visit" | "owner" | "level" }[];
+  seedsGained: { itemId: string; count: number; reason: "checkin" | "level" }[];
+  /** チェックインのあと、この拠点に落ちているタネの数 */
+  droppedSeeds: number;
 }
 
 export async function checkIn(loc: Location, district: TownDistrict): Promise<CheckInResult> {
@@ -242,7 +238,24 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
     level: res.level ?? null,
     leveledUp: res.leveledUp ?? false,
     seedsGained: parseJson<CheckInResult["seedsGained"] | null>(res.seedsGained) ?? [],
+    droppedSeeds: res.droppedSeeds ?? 0,
   };
+}
+
+/** いまいる地区のタネに落ちているタネを count 個拾う(誰でも早い者勝ち)。拾えた数を返す(先を越されたら0) */
+export async function pickUpSeeds(loc: Location, district: TownDistrict, count: number): Promise<number> {
+  await requireUserId();
+  return (
+    unwrap(
+      await data.mutations.pickUpTaneSeeds({
+        lng: loc.lng,
+        lat: loc.lat,
+        prefCode: district.prefCode,
+        cityCode: district.cityCode,
+        count,
+      })
+    ) ?? 0
+  );
 }
 
 // ─── タネニワ ─────────────────────────────────────────────────────────────

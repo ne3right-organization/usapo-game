@@ -14,7 +14,6 @@ import {
   type TaneCourse,
 } from "@/lib/game/chizuTane/courses";
 import {
-  collectSeeds,
   fetchMyBases,
   fetchMySeeds,
   fetchVisitedCount,
@@ -134,7 +133,6 @@ function Home({ course }: { course: TaneCourse }) {
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [visitedCount, setVisitedCount] = useState<number | null>(null);
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
-  const [collected, setCollected] = useState<{ itemId: string; count: number; townName: string }[]>([]);
   const [error, setError] = useState("");
   const courseDef = TANE_COURSE_BY_ID.get(course);
 
@@ -146,13 +144,7 @@ function Home({ course }: { course: TaneCourse }) {
     fetchVisitedCount()
       .then((n) => !cancelled && setVisitedCount(n))
       .catch(() => {});
-    // 誰も来ないまま時間がたった自分のタネからタネを受け取ってから、持っているタネを読む
-    collectSeeds()
-      .catch(() => [])
-      .then((gains) => {
-        if (!cancelled) setCollected(gains);
-        return fetchMySeeds();
-      })
+    fetchMySeeds()
       .then((list) => {
         if (cancelled) return;
         const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
@@ -214,24 +206,11 @@ function Home({ course }: { course: TaneCourse }) {
       </Link>
 
       <h2 className="text-sm font-bold text-[#3c2a14] mb-2">持っているタネ</h2>
-      {collected.length > 0 && (
-        <div className="bg-emerald-50 text-emerald-800 rounded-xl px-3 py-2 text-xs mb-2 leading-relaxed">
-          {collected.map((g) => {
-            const item = TANE_ITEM_BY_ID.get(g.itemId);
-            const type = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
-            return (
-              <p key={`${g.townName}-${g.itemId}`}>
-                🌱 {g.townName}の{type?.name ?? "タネ"}から、{item?.name ?? ""}のタネが{g.count}個とれました
-              </p>
-            );
-          })}
-        </div>
-      )}
       {seeds === null ? (
         <Loading />
       ) : seeds.length === 0 ? (
         <p className="text-sm text-[#78716c] bg-white rounded-2xl p-4 mb-8">
-          いまはまけるタネがありません。ほかの人のタネを初めて訪ねたり、自分のタネに人が来てくれたりすると増えます。
+          いまはまけるタネがありません。どこかのタネにチェックインしたり、落ちているタネを拾ったりすると増えます。
         </p>
       ) : (
         <div className="flex flex-wrap gap-2 mb-8">
@@ -283,8 +262,8 @@ function Home({ course }: { course: TaneCourse }) {
         <ol className="list-decimal pl-5 space-y-1">
           <li>「おでかけ」で現在地の地区を調べます</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）</li>
-          <li>ほかの人のタネがある地区では、チェックインするとお裾分けがもらえます（1つのタネから1日1回）。初めて訪ねたタネなら、そのタネも分けてもらえます</li>
-          <li>自分のタネは、人が訪ねてくれたり、自分で訪ねたりするとタネが増えます。誰も来なくても3日ごとに1個増えます</li>
+          <li>タネがある地区では、チェックインするとお裾分けとそのタネがもらえます（1つのタネから1日1回。自分のタネでも同じ）</li>
+          <li>チェックインのたびに、そのタネの場所にもタネが1個落ちます（3個まで）。落ちているタネは、誰でも早い者勝ちで拾えます</li>
           <li>ほかの人のタネをたずねた数でレベルが上がり、新しい種類のタネがもらえます</li>
           <li>集めたものは「タネニワ」に飾れます</li>
         </ol>

@@ -41,7 +41,7 @@ export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event)
     seedItemId: item.itemId,
     rank: 1,
     plantedAt: now.toISOString(),
-    lastSeedAt: now.toISOString(),
+    droppedSeeds: 0,
   });
   if (res.errors?.length || !res.data) throw new Error("この地区にはもうタネがあります");
   unwrap(await c.models.GameTaneHeldSeed.update({ userId, itemId: item.itemId, quantity: seed.quantity - 1 }));

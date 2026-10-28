@@ -2,35 +2,28 @@ import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-seeds";
 import { dataClient, unwrap } from "../shared/dataClient";
-import { addSeeds } from "../shared/chizuTane";
-import { IDLE_SEED_DAYS } from "../../../src/lib/game/chizuTane/courses";
-
-const PERIOD_MS = IDLE_SEED_DAYS * 24 * 3_600_000;
+import { assertNotTooFast, locateTownDistrict, rememberPosition, requirePlayer, takeDroppedSeeds } from "../shared/chizuTane";
+import { DROPPED_SEEDS_MAX } from "../../../src/lib/game/chizuTane/courses";
 
 /**
- * 自分のタネのうち、最後にタネが増えてから(訪ねられた・持ち主が訪ねた・前に時間で増えた)3日以上たったものから、
- * 3日ごとに1個ずつタネを受け取る(上限なし)。トップを開いたときに呼ばれる
+ * いまいる地区のタネ(拠点)に落ちているタネを、選んだ数だけ拾う。誰でも(持ち主でもほかの人でも、自分が落とした分も)
+ * 早い者勝ちで拾える。拾えた数を返す(先にほかの人が拾って足りなければ0)
  */
-export const handler: Schema["collectTaneSeeds"]["functionHandler"] = async (event) => {
+export const handler: Schema["pickUpTaneSeeds"]["functionHandler"] = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
   const c = await dataClient(env);
-  const now = Date.now();
-  const gains: { itemId: string; count: number; townName: string }[] = [];
+  const now = new Date();
+  const count = event.arguments.count;
+  if (!Number.isInteger(count) || count < 1 || count > DROPPED_SEEDS_MAX) throw new Error("拾う数の指定が正しくありません");
 
-  let nextToken: string | null | undefined;
-  do {
-    const page = await c.models.GameTaneBase.listTaneBasesByOwner({ ownerId: userId }, { nextToken });
-    for (const base of unwrap(page)) {
-      const since = new Date(base.lastSeedAt ?? base.plantedAt).getTime();
-      const periods = Math.floor((now - since) / PERIOD_MS);
-      if (periods < 1) continue;
-      await addSeeds(c, userId, base.seedItemId, periods);
-      // 端数の時間は次に持ち越す
-      unwrap(await c.models.GameTaneBase.update({ areaKey: base.areaKey, lastSeedAt: new Date(since + periods * PERIOD_MS).toISOString() }));
-      gains.push({ itemId: base.seedItemId, count: periods, townName: base.townName });
-    }
-    nextToken = page.nextToken;
-  } while (nextToken);
+  const district = await locateTownDistrict(event.arguments);
+  const player = await requirePlayer(c, userId);
+  assertNotTooFast(player, district, now);
 
-  return JSON.stringify(gains);
+  const base = unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
+  if (!base) throw new Error("この地区にはまだタネがありません");
+  await rememberPosition(c, userId, district, now);
+
+  // 拠点から減らすのと自分のタネに足すのは1つのトランザクション(同時に拾っても数がずれず、途中で消えることも無い)
+  return (await takeDroppedSeeds(base.areaKey, userId, base.seedItemId, count)) ? count : 0;
 };
