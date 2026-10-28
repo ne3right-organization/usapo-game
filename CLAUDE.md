@@ -13,7 +13,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 ## 経緯
 
 - 本体は AWS Amplify Gen2（Cognito・AppSync/DynamoDB）で構築されている。ゲームコーナーは本体と密結合させる必要がなく、リリースサイクル・障害の影響範囲を分けたいので別にした
-- 2026-07〜10 は Vercel（ホスティング）+ Supabase（認証・DB）で運用していた（Vercel は学習目的での採用）。運用を AWS にまとめるため、**2026-10-27 に Amplify Gen2 へ移行した**（本番は `game.usapo.net`）
+- 2026-07〜10 は Vercel（ホスティング）+ Supabase（認証・DB）で運用していた（Vercel は学習目的での採用。どちらも 2026-10-28 に削除済み）。運用を AWS にまとめるため、**2026-10-27 に Amplify Gen2 へ移行した**（本番は `game.usapo.net`）
   - 移行の設計とアクセスパターンの洗い出しは `docs/amplify_data_migration.md`
   - 本体とは別の AWS アカウント（Organization のメンバーアカウント）に置いている。影響範囲と IAM 権限を本体と分けるため（タグでは費用を見分けられても影響範囲は分けられない）
   - Supabase 時代のスキーマ（`supabase/migrations`）は git 履歴にある
@@ -100,8 +100,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 
 ## 次にやること（後片付け）
 
-- [ ] Vercel: `usapo-game.vercel.app` を移転のお知らせにする、プロジェクトから `game.usapo.net` を外す、GitHub 連携を切る
-- [ ] Supabase: しばらく一時停止のまま様子を見てから削除
+- [x] Vercel・Supabase のプロジェクトを削除（2026-10-28）。リリース後に旧サイトで記録された1件（新規の利用者）は移さなかった
 - [ ] 本番アカウントの権限セットから移行用に足した Cognito の権限を外す
 - [ ] Supabase 用だった Google OAuth クライアントを削除
 - [ ] インフラ用リポジトリの `FrontendDomains` に、実際には許可している `devgame.usapo.net` を書き足す（ファイルと実際の設定がずれている）
