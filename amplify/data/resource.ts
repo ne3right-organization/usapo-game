@@ -373,7 +373,8 @@ const schema = a
       .identifier(["userId", "areaKey"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
-    // 持っているもの(ユーザー×アイテム)。firstAreaName は初めてもらった地区(「○○区 ○○町」。始めたときに渡したものは空)
+    // 持っているもの(実。ユーザー×アイテム)。自分のタネを収穫したときだけ増える(訪ねてもらえるのはタネだけ)。
+    // firstAreaName は初めて収穫した地区(「○○区 ○○町」)
     GameTaneItem: a
       .model({
         userId: a.id().required(),
@@ -408,13 +409,13 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      // received(ほかの人のタネでもらえた) / watered(自分のタネに水やり) / harvested(自分のタネを収穫) / already(今日はもう来た)
+      // received(ほかの人のタネでタネをもらえた) / watered(自分のタネに水やり) / harvested(自分のタネを収穫) / already(今日はもう来た)
       status: a.string().required(),
       townName: a.string().required(),
       baseTypeId: a.string().required(),
-      itemId: a.string(),
-      quantity: a.integer(), // もらったあとに持っている数
-      gainedItems: a.integer(), // このチェックインでもらった数(収穫なら3)
+      itemId: a.string(), // そのタネのもの(梨の木など)
+      quantity: a.integer(), // 収穫したとき: もらったあとに持っている数
+      gainedItems: a.integer(), // このチェックインでもらったもの(実)の数(収穫なら3、それ以外は0)
       level: a.integer(), // もらえたときのレベル
       leveledUp: a.boolean(), // このチェックインでレベルが上がったか
       seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / harvest / level)

@@ -15,7 +15,7 @@ import { sproutMs } from "@/lib/game/chizuTaneData";
 
 // 地図タネの画面で共通に使う小さな部品
 
-/** もらえるものの絵。絵ができるまでは絵文字を出す */
+/** 実(収穫したもの)の絵。絵ができるまでは絵文字を出す。タネは SeedIcon */
 export function ItemIcon({ item, size = 40, silhouette = false }: { item: TaneItem; size?: number; silhouette?: boolean }) {
   const style = silhouette ? { filter: "grayscale(1) brightness(0)", opacity: 0.18 } : undefined;
   if (item.imageUrl) {
@@ -25,6 +25,28 @@ export function ItemIcon({ item, size = 40, silhouette = false }: { item: TaneIt
   return (
     <span role="img" aria-label={silhouette ? undefined : item.name} style={{ fontSize: size * 0.8, lineHeight: 1, ...style }}>
       {item.emoji}
+    </span>
+  );
+}
+
+/**
+ * タネの絵。実(もの)と見分けがつくよう、タネ袋の形にして、何のタネかを小さく出す(実の絵はそのまま ItemIcon)
+ */
+export function SeedIcon({ item, size = 40 }: { item: TaneItem; size?: number }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${item.name}のタネ`}
+      className="relative inline-flex flex-col items-center justify-start rounded-b-md rounded-t-sm border border-amber-300 bg-amber-100 shrink-0"
+      style={{ width: size * 0.78, height: size, paddingTop: size * 0.1 }}
+    >
+      <span className="absolute inset-x-0 top-0 h-[12%] rounded-t-sm bg-amber-300/70" aria-hidden />
+      <span style={{ fontSize: size * 0.42, lineHeight: 1, marginTop: size * 0.06 }} aria-hidden>
+        {item.emoji}
+      </span>
+      <span className="font-bold text-amber-800" style={{ fontSize: Math.max(8, size * 0.2), lineHeight: 1.3 }} aria-hidden>
+        タネ
+      </span>
     </span>
   );
 }
@@ -154,7 +176,8 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
     <div className="text-sm text-[#78716c] leading-relaxed">
       <p className="mb-1">いまはまけるタネを持っていません。タネはこうすると増えます。</p>
       <ul className="list-disc pl-5 text-xs space-y-0.5">
-        <li>どこかのタネにチェックインする（自分のタネでも、1つのタネで1日1回、1個）</li>
+        <li>ほかの人のタネにチェックインする（1つのタネで1日1回、1個）</li>
+        <li>自分のタネが実ったら収穫する（タネが1個もらえる）</li>
         <li>タネに落ちているタネを拾う</li>
         <li>レベルを上げる（ほかの人のタネにチェックインし、いまのタネを3つともまくと、新しいタネが3つもらえる）</li>
       </ul>

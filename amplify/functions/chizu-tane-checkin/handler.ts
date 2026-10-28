@@ -33,7 +33,8 @@ async function addItem(c: DataClient, userId: string, itemId: string, count: num
 
 /**
  * いまいる地区のタネ(拠点)にチェックインする。拠点ごとに1人1日1回(日本時間)。芽が出るまで(まいてから1日)は誰もできない。
- * - ほかの人のタネ: まかれたタネのもの(梨の木など)と、そのもののタネを1個もらえ、拠点にもタネが1個落ちる(3個まで。誰でも拾える)。
+ * - ほかの人のタネ: まかれていたタネ(梨の木のタネなど)を1個もらえ、拠点にもタネが1個落ちる(3個まで。誰でも拾える)。
+ *   もの(実)はもらえない。ものは自分でまいて育てたタネを収穫したときだけ手に入る(集めたもの・タネニワに飾れるもの)。
  *   拠点は1段階育つ(水やりと同じ)。初めての拠点なら、たずねた拠点の数が増えるのでレベルが上がることがある
  * - 自分のタネ: 実っていなければ水やり(1段階育つだけで、何ももらえない)。実っていれば収穫で、もの3つとタネ1個がもらえ、
  *   芽に戻ってランクが1つ上がる。自分のタネは訪問の記録に残さず、レベルにも数えない。タネも落ちない
@@ -116,8 +117,7 @@ export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (even
     };
   }
 
-  // ほかの人のタネ: もの1つとタネ1個。拠点にもタネが1個落ち、1段階育つ
-  const quantity = await addItem(c, userId, picked.itemId, 1, areaName, now);
+  // ほかの人のタネ: タネ1個(ものは無し)。拠点にもタネが1個落ち、1段階育つ
   const seedsGained: SeedGain[] = [{ itemId: base.seedItemId, count: SEEDS_PER_CHECKIN, reason: "checkin" }];
   await addSeeds(c, userId, base.seedItemId, SEEDS_PER_CHECKIN);
   // 落とすのは DynamoDB の条件付きの書き込み(3個未満のときだけ増やす)。同時にチェックインしても数がずれない
@@ -144,8 +144,7 @@ export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (even
     ...result,
     status: "received",
     itemId: picked.itemId,
-    quantity,
-    gainedItems: 1,
+    gainedItems: 0,
     level: granted.level,
     leveledUp: granted.gains.length > 0,
     droppedSeeds: dropped,

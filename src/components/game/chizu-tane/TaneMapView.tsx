@@ -42,6 +42,8 @@ interface CityGroup {
 
 function TaneMap({ userId }: { userId: string }) {
   const [bases, setBases] = useState<PlacedBase[] | null>(null);
+  // 代表点を持たないタネ(地図に出せない)の数
+  const [unplaced, setUnplaced] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const overrideAllowed = useMemo(() => isLocationOverrideAllowed(), []);
@@ -51,7 +53,12 @@ function TaneMap({ userId }: { userId: string }) {
   useEffect(() => {
     let cancelled = false;
     fetchAllBases()
-      .then((list) => !cancelled && setBases(list.filter(isPlaced)))
+      .then((list) => {
+        if (cancelled) return;
+        const placed = list.filter(isPlaced);
+        setBases(placed);
+        setUnplaced(list.length - placed.length);
+      })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     return () => {
       cancelled = true;
@@ -72,14 +79,16 @@ function TaneMap({ userId }: { userId: string }) {
       mapRef.current = { map, Lmod };
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.6 }).addTo(map);
       for (const b of bases) {
+        // まかれたもの(梨の木など)の絵文字を、自分のタネは緑・ほかの人のタネは橙の丸で囲んで出す
         const own = b.ownerId === userId;
-        Lmod.circleMarker([b.repLat, b.repLng], {
-          radius: 7,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: own ? OWN_COLOR : OTHER_COLOR,
-          fillOpacity: 0.9,
-        })
+        const emoji = TANE_ITEM_BY_ID.get(b.seedItemId)?.emoji ?? TANE_BASE_TYPE_BY_ID.get(b.baseTypeId)?.emoji ?? "🌱";
+        const icon = Lmod.divIcon({
+          className: "",
+          html: `<div style="width:30px;height:30px;border-radius:9999px;background:#fff;border:3px solid ${own ? OWN_COLOR : OTHER_COLOR};display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.25)">${emoji}</div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
+        });
+        Lmod.marker([b.repLat, b.repLng], { icon })
           .addTo(map)
           .on("click", () => setSelected(b.areaKey));
       }
@@ -126,15 +135,17 @@ function TaneMap({ userId }: { userId: string }) {
       </div>
       <div className="flex items-center gap-4 text-[11px] text-[#78716c] mb-4">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: OWN_COLOR }} />
+          <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OWN_COLOR }} />
           あなたのタネ
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: OTHER_COLOR }} />
+          <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OTHER_COLOR }} />
           ほかの人のタネ
         </span>
-        <span>点をタップすると詳しく見られます</span>
+        <span>アイコンをタップすると詳しく見られます</span>
       </div>
+
+      {unplaced > 0 && <p className="text-xs text-red-600 mb-3">場所が分からず地図に出せないタネが{unplaced}個あります</p>}
 
       {sel && (
         <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4">

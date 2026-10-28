@@ -23,7 +23,7 @@ import {
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
-import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のタネニワの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
@@ -41,7 +41,7 @@ export default function TaneHome() {
         <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
           街のいろいろな地区にまかれたタネを訪ねて、
           <br />
-          そこで育ったもののお裾分けを集めよう
+          タネを分けてもらって、育てて収穫しよう
         </p>
       </div>
 
@@ -212,8 +212,8 @@ function Home({ course }: { course: TaneCourse }) {
           {seeds.map((sd) => {
             const item = TANE_ITEM_BY_ID.get(sd.itemId);
             return (
-              <span key={sd.itemId} className="inline-flex items-center gap-1 bg-white rounded-full px-3 py-1.5 text-xs text-[#3c2a14]">
-                <span className="text-base">{item?.emoji}</span>
+              <span key={sd.itemId} className="inline-flex items-center gap-1.5 bg-white rounded-full pl-2 pr-3 py-1 text-xs text-[#3c2a14]">
+                {item && <SeedIcon item={item} size={24} />}
                 {item?.name ?? sd.itemId}のタネ
                 <span className="text-[#a8937a]">×{sd.quantity}</span>
               </span>
@@ -260,11 +260,11 @@ function Home({ course }: { course: TaneCourse }) {
           <li>「おでかけ」で現在地の地区を調べます</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）</li>
           <li>まいたタネは1日たつと芽が出て、芽 → 若葉 → つぼみ → 花 → 実り と育ちます。1日たつと1段階、誰かがチェックインするとさらに1段階進みます</li>
-          <li>ほかの人のタネにチェックインすると、お裾分けとそのタネがもらえます（1つのタネから1日1回）。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
-          <li>自分のタネにチェックインすると水やりになります。実っていれば収穫で、お裾分け3つとタネ1個がもらえ、ランクが上がってまた芽から育ちます</li>
+          <li>ほかの人のタネにチェックインすると、そのタネを1個分けてもらえます（1つのタネから1日1回）。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
+          <li>自分のタネにチェックインすると水やりになります。実っていれば収穫で、実（梨の木など）が3つとタネ1個がもらえ、ランクが上がってまた芽から育ちます</li>
+          <li>収穫した実が「集めたもの」になり、「タネニワ」に飾れます</li>
           <li>下の「タネ地図」で、全国のどこにタネがあるか見られます</li>
           <li>ほかの人のタネをたずねた数でレベルが上がり、新しい種類のタネがもらえます</li>
-          <li>集めたものは「タネニワ」に飾れます</li>
         </ol>
       </div>
     </div>

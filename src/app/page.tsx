@@ -109,7 +109,7 @@ export default function Home() {
                   <span className="ml-2 text-[10px] font-bold text-emerald-600 align-middle">プロトタイプ</span>
                 </span>
                 <p className="text-sm text-[#78716c] leading-snug">
-                  街の地区にタネをまき、ほかの人のタネを現地で訪ねてお裾分けを集める位置情報ゲーム（ログインが必要）
+                  街の地区にタネをまき、ほかの人のタネを現地で訪ねて分けてもらい、育てて収穫する位置情報ゲーム（ログインが必要）
                 </p>
               </div>
               <div className="text-[#c8b8a0] text-xl shrink-0">›</div>

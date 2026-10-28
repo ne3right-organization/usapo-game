@@ -21,13 +21,14 @@ import {
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
-import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 const OWN_FILL: FillStyle = { color: "#10b981", opacity: 0.55 };
 const OTHER_FILL: FillStyle = { color: "#f59e0b", opacity: 0.55 };
 
-type Notice = { kind: "ok" | "info"; text: string; itemId?: string };
+// itemId があれば絵を出す。seed ならタネの絵、そうでなければ実(もの)の絵
+type Notice = { kind: "ok" | "info"; text: string; itemId?: string; seed?: boolean };
 
 // おでかけ(いまいる地区): 現在地から地区を判定して、その市区町村の地図とタネを出し、タネをまく・チェックインする
 export default function HereView() {
@@ -208,11 +209,10 @@ function Here({ userId }: { userId: string }) {
       const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
       const item = res.itemId ? TANE_ITEM_BY_ID.get(res.itemId) : undefined;
       if (res.status === "received" && res.itemId) {
-        const parts = [`${item?.name ?? "おすそわけ"}をもらいました！（${res.quantity ?? 1}個目）`];
-        if (checkinSeeds.length > 0) parts.push(`${describeSeeds(checkinSeeds)}ももらいました。ここにもタネが1個落ちました。`);
-        parts.push("チェックインで、このタネが1段階育ちました。");
+        const parts = [`${describeSeeds(checkinSeeds)}をもらいました！ ここにもタネが1個落ちました。`];
+        parts.push("チェックインで、このタネが1段階育ちました。もらったタネをまいて育てると、収穫で" + (item?.name ?? "実") + "が手に入ります。");
         if (res.leveledUp && res.level) parts.push(`レベルが上がって Lv.${res.level} になりました！ ${describeSeeds(levelSeeds)}をもらいました。`);
-        setNotice({ kind: "ok", text: parts.join(" "), itemId: res.itemId });
+        setNotice({ kind: "ok", text: parts.join(" "), itemId: res.itemId, seed: true });
       } else if (res.status === "harvested" && res.itemId) {
         setNotice({
           kind: "ok",
@@ -314,7 +314,7 @@ function Here({ userId }: { userId: string }) {
                             active ? "border-emerald-500 bg-emerald-50" : "border-[#f3ece0] bg-white"
                           } disabled:opacity-50`}
                         >
-                          {item ? <ItemIcon item={item} size={26} /> : null}
+                          {item ? <SeedIcon item={item} size={30} /> : null}
                           <span className="flex-1 text-[#3c2a14]">
                             {item?.name ?? sd.itemId}のタネ
                             {type && <span className="ml-1 text-[11px] text-[#a8937a]">（{type.name}になる）</span>}
@@ -357,7 +357,7 @@ function Here({ userId }: { userId: string }) {
                       {busy
                         ? "チェックイン中..."
                         : baseHere.ownerId !== userId
-                          ? "🎁 チェックインしておすそわけをもらう"
+                          ? "🎁 チェックインしてタネをもらう"
                           : growthStage(baseHere, new Date(), sproutMs()) === RIPE_STAGE
                             ? `🧺 収穫する（${TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}×${HARVEST_ITEMS}とタネ）`
                             : "💧 水をやる（チェックイン）"}
@@ -399,7 +399,13 @@ function Here({ userId }: { userId: string }) {
                   notice.kind === "ok" ? "bg-emerald-50 text-emerald-800" : "bg-[#f8f3ea] text-[#78716c]"
                 }`}
               >
-                {notice.itemId && TANE_ITEM_BY_ID.get(notice.itemId) && <ItemIcon item={TANE_ITEM_BY_ID.get(notice.itemId)!} size={40} />}
+                {notice.itemId &&
+                  TANE_ITEM_BY_ID.get(notice.itemId) &&
+                  (notice.seed ? (
+                    <SeedIcon item={TANE_ITEM_BY_ID.get(notice.itemId)!} size={40} />
+                  ) : (
+                    <ItemIcon item={TANE_ITEM_BY_ID.get(notice.itemId)!} size={40} />
+                  ))}
                 <span>{notice.text}</span>
               </div>
             )}
