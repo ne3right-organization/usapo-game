@@ -27,7 +27,10 @@ export function isTaneCourse(value: unknown): value is TaneCourse {
   return typeof value === "string" && TANE_COURSE_BY_ID.has(value as TaneCourse);
 }
 
-/** 拠点(画面では「タネ」)の種類。プレイヤーのレベルで1つずつ解放される(Lv.n → unlockLevel n) */
+/**
+ * 拠点(画面では「タネ」)の種類。1レベルに3種類ずつ(unlockLevel)で、そのレベルになるとその3種類のタネを1個ずつもらえる。
+ * まくのはタネを持っていればよく、レベルの制限は無い(ほかの人のタネを訪ねてもらったタネもまける)
+ */
 export interface TaneBaseType {
   id: string;
   course: TaneCourse;
@@ -36,8 +39,12 @@ export interface TaneBaseType {
   emoji: string;
 }
 
+/** 1レベルで解放される種類の数 */
+export const TYPES_PER_LEVEL = 3;
+
+// いまは各コース10種類(Lv.1〜3 に3種類ずつと、Lv.4 に1種類)。Lv.10 まで3種類ずつ(30種類)にするのは、詳細を詰めるとき
 const baseTypes = (course: TaneCourse, list: [id: string, name: string, emoji: string][]): TaneBaseType[] =>
-  list.map(([id, name, emoji], i) => ({ id, course, unlockLevel: i + 1, name, emoji }));
+  list.map(([id, name, emoji], i) => ({ id, course, unlockLevel: Math.floor(i / TYPES_PER_LEVEL) + 1, name, emoji }));
 
 export const TANE_BASE_TYPES: TaneBaseType[] = [
   ...baseTypes("plant", [
@@ -117,7 +124,8 @@ export interface TaneItem {
 const items = (baseTypeId: string, list: [name: string, emoji: string][]): TaneItem[] =>
   list.map(([name, emoji], i) => ({ itemId: `${baseTypeId}_${i + 1}`, baseTypeId, rank: i + 1, name, emoji }));
 
-// 最初に用意する45点(Lv.1〜3 の種類 × ランク1〜3)。ランク4〜10と Lv.4〜10 の種類の分は、遊ぶ人が増えてから足す
+// 最初に用意する絵の45点(Lv.1 の3種類 × ランク1〜3)と、試作で使う Lv.2・3 の種類のランク1(30点)。
+// ランク4〜10と、Lv.4 以上の種類の分は、遊ぶ人が増えてから足す
 export const TANE_ITEMS: TaneItem[] = [
   ...items("orchard", [["みかんの木", "🍊"], ["梨の木", "🍐"], ["いちご畑", "🍓"]]),
   ...items("flower_field", [["チューリップ", "🌷"], ["ひまわり", "🌻"], ["桜の木", "🌸"]]),
@@ -134,19 +142,85 @@ export const TANE_ITEMS: TaneItem[] = [
   ...items("bakery", [["食パン", "🍞"], ["メロンパン", "🍈"], ["あんぱん", "🥮"]]),
   ...items("greengrocer", [["だいこん", "🥬"], ["かぼちゃ", "🎃"], ["野菜のかご", "🧺"]]),
   ...items("candy_shop", [["ラムネ", "🥤"], ["駄菓子のびん", "🍬"], ["当たりくじ", "🎫"]]),
+  // Lv.2・3 の種類(ランク1だけ)
+  ...items("vegetable_field", [["トマト", "🍅"]]),
+  ...items("bamboo_grove", [["たけのこ", "🎍"]]),
+  ...items("tea_field", [["茶の木", "🍵"]]),
+  ...items("herb_garden", [["ミント", "🌿"]]),
+  ...items("greenhouse", [["サボテン", "🌵"]]),
+  ...items("forest", [["どんぐり", "🌰"]]),
+  ...items("cat_alley", [["三毛猫", "🐈"]]),
+  ...items("bug_meadow", [["てんとう虫", "🐞"]]),
+  ...items("dog_park", [["柴犬", "🐕"]]),
+  ...items("satoyama", [["タヌキ", "🦝"]]),
+  ...items("aquarium", [["ペンギン", "🐧"]]),
+  ...items("wetland", [["白鳥", "🦢"]]),
+  ...items("model_workshop", [["ロボットの模型", "🤖"]]),
+  ...items("campsite", [["テント", "⛺"]]),
+  ...items("reading_room", [["絵本", "📖"]]),
+  ...items("atelier", [["パレット", "🎨"]]),
+  ...items("game_corner", [["ゲーム機", "🎮"]]),
+  ...items("diorama", [["鉄道模型", "🚂"]]),
+  ...items("station", [["電車", "🚃"]]),
+  ...items("work_vehicle_depot", [["消防車", "🚒"]]),
+  ...items("harbor", [["モーターボート", "🚤"]]),
+  ...items("airport", [["飛行機", "✈️"]]),
+  ...items("ropeway", [["ゴンドラ", "🚡"]]),
+  ...items("rail_yard", [["新幹線", "🚄"]]),
+  ...items("cafe", [["コーヒー", "☕"]]),
+  ...items("bathhouse", [["湯おけ", "♨️"]]),
+  ...items("shopping_street", [["ちょうちん", "🏮"]]),
+  ...items("shrine", [["鳥居", "⛩️"]]),
+  ...items("festival_square", [["花火", "🎆"]]),
+  ...items("lighthouse", [["灯台", "🗼"]]),
 ];
 
 export const TANE_ITEM_BY_ID = new Map(TANE_ITEMS.map((i) => [i.itemId, i]));
 
 /**
- * 初期試作で使う範囲(docs/地図タネ_初期試作設計書.md の 4章)。レベルと拠点の成長がまだ無いので、
- * 拠点は各コースの1種類目だけ、ランクは1のまま
+ * 初期試作で使う範囲(docs/地図タネ_初期試作設計書.md の 4章)。レベルは絵を用意した Lv.3 まで、
+ * 拠点の成長がまだ無いのでランクは1のまま
  */
-export const PROTOTYPE_MAX_LEVEL = 1;
+export const PROTOTYPE_MAX_LEVEL = 3;
 export const PROTOTYPE_MAX_RANK = 1;
 
-/** 始めたときに持つ数(自分のコースの1種類目のランク1) */
-export const STARTER_QUANTITY = 3;
+/**
+ * レベル n になるのに要る「たずねた拠点の数」(TANE_LEVEL_THRESHOLDS[n - 1])。同じ拠点は何度たずねても1つと数える。
+ * 試作では試しやすいように少なくしている(1か所で Lv.2、3か所で Lv.3)。数は詳細を詰めるときに見直す
+ */
+export const TANE_LEVEL_THRESHOLDS = [0, 1, 3, 6, 10, 15, 25, 40, 60, 100];
+
+/** たずねた拠点の数からレベル(試作の上限まで) */
+export function levelForVisitCount(count: number): number {
+  let level = 1;
+  for (let n = 2; n <= Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL); n++) {
+    if (count >= TANE_LEVEL_THRESHOLDS[n - 1]) level = n;
+  }
+  return level;
+}
+
+/** 次のレベルまであと何か所たずねればよいか。上限なら null */
+export function visitsToNextLevel(count: number): { nextLevel: number; remaining: number } | null {
+  const nextLevel = levelForVisitCount(count) + 1;
+  if (nextLevel > Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL)) return null;
+  return { nextLevel, remaining: TANE_LEVEL_THRESHOLDS[nextLevel - 1] - count };
+}
+
+// ─── タネ(持ち物) ───────────────────────────────────────────────────────
+// まくと1つ減る。手に入るのは: 始めたとき(Lv.1 の3種類を1個ずつ)・レベルが上がったとき(そのレベルの3種類を1個ずつ)・
+// ほかの人のタネを初めて訪ねたとき(その種類を1個)・自分のタネから(下の3つ)
+
+/** 自分のタネに、ほかの人が訪ねてくれて(もらって)いったとき、持ち主に増えるタネの数 */
+export const SEEDS_FROM_VISITOR = 2;
+/** 自分のタネを自分で訪ねたとき(1日1回)に増えるタネの数 */
+export const SEEDS_FROM_OWNER_VISIT = 1;
+/** 自分のタネに誰も来ないまま、この日数がたつごとにタネが1個増える(上限なし) */
+export const IDLE_SEED_DAYS = 3;
+
+/** そのレベルになったときにもらえるタネ(自分のコースのそのレベルの種類を1個ずつ) */
+export function seedsForLevel(course: TaneCourse, level: number): TaneBaseType[] {
+  return baseTypesOf(course).filter((t) => t.unlockLevel === level);
+}
 
 export function baseTypesOf(course: TaneCourse): TaneBaseType[] {
   return TANE_BASE_TYPES.filter((t) => t.course === course);

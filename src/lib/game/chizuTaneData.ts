@@ -86,6 +86,43 @@ export async function fetchMyItems(): Promise<TaneOwnedItem[]> {
   return items;
 }
 
+export interface TaneSeedCount {
+  baseTypeId: string;
+  quantity: number;
+}
+
+/** 持っているタネ(0個のものは除く) */
+export async function fetchMySeeds(): Promise<TaneSeedCount[]> {
+  const userId = await requireUserId();
+  const seeds: TaneSeedCount[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneSeed.list({ userId, nextToken });
+    for (const s of unwrap(page)) if (s.quantity > 0) seeds.push({ baseTypeId: s.baseTypeId, quantity: s.quantity });
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return seeds;
+}
+
+/** 誰も来ないまま時間がたった自分のタネから、タネを受け取る。増えたタネを返す */
+export async function collectSeeds(): Promise<{ baseTypeId: string; count: number; townName: string }[]> {
+  await requireUserId();
+  return parseJson(unwrap(await data.mutations.collectTaneSeeds())) ?? [];
+}
+
+/** たずねた(もらったことのある)ほかの人のタネの数。レベルはこれで決まる(courses.ts の levelForVisitCount) */
+export async function fetchVisitedCount(): Promise<number> {
+  const userId = await requireUserId();
+  let count = 0;
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneVisit.list({ userId, nextToken });
+    count += unwrap(page).length;
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return count;
+}
+
 // ─── いまいる地区 ─────────────────────────────────────────────────────────
 
 export interface Location {
@@ -162,10 +199,16 @@ export function getCurrentLocation(): Promise<Location> {
   });
 }
 
-export async function placeBase(loc: Location, district: TownDistrict): Promise<TaneBase> {
+export async function placeBase(loc: Location, district: TownDistrict, baseTypeId: string): Promise<TaneBase> {
   await requireUserId();
   const base = unwrap(
-    await data.mutations.placeTaneBase({ lng: loc.lng, lat: loc.lat, prefCode: district.prefCode, cityCode: district.cityCode })
+    await data.mutations.placeTaneBase({
+      lng: loc.lng,
+      lat: loc.lat,
+      prefCode: district.prefCode,
+      cityCode: district.cityCode,
+      baseTypeId,
+    })
   );
   if (!base) throw new Error("タネをまけませんでした");
   return base;
@@ -177,6 +220,9 @@ export interface CheckInResult {
   baseTypeId: string;
   itemId: string | null;
   quantity: number | null;
+  level: number | null;
+  leveledUp: boolean;
+  seedsGained: { baseTypeId: string; count: number; reason: "visit" | "owner" | "level" }[];
 }
 
 export async function checkIn(loc: Location, district: TownDistrict): Promise<CheckInResult> {
@@ -185,7 +231,16 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
     await data.mutations.checkInTaneBase({ lng: loc.lng, lat: loc.lat, prefCode: district.prefCode, cityCode: district.cityCode })
   );
   if (!res) throw new Error("チェックインできませんでした");
-  return { ...res, status: res.status as CheckInResult["status"], itemId: res.itemId ?? null, quantity: res.quantity ?? null };
+  return {
+    status: res.status as CheckInResult["status"],
+    townName: res.townName,
+    baseTypeId: res.baseTypeId,
+    itemId: res.itemId ?? null,
+    quantity: res.quantity ?? null,
+    level: res.level ?? null,
+    leveledUp: res.leveledUp ?? false,
+    seedsGained: parseJson<CheckInResult["seedsGained"] | null>(res.seedsGained) ?? [],
+  };
 }
 
 // ─── タネニワ ─────────────────────────────────────────────────────────────

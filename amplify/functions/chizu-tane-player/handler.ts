@@ -1,7 +1,8 @@
 import type { AppSyncIdentityCognito, AppSyncResolverHandler } from "aws-lambda";
 import { env } from "$amplify/env/chizu-tane-player";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { STARTER_QUANTITY, firstBaseType, isTaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import { isTaneCourse, seedsForLevel } from "../../../src/lib/game/chizuTane/courses";
+import { addSeeds } from "../shared/chizuTane";
 import { GARDEN_HEIGHT, GARDEN_WIDTH, validateGardenObjects, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
 
 type Args = { course?: string; objects?: unknown };
@@ -38,21 +39,19 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   };
 };
 
-/** コースを決めて、最初のもの(自分のコースの1種類目のランク1)を渡し、空の箱庭を作る。もう始めていればそのまま返す */
+/** コースを決めて、最初のタネ(自分のコースの Lv.1 の3種類を1個ずつ)を渡し、空の箱庭を作る。もう始めていればそのまま返す */
 async function start(c: DataClient, userId: string, course: string) {
   if (!isTaneCourse(course)) throw new Error("コースの指定が正しくありません");
   const existing = unwrap(await c.models.GameTanePlayer.get({ userId }));
   if (existing) return existing;
 
-  const now = new Date().toISOString();
-  const itemId = `${firstBaseType(course).id}_1`;
-  if (!unwrap(await c.models.GameTaneItem.get({ userId, itemId }))) {
-    unwrap(await c.models.GameTaneItem.create({ userId, itemId, quantity: STARTER_QUANTITY, firstAcquiredAt: now }));
+  for (const t of seedsForLevel(course, 1)) {
+    if (!unwrap(await c.models.GameTaneSeed.get({ userId, baseTypeId: t.id }))) await addSeeds(c, userId, t.id, 1);
   }
   if (!unwrap(await c.models.GameTaneGarden.get({ userId }))) {
     unwrap(await c.models.GameTaneGarden.create({ userId, width: GARDEN_WIDTH, height: GARDEN_HEIGHT, objects: "[]" }));
   }
-  const player = unwrap(await c.models.GameTanePlayer.create({ userId, course }));
+  const player = unwrap(await c.models.GameTanePlayer.create({ userId, course, grantedLevel: 1 }));
   if (!player) throw new Error("始められませんでした");
   return player;
 }

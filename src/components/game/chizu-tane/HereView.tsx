@@ -2,19 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
-import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID, firstBaseType, type TaneCourse } from "@/lib/game/chizuTane/courses";
-import { townDistrictOf, type TownDistrict } from "@/lib/game/chizuTane/geo";
+import { TANE_BASE_TYPES, TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
+import type { TownDistrict } from "@/lib/game/chizuTane/geo";
 import {
   checkIn,
   fetchBasesInCity,
-  fetchTownDistrictFeatures,
+  fetchMySeeds,
   getCurrentLocation,
   isLocationOverrideAllowed,
   locateTownDistrict,
   placeBase,
   townDistrictGeojsonUrl,
   type Location,
+  type CheckInResult,
   type TaneBase,
+  type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneBackLink, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
@@ -24,22 +26,35 @@ const OTHER_FILL: FillStyle = { color: "#f59e0b", opacity: 0.55 };
 
 type Notice = { kind: "ok" | "info"; text: string; itemId?: string };
 
-// いまいる地区: 現在地から地区を判定して、その市区町村の地図とタネを出し、タネをまく・チェックインする
+// おでかけ(いまいる地区): 現在地から地区を判定して、その市区町村の地図とタネを出し、タネをまく・チェックインする
 export default function HereView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
       <TaneBackLink />
-      <h1 className="text-xl font-bold text-[#3c2a14] mb-4">📍 いまいる地区</h1>
+      <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🚶 おでかけ</h1>
+      <p className="text-xs text-[#a8937a] mb-4">いまいる地区でタネをまいたり、ほかの人のタネを訪ねたりできます</p>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
-      {state.status === "ready" && <Here userId={state.player.userId} course={state.player.course as TaneCourse} />}
+      {state.status === "ready" && <Here userId={state.player.userId} />}
     </TaneScreen>
   );
 }
 
-function Here({ userId, course }: { userId: string; course: TaneCourse }) {
+/** 増えたタネを「○○のタネ ×2」のような文にする */
+function describeSeeds(gains: CheckInResult["seedsGained"]): string {
+  const byType = new Map<string, number>();
+  for (const g of gains) byType.set(g.baseTypeId, (byType.get(g.baseTypeId) ?? 0) + g.count);
+  return [...byType]
+    .map(([id, n]) => {
+      const t = TANE_BASE_TYPE_BY_ID.get(id);
+      return `${t?.emoji ?? ""}${t?.name ?? id}のタネ ×${n}`;
+    })
+    .join("、");
+}
+
+function Here({ userId }: { userId: string }) {
   const [loc, setLoc] = useState<Location | null>(null);
   const [district, setDistrict] = useState<TownDistrict | null>(null);
   const [bases, setBases] = useState<TaneBase[]>([]);
@@ -49,6 +64,27 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const overrideAllowed = useMemo(() => isLocationOverrideAllowed(), []);
   const [manualInput, setManualInput] = useState("");
+  // 持っているタネ。まくと1つ減る(種類やレベルの制限は無い)
+  const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
+  const [chosenTypeId, setChosenTypeId] = useState<string | null>(null);
+  const applySeeds = useCallback((list: TaneSeedCount[]) => {
+    // コースの表の順に並べる
+    const order = new Map(TANE_BASE_TYPES.map((t, i) => [t.id, i]));
+    const sorted = [...list].sort((a, b) => (order.get(a.baseTypeId) ?? 0) - (order.get(b.baseTypeId) ?? 0));
+    setSeeds(sorted);
+    setChosenTypeId((cur) => (cur && sorted.some((x) => x.baseTypeId === cur) ? cur : sorted[0]?.baseTypeId ?? null));
+  }, []);
+  const reloadSeeds = useCallback(async () => applySeeds(await fetchMySeeds()), [applySeeds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMySeeds()
+      .then((list) => !cancelled && applySeeds(list))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [applySeeds]);
 
   const cityKey = district ? `${district.prefCode}${district.cityCode}` : null;
 
@@ -96,13 +132,10 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
     }
   };
 
-  // 開発用: 地図でタップした地区の代表点にいることにする
-  const handleMapSelect = async (key: MapFeatureKey) => {
-    if (!overrideAllowed || !district) return;
-    const features = await fetchTownDistrictFeatures(district.prefCode, district.cityCode);
-    const feature = features?.find((f) => f.properties.KEY_CODE === key.code);
-    const d = feature ? townDistrictOf(feature) : null;
-    if (d) await applyLocation({ lng: d.repLng, lat: d.repLat });
+  // 開発用: 地図でタップした点にいることにする(地区の境界のあたりも、実際の位置情報と同じように試せる)
+  const handleMapPoint = (lat: number, lng: number) => {
+    if (!overrideAllowed || locating || busy) return;
+    void applyLocation({ lat, lng });
   };
 
   const handleManual = async () => {
@@ -131,14 +164,16 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
   }, []);
 
   const handlePlant = async () => {
-    if (!loc || !district || busy) return;
+    if (!loc || !district || busy || !chosenTypeId) return;
     setBusy(true);
     setError("");
     setNotice(null);
     try {
-      const base = await placeBase(loc, district);
+      const base = await placeBase(loc, district, chosenTypeId);
+      await reloadSeeds();
       const type = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId);
-      setNotice({ kind: "ok", text: `${district.townName}に${type?.emoji ?? ""}${type?.name ?? "タネ"}のタネをまきました！` });
+      // まく前の地区には名前が無く、まいたことで「○○町の撮影スポット」のような名前が付く
+      setNotice({ kind: "ok", text: `タネをまきました！ ここは「${district.townName}の${type?.emoji ?? ""}${type?.name ?? "タネ"}」になりました` });
       await reloadBases(district);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -155,18 +190,22 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
     setNotice(null);
     try {
       const res = await checkIn(loc, district);
+      const visitSeeds = res.seedsGained.filter((g) => g.reason === "visit");
+      const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
       if (res.status === "received" && res.itemId) {
         const item = TANE_ITEM_BY_ID.get(res.itemId);
-        setNotice({
-          kind: "ok",
-          text: `${item?.name ?? "おすそわけ"}をもらいました！（${res.quantity ?? 1}個目）`,
-          itemId: res.itemId,
-        });
+        const parts = [`${item?.name ?? "おすそわけ"}をもらいました！（${res.quantity ?? 1}個目）`];
+        if (visitSeeds.length > 0) parts.push(`はじめて訪ねたので、${describeSeeds(visitSeeds)}を分けてもらいました。`);
+        if (res.leveledUp && res.level) parts.push(`レベルが上がって Lv.${res.level} になりました！ ${describeSeeds(levelSeeds)}をもらいました。`);
+        setNotice({ kind: "ok", text: parts.join(" "), itemId: res.itemId });
       } else if (res.status === "already") {
         setNotice({ kind: "info", text: "このタネからは今日はもうもらいました。また明日来てください" });
+      } else if (res.seedsGained.length > 0) {
+        setNotice({ kind: "ok", text: `あなたのタネです。${describeSeeds(res.seedsGained)}がとれました（1日1回）` });
       } else {
-        setNotice({ kind: "info", text: "あなたのタネです" });
+        setNotice({ kind: "info", text: "あなたのタネです。今日はもうタネをとりました" });
       }
+      if (res.seedsGained.length > 0) await reloadSeeds();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -175,7 +214,6 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
   };
 
   const typeHere = baseHere ? TANE_BASE_TYPE_BY_ID.get(baseHere.baseTypeId) : null;
-  const myFirstType = firstBaseType(course);
 
   return (
     <div>
@@ -205,14 +243,41 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
             <div className="mt-3 pt-3 border-t border-[#f3ece0]">
               {!baseHere && (
                 <>
-                  <p className="text-sm text-[#78716c] mb-2">この地区にはまだタネがありません。</p>
+                  {seeds !== null && seeds.length === 0 ? (
+                    <p className="text-sm text-[#78716c]">
+                      この地区にはまだタネがありません。いまはまけるタネを持っていません（ほかの人のタネを初めて訪ねたり、自分のタネに人が来てくれたりすると増えます）。
+                    </p>
+                  ) : (
+                    <p className="text-sm text-[#78716c] mb-2">この地区にはまだタネがありません。どのタネをまきますか？</p>
+                  )}
+                  <div className="flex flex-col gap-1.5 mb-3">
+                    {(seeds ?? []).map((sd) => {
+                      const t = TANE_BASE_TYPE_BY_ID.get(sd.baseTypeId);
+                      const active = chosenTypeId === sd.baseTypeId;
+                      return (
+                        <button
+                          key={sd.baseTypeId}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setChosenTypeId(sd.baseTypeId)}
+                          className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-left text-sm ${
+                            active ? "border-emerald-500 bg-emerald-50" : "border-[#f3ece0] bg-white"
+                          } disabled:opacity-50`}
+                        >
+                          <span className="text-xl">{t?.emoji}</span>
+                          <span className="flex-1 text-[#3c2a14]">{t?.name ?? sd.baseTypeId}のタネ</span>
+                          <span className="text-xs text-[#a8937a]">×{sd.quantity}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <button
                     type="button"
                     onClick={handlePlant}
-                    disabled={busy}
+                    disabled={busy || !chosenTypeId}
                     className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
                   >
-                    {busy ? "まいています..." : `🌱 ここにタネをまく（${myFirstType.emoji} ${myFirstType.name}）`}
+                    {busy ? "まいています..." : "🌱 この地区にタネをまく"}
                   </button>
                 </>
               )}
@@ -255,7 +320,7 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
             featureKey={featureKey}
             fillFor={fillFor}
             selectedCode={district.areaKey}
-            onSelect={overrideAllowed ? handleMapSelect : undefined}
+            onPointSelect={overrideAllowed ? handleMapPoint : undefined}
           />
           <div className="flex items-center gap-4 text-[11px] text-[#78716c] mt-2 mb-4">
             <span className="flex items-center gap-1">
@@ -277,7 +342,7 @@ function Here({ userId, course }: { userId: string; course: TaneCourse }) {
       {overrideAllowed && (
         <div className="border-2 border-dashed border-purple-200 rounded-2xl p-3 text-xs text-purple-800 bg-purple-50/50">
           <p className="font-bold mb-1">開発用（dev 環境と手元だけ）</p>
-          <p className="mb-2">地図の地区をタップすると、その地区にいることにします。ほかの市区町村へは緯度・経度で移れます。</p>
+          <p className="mb-2">地図をタップすると、その点にいることにします（となりの市区町村の上をタップすれば、そちらに移ります）。遠くへは緯度・経度で移れます。</p>
           <div className="flex gap-2">
             <input
               type="text"

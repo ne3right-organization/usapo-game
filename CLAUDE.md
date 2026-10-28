@@ -182,10 +182,11 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 
 - 設計書: `docs/地図タネ_全体設計書.md`（ルール・決定事項・コースの表）、`docs/地図タネ_初期試作設計書.md`（いま作っている範囲）。検討のときは「箱庭コレクションゲーム」「地図コロ」と呼んでいた（名前の経緯は全体設計書の0章）
 - 画面での呼び名: 拠点＝タネ（種類ごとに果樹園・サイクルポート…）、箱庭＝タネニワ、町丁＝実際の地名と「地区」。**画面で「町丁」とは言わない**
-- 画面: `/game/chizu-tane`（トップ・コース選び）、`/here`（いまいる地区）、`/collection`、`/garden`。ログイン必須
+- 画面: `/game/chizu-tane`（トップ。タネニワの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/collection`、`/garden`。ログイン必須
 - 実装: `src/lib/game/chizuTane/`（コースの表 `courses.ts`・地区の判定 `geo.ts`・箱庭の検証 `garden.ts`。画面と Lambda の両方から使う）、`src/lib/game/chizuTaneData.ts`、`src/components/game/chizu-tane/`
-- バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin`（共通処理は `amplify/functions/shared/chizuTane.ts`）
+- バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（共通処理は `amplify/functions/shared/chizuTane.ts`）
+- **タネは持ち物**（`GameTaneSeed`）で、まくと1つ減る。増え方（始めたとき・レベルアップ・初めて訪ねたタネ・自分のタネに人が来る/自分で訪ねる/3日たつ）は全体設計書 6.4、数は `courses.ts`
 - **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
-- **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図の地区をタップするとそこにいることにできる。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
+- **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
 - 絵は未作成で、アイテムごとの絵文字を出している。絵ができたら `courses.ts` のアイテムに `imageUrl` を足す

@@ -1,5 +1,6 @@
 import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
+import { levelForVisitCount, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import {
   findTownDistrict,
   isCityCode,
@@ -86,4 +87,54 @@ export async function rememberPosition(c: DataClient, userId: string, district: 
       lastMovedAt: now.toISOString(),
     })
   );
+}
+
+/** たずねた(もらったことのある)ほかの人の拠点の数。レベルの計算に使う */
+export async function countVisitedBases(c: DataClient, userId: string): Promise<number> {
+  let count = 0;
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneVisit.list({ userId, nextToken });
+    count += unwrap(page).length;
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return count;
+}
+
+export interface SeedGain {
+  baseTypeId: string;
+  count: number;
+  reason: "visit" | "owner" | "level";
+}
+
+/** タネを増やす(無ければ作る) */
+export async function addSeeds(c: DataClient, userId: string, baseTypeId: string, count: number): Promise<void> {
+  const existing = unwrap(await c.models.GameTaneSeed.get({ userId, baseTypeId }));
+  unwrap(
+    existing
+      ? await c.models.GameTaneSeed.update({ userId, baseTypeId, quantity: existing.quantity + count })
+      : await c.models.GameTaneSeed.create({ userId, baseTypeId, quantity: count })
+  );
+}
+
+/**
+ * まだタネを渡していないレベルに上がっていたら、そのレベルの3種類のタネを1個ずつ渡す。
+ * 渡したタネと今のレベルを返す
+ */
+export async function grantLevelSeeds(
+  c: DataClient,
+  player: { userId: string; course: string; grantedLevel?: number | null }
+): Promise<{ level: number; gains: SeedGain[] }> {
+  const level = levelForVisitCount(await countVisitedBases(c, player.userId));
+  const granted = player.grantedLevel ?? 1;
+  const gains: SeedGain[] = [];
+  if (level <= granted) return { level, gains };
+  for (let lv = granted + 1; lv <= level; lv++) {
+    for (const t of seedsForLevel(player.course as TaneCourse, lv)) {
+      await addSeeds(c, player.userId, t.id, 1);
+      gains.push({ baseTypeId: t.id, count: 1, reason: "level" });
+    }
+  }
+  unwrap(await c.models.GameTanePlayer.update({ userId: player.userId, grantedLevel: level }));
+  return { level, gains };
 }

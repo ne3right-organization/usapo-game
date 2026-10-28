@@ -2,6 +2,7 @@ import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
+import { chizuTaneSeeds } from "../functions/chizu-tane-seeds/resource";
 import { claimZukanQuizAnswer } from "../functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
 import { setFollowing } from "../functions/set-following/resource";
@@ -309,11 +310,13 @@ const schema = a
     // コースの表とアイテムの定義はコードの中のマスターデータ(src/lib/game/chizuTane/courses.ts)。
     // 1地区1つ・1日1回・所持数などを守るため、どのモデルもクライアントからは読むだけにし、書くのは chizu-tane-* の Lambda だけ
 
-    // プレイヤー。最後に位置を使った地区の代表点と日時は、移動の速さの確認に使う(実際の位置は保存しない)
+    // プレイヤー。最後に位置を使った地区の代表点と日時は、移動の速さの確認に使う(実際の位置は保存しない)。
+    // grantedLevel は「タネを渡し終えたレベル」(レベルが上がったときに、そのレベルのタネを1回だけ渡すため)
     GameTanePlayer: a
       .model({
         userId: a.id().required(),
         course: a.string().required(),
+        grantedLevel: a.integer(),
         lastAreaKey: a.string(),
         lastLng: a.float(),
         lastLat: a.float(),
@@ -337,6 +340,10 @@ const schema = a
         baseTypeId: a.string().required(),
         rank: a.integer().required(),
         plantedAt: a.datetime().required(),
+        // 最後に持ち主のタネが増えた日時(訪ねられた・持ち主が訪ねた・時間で増えた)。誰も来ないまま3日たつごとに1個増える
+        lastSeedAt: a.datetime(),
+        // 持ち主が最後に自分のタネを訪ねてタネが増えた日(日本時間)。1日1回
+        lastOwnerVisitOn: a.string(),
       })
       .identifier(["areaKey"])
       .secondaryIndexes((index) => [
@@ -370,6 +377,16 @@ const schema = a
       .identifier(["userId", "itemId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
+    // 持っているタネ(ユーザー×拠点の種類)。まくと1つ減る
+    GameTaneSeed: a
+      .model({
+        userId: a.id().required(),
+        baseTypeId: a.string().required(),
+        quantity: a.integer().required(),
+      })
+      .identifier(["userId", "baseTypeId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
     // 箱庭(画面では「タネニワ」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
     // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む
     GameTaneGarden: a
@@ -388,6 +405,9 @@ const schema = a
       baseTypeId: a.string().required(),
       itemId: a.string(),
       quantity: a.integer(),
+      level: a.integer(), // もらえたときのレベル
+      leveledUp: a.boolean(), // このチェックインでレベルが上がったか
+      seedsGained: a.json(), // 増えたタネ: { baseTypeId, count, reason }[](reason: visit / owner / level)
     }),
 
     TaneGardenState: a.customType({
@@ -507,7 +527,8 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlayer)),
 
-    // 地図タネ: いまいる地区にタネをまく。位置と、ブラウザで調べた市区町村(探す範囲を絞るためだけに使う)を送る
+    // 地図タネ: いまいる地区にタネをまく。位置と、ブラウザで調べた市区町村(探す範囲を絞るためだけに使う)と、
+    // まくタネの種類(持っているタネ。1つ減る)を送る
     placeTaneBase: a
       .mutation()
       .arguments({
@@ -515,6 +536,7 @@ const schema = a
         lat: a.float().required(),
         prefCode: a.string().required(),
         cityCode: a.string().required(),
+        baseTypeId: a.string().required(),
       })
       .returns(a.ref("GameTaneBase"))
       .authorization((allow) => [allow.authenticated()])
@@ -532,6 +554,14 @@ const schema = a
       .returns(a.ref("TaneCheckInResult"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 自分のタネのうち、誰も来ないまま3日以上たったものからタネを受け取る(トップを開いたときに呼ぶ)。
+    // 増えたタネ { baseTypeId, count, townName }[] を返す
+    collectTaneSeeds: a
+      .mutation()
+      .returns(a.json())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneSeeds)),
 
     openTaneGarden: a
       .mutation()
@@ -573,6 +603,7 @@ const schema = a
     allow.resource(chizuTanePlayer),
     allow.resource(chizuTanePlace),
     allow.resource(chizuTaneCheckin),
+    allow.resource(chizuTaneSeeds),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;
