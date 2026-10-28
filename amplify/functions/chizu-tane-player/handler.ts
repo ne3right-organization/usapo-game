@@ -39,14 +39,14 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   };
 };
 
-/** コースを決めて、最初のタネ(自分のコースの Lv.1 の3種類を1個ずつ)を渡し、空の箱庭を作る。もう始めていればそのまま返す */
+/** コースを決めて、最初のタネ(自分のコースの Lv.1 の種類のもの3つを1個ずつ)を渡し、空の箱庭を作る。もう始めていればそのまま返す */
 async function start(c: DataClient, userId: string, course: string) {
   if (!isTaneCourse(course)) throw new Error("コースの指定が正しくありません");
   const existing = unwrap(await c.models.GameTanePlayer.get({ userId }));
   if (existing) return existing;
 
-  for (const t of seedsForLevel(course, 1)) {
-    if (!unwrap(await c.models.GameTaneSeed.get({ userId, baseTypeId: t.id }))) await addSeeds(c, userId, t.id, 1);
+  for (const item of seedsForLevel(course, 1)) {
+    if (!unwrap(await c.models.GameTaneHeldSeed.get({ userId, itemId: item.itemId }))) await addSeeds(c, userId, item.itemId, 1);
   }
   if (!unwrap(await c.models.GameTaneGarden.get({ userId }))) {
     unwrap(await c.models.GameTaneGarden.create({ userId, width: GARDEN_WIDTH, height: GARDEN_HEIGHT, objects: "[]" }));

@@ -185,7 +185,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - 画面: `/game/chizu-tane`（トップ。タネニワの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/collection`、`/garden`。ログイン必須
 - 実装: `src/lib/game/chizuTane/`（コースの表 `courses.ts`・地区の判定 `geo.ts`・箱庭の検証 `garden.ts`。画面と Lambda の両方から使う）、`src/lib/game/chizuTaneData.ts`、`src/components/game/chizu-tane/`
 - バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（共通処理は `amplify/functions/shared/chizuTane.ts`）
-- **タネは持ち物**（`GameTaneSeed`）で、まくと1つ減る。増え方（始めたとき・レベルアップ・初めて訪ねたタネ・自分のタネに人が来る/自分で訪ねる/3日たつ）は全体設計書 6.4、数は `courses.ts`
+- **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・初めて訪ねたタネ・自分のタネに人が来る/自分で訪ねる/3日たつ）は全体設計書 6.4、数は `courses.ts`
 - **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
 - **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）

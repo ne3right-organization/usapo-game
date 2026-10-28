@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  TANE_BASE_TYPES,
+  TANE_ITEMS,
+  TANE_ITEM_BY_ID,
   TANE_BASE_TYPE_BY_ID,
   TANE_COURSES,
   TANE_COURSE_BY_ID,
@@ -107,7 +108,7 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
                   <span className="font-bold text-[#3c2a14] text-sm">{c.label}コース</span>
                   <p className="text-xs text-[#78716c] mt-0.5">{c.description}</p>
                   <p className="text-xs text-[#a8937a] mt-0.5">
-                    最初のタネ: {firstSeeds.map((t) => `${t.emoji}${t.name}`).join("・")}
+                    最初のタネ: {firstSeeds.map((i) => `${i.emoji}${i.name}`).join("・")}
                   </p>
                 </div>
               </div>
@@ -133,7 +134,7 @@ function Home({ course }: { course: TaneCourse }) {
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [visitedCount, setVisitedCount] = useState<number | null>(null);
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
-  const [collected, setCollected] = useState<{ baseTypeId: string; count: number; townName: string }[]>([]);
+  const [collected, setCollected] = useState<{ itemId: string; count: number; townName: string }[]>([]);
   const [error, setError] = useState("");
   const courseDef = TANE_COURSE_BY_ID.get(course);
 
@@ -154,8 +155,8 @@ function Home({ course }: { course: TaneCourse }) {
       })
       .then((list) => {
         if (cancelled) return;
-        const order = new Map(TANE_BASE_TYPES.map((t, i) => [t.id, i]));
-        setSeeds([...list].sort((a, b) => (order.get(a.baseTypeId) ?? 0) - (order.get(b.baseTypeId) ?? 0)));
+        const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
+        setSeeds([...list].sort((a, b) => (order.get(a.itemId) ?? 0) - (order.get(b.itemId) ?? 0)));
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     openGarden()
@@ -216,10 +217,11 @@ function Home({ course }: { course: TaneCourse }) {
       {collected.length > 0 && (
         <div className="bg-emerald-50 text-emerald-800 rounded-xl px-3 py-2 text-xs mb-2 leading-relaxed">
           {collected.map((g) => {
-            const t = TANE_BASE_TYPE_BY_ID.get(g.baseTypeId);
+            const item = TANE_ITEM_BY_ID.get(g.itemId);
+            const type = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
             return (
-              <p key={`${g.townName}-${g.baseTypeId}`}>
-                🌱 {g.townName}の{t?.name ?? "タネ"}から、タネが{g.count}個とれました
+              <p key={`${g.townName}-${g.itemId}`}>
+                🌱 {g.townName}の{type?.name ?? "タネ"}から、{item?.name ?? ""}のタネが{g.count}個とれました
               </p>
             );
           })}
@@ -234,11 +236,11 @@ function Home({ course }: { course: TaneCourse }) {
       ) : (
         <div className="flex flex-wrap gap-2 mb-8">
           {seeds.map((sd) => {
-            const t = TANE_BASE_TYPE_BY_ID.get(sd.baseTypeId);
+            const item = TANE_ITEM_BY_ID.get(sd.itemId);
             return (
-              <span key={sd.baseTypeId} className="inline-flex items-center gap-1 bg-white rounded-full px-3 py-1.5 text-xs text-[#3c2a14]">
-                <span className="text-base">{t?.emoji}</span>
-                {t?.name ?? sd.baseTypeId}
+              <span key={sd.itemId} className="inline-flex items-center gap-1 bg-white rounded-full px-3 py-1.5 text-xs text-[#3c2a14]">
+                <span className="text-base">{item?.emoji}</span>
+                {item?.name ?? sd.itemId}のタネ
                 <span className="text-[#a8937a]">×{sd.quantity}</span>
               </span>
             );
@@ -265,7 +267,9 @@ function Home({ course }: { course: TaneCourse }) {
                   <p className="text-sm font-semibold text-[#3c2a14] truncate">
                     {b.townName}の{type?.name ?? "タネ"}
                   </p>
-                  <p className="text-xs text-[#a8937a] truncate">{b.cityName}</p>
+                  <p className="text-xs text-[#a8937a] truncate">
+                    {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
+                  </p>
                 </div>
                 <span className="text-xs font-bold text-emerald-700">Lv.{b.rank}</span>
               </li>

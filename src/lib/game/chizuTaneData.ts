@@ -86,8 +86,9 @@ export async function fetchMyItems(): Promise<TaneOwnedItem[]> {
   return items;
 }
 
+/** 持っているタネ(もの単位。みかんの木のタネ、梨の木のタネ…) */
 export interface TaneSeedCount {
-  baseTypeId: string;
+  itemId: string;
   quantity: number;
 }
 
@@ -97,15 +98,15 @@ export async function fetchMySeeds(): Promise<TaneSeedCount[]> {
   const seeds: TaneSeedCount[] = [];
   let nextToken: string | null | undefined;
   do {
-    const page = await data.models.GameTaneSeed.list({ userId, nextToken });
-    for (const s of unwrap(page)) if (s.quantity > 0) seeds.push({ baseTypeId: s.baseTypeId, quantity: s.quantity });
+    const page = await data.models.GameTaneHeldSeed.list({ userId, nextToken });
+    for (const s of unwrap(page)) if (s.quantity > 0) seeds.push({ itemId: s.itemId, quantity: s.quantity });
     nextToken = page.nextToken;
   } while (nextToken);
   return seeds;
 }
 
 /** 誰も来ないまま時間がたった自分のタネから、タネを受け取る。増えたタネを返す */
-export async function collectSeeds(): Promise<{ baseTypeId: string; count: number; townName: string }[]> {
+export async function collectSeeds(): Promise<{ itemId: string; count: number; townName: string }[]> {
   await requireUserId();
   return parseJson(unwrap(await data.mutations.collectTaneSeeds())) ?? [];
 }
@@ -199,7 +200,8 @@ export function getCurrentLocation(): Promise<Location> {
   });
 }
 
-export async function placeBase(loc: Location, district: TownDistrict, baseTypeId: string): Promise<TaneBase> {
+/** 持っているタネ(itemId)をまく。そのものの種類の拠点ができる(梨の木のタネ → 果樹園) */
+export async function placeBase(loc: Location, district: TownDistrict, itemId: string): Promise<TaneBase> {
   await requireUserId();
   const base = unwrap(
     await data.mutations.placeTaneBase({
@@ -207,7 +209,7 @@ export async function placeBase(loc: Location, district: TownDistrict, baseTypeI
       lat: loc.lat,
       prefCode: district.prefCode,
       cityCode: district.cityCode,
-      baseTypeId,
+      itemId,
     })
   );
   if (!base) throw new Error("タネをまけませんでした");
@@ -222,7 +224,7 @@ export interface CheckInResult {
   quantity: number | null;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { baseTypeId: string; count: number; reason: "visit" | "owner" | "level" }[];
+  seedsGained: { itemId: string; count: number; reason: "visit" | "owner" | "level" }[];
 }
 
 export async function checkIn(loc: Location, district: TownDistrict): Promise<CheckInResult> {

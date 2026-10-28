@@ -102,23 +102,23 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
 }
 
 export interface SeedGain {
-  baseTypeId: string;
+  itemId: string;
   count: number;
   reason: "visit" | "owner" | "level";
 }
 
-/** タネを増やす(無ければ作る) */
-export async function addSeeds(c: DataClient, userId: string, baseTypeId: string, count: number): Promise<void> {
-  const existing = unwrap(await c.models.GameTaneSeed.get({ userId, baseTypeId }));
+/** タネ(もの)を増やす(無ければ作る) */
+export async function addSeeds(c: DataClient, userId: string, itemId: string, count: number): Promise<void> {
+  const existing = unwrap(await c.models.GameTaneHeldSeed.get({ userId, itemId }));
   unwrap(
     existing
-      ? await c.models.GameTaneSeed.update({ userId, baseTypeId, quantity: existing.quantity + count })
-      : await c.models.GameTaneSeed.create({ userId, baseTypeId, quantity: count })
+      ? await c.models.GameTaneHeldSeed.update({ userId, itemId, quantity: existing.quantity + count })
+      : await c.models.GameTaneHeldSeed.create({ userId, itemId, quantity: count })
   );
 }
 
 /**
- * まだタネを渡していないレベルに上がっていたら、そのレベルの3種類のタネを1個ずつ渡す。
+ * まだタネを渡していないレベルに上がっていたら、そのレベルの種類のもの3つのタネを1個ずつ渡す。
  * 渡したタネと今のレベルを返す
  */
 export async function grantLevelSeeds(
@@ -130,9 +130,9 @@ export async function grantLevelSeeds(
   const gains: SeedGain[] = [];
   if (level <= granted) return { level, gains };
   for (let lv = granted + 1; lv <= level; lv++) {
-    for (const t of seedsForLevel(player.course as TaneCourse, lv)) {
-      await addSeeds(c, player.userId, t.id, 1);
-      gains.push({ baseTypeId: t.id, count: 1, reason: "level" });
+    for (const item of seedsForLevel(player.course as TaneCourse, lv)) {
+      await addSeeds(c, player.userId, item.itemId, 1);
+      gains.push({ itemId: item.itemId, count: 1, reason: "level" });
     }
   }
   unwrap(await c.models.GameTanePlayer.update({ userId: player.userId, grantedLevel: level }));

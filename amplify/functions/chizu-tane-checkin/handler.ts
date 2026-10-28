@@ -11,15 +11,15 @@ import {
   requirePlayer,
   type SeedGain,
 } from "../shared/chizuTane";
-import { PROTOTYPE_MAX_RANK, SEEDS_FROM_OWNER_VISIT, SEEDS_FROM_VISITOR, itemsUpToRank } from "../../../src/lib/game/chizuTane/courses";
+import { SEEDS_FROM_OWNER_VISIT, SEEDS_FROM_VISITOR, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
 import { jstDate } from "../../../src/lib/game/chizuTane/geo";
 
 /**
  * いまいる地区のタネ(拠点)にチェックインする。
- * - ほかの人のタネ: 拠点ごとに1日1回(日本時間)、その拠点の今のランクまでのもののうち、まだ持っていないもの
- *   (全部持っていればどれか)を1つもらえる。初めて訪ねたタネなら、その種類のタネも1個もらえる。
- *   持ち主には、その種類のタネが2個増える。初めての拠点ならレベルが上がって、新しいタネをもらえることがある
- * - 自分のタネ: 1日1回、その種類のタネが1個増える(飾るものはもらえない)
+ * - ほかの人のタネ: 拠点ごとに1日1回(日本時間)、まかれたタネのもの(梨の木など)を1つもらえる。
+ *   初めて訪ねたタネなら、そのもののタネも1個もらえる。持ち主には、そのもののタネが2個増える。
+ *   初めての拠点ならレベルが上がって、新しいタネをもらえることがある
+ * - 自分のタネ: 1日1回、そのもののタネが1個増える(飾るものはもらえない)
  */
 export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
@@ -47,9 +47,9 @@ export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (even
 
   if (base.ownerId === userId) {
     if (base.lastOwnerVisitOn !== today) {
-      await addSeeds(c, userId, base.baseTypeId, SEEDS_FROM_OWNER_VISIT);
+      await addSeeds(c, userId, base.seedItemId, SEEDS_FROM_OWNER_VISIT);
       unwrap(await c.models.GameTaneBase.update({ areaKey: base.areaKey, lastOwnerVisitOn: today, lastSeedAt: now.toISOString() }));
-      seedsGained.push({ baseTypeId: base.baseTypeId, count: SEEDS_FROM_OWNER_VISIT, reason: "owner" });
+      seedsGained.push({ itemId: base.seedItemId, count: SEEDS_FROM_OWNER_VISIT, reason: "owner" });
     }
     return { ...result, status: "own", seedsGained: JSON.stringify(seedsGained) };
   }
@@ -60,14 +60,10 @@ export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (even
     return { ...result, status: "already", seedsGained: JSON.stringify(seedsGained) };
   }
 
-  // 初期試作では拠点が育たないが、ランクは拠点の行から読む(育つようになっても、ここはそのまま使える)
-  const candidates = itemsUpToRank(base.baseTypeId, Math.min(base.rank, PROTOTYPE_MAX_RANK));
-  if (candidates.length === 0) throw new Error("このタネでもらえるものがありません");
-  const owned = await Promise.all(candidates.map((i) => c.models.GameTaneItem.get({ userId, itemId: i.itemId }).then(unwrap)));
-  const notOwned = candidates.filter((_, i) => !owned[i]);
-  const pool = notOwned.length > 0 ? notOwned : candidates;
-  const picked = pool[Math.floor(Math.random() * pool.length)];
-  const current = owned[candidates.indexOf(picked)];
+  // もらえるのは、まかれたタネのもの(初期試作では拠点が育たないので、これだけ)
+  const picked = TANE_ITEM_BY_ID.get(base.seedItemId);
+  if (!picked) throw new Error("このタネでもらえるものがありません");
+  const current = unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }));
 
   const item = unwrap(
     current
@@ -92,13 +88,13 @@ export const handler: Schema["checkInTaneBase"]["functionHandler"] = async (even
         })
   );
 
-  // 初めて訪ねたタネなら、その種類のタネを分けてもらえる(人から人へ広がる)
+  // 初めて訪ねたタネなら、そのもののタネを分けてもらえる(人から人へ広がる)
   if (!visit) {
-    await addSeeds(c, userId, base.baseTypeId, 1);
-    seedsGained.push({ baseTypeId: base.baseTypeId, count: 1, reason: "visit" });
+    await addSeeds(c, userId, base.seedItemId, 1);
+    seedsGained.push({ itemId: base.seedItemId, count: 1, reason: "visit" });
   }
   // 持ち主のタネが増える(誰も来ないときに時間で増える分は、ここから数え直す)
-  await addSeeds(c, base.ownerId, base.baseTypeId, SEEDS_FROM_VISITOR);
+  await addSeeds(c, base.ownerId, base.seedItemId, SEEDS_FROM_VISITOR);
   unwrap(await c.models.GameTaneBase.update({ areaKey: base.areaKey, lastSeedAt: now.toISOString() }));
 
   // 初めての拠点なら、たずねた拠点の数が増えるのでレベルが上がることがある

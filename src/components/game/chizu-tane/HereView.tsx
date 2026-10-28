@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
-import { TANE_BASE_TYPES, TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
+import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
 import {
   checkIn,
@@ -42,14 +42,14 @@ export default function HereView() {
   );
 }
 
-/** 増えたタネを「○○のタネ ×2」のような文にする */
+/** 増えたタネを「梨の木のタネ ×2」のような文にする */
 function describeSeeds(gains: CheckInResult["seedsGained"]): string {
-  const byType = new Map<string, number>();
-  for (const g of gains) byType.set(g.baseTypeId, (byType.get(g.baseTypeId) ?? 0) + g.count);
-  return [...byType]
+  const byItem = new Map<string, number>();
+  for (const g of gains) byItem.set(g.itemId, (byItem.get(g.itemId) ?? 0) + g.count);
+  return [...byItem]
     .map(([id, n]) => {
-      const t = TANE_BASE_TYPE_BY_ID.get(id);
-      return `${t?.emoji ?? ""}${t?.name ?? id}のタネ ×${n}`;
+      const item = TANE_ITEM_BY_ID.get(id);
+      return `${item?.emoji ?? ""}${item?.name ?? id}のタネ ×${n}`;
     })
     .join("、");
 }
@@ -66,13 +66,13 @@ function Here({ userId }: { userId: string }) {
   const [manualInput, setManualInput] = useState("");
   // 持っているタネ。まくと1つ減る(種類やレベルの制限は無い)
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
-  const [chosenTypeId, setChosenTypeId] = useState<string | null>(null);
+  const [chosenItemId, setChosenItemId] = useState<string | null>(null);
   const applySeeds = useCallback((list: TaneSeedCount[]) => {
     // コースの表の順に並べる
-    const order = new Map(TANE_BASE_TYPES.map((t, i) => [t.id, i]));
-    const sorted = [...list].sort((a, b) => (order.get(a.baseTypeId) ?? 0) - (order.get(b.baseTypeId) ?? 0));
+    const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
+    const sorted = [...list].sort((a, b) => (order.get(a.itemId) ?? 0) - (order.get(b.itemId) ?? 0));
     setSeeds(sorted);
-    setChosenTypeId((cur) => (cur && sorted.some((x) => x.baseTypeId === cur) ? cur : sorted[0]?.baseTypeId ?? null));
+    setChosenItemId((cur) => (cur && sorted.some((x) => x.itemId === cur) ? cur : sorted[0]?.itemId ?? null));
   }, []);
   const reloadSeeds = useCallback(async () => applySeeds(await fetchMySeeds()), [applySeeds]);
 
@@ -164,12 +164,12 @@ function Here({ userId }: { userId: string }) {
   }, []);
 
   const handlePlant = async () => {
-    if (!loc || !district || busy || !chosenTypeId) return;
+    if (!loc || !district || busy || !chosenItemId) return;
     setBusy(true);
     setError("");
     setNotice(null);
     try {
-      const base = await placeBase(loc, district, chosenTypeId);
+      const base = await placeBase(loc, district, chosenItemId);
       await reloadSeeds();
       const type = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId);
       // まく前の地区には名前が無く、まいたことで「○○町の撮影スポット」のような名前が付く
@@ -252,20 +252,24 @@ function Here({ userId }: { userId: string }) {
                   )}
                   <div className="flex flex-col gap-1.5 mb-3">
                     {(seeds ?? []).map((sd) => {
-                      const t = TANE_BASE_TYPE_BY_ID.get(sd.baseTypeId);
-                      const active = chosenTypeId === sd.baseTypeId;
+                      const item = TANE_ITEM_BY_ID.get(sd.itemId);
+                      const type = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
+                      const active = chosenItemId === sd.itemId;
                       return (
                         <button
-                          key={sd.baseTypeId}
+                          key={sd.itemId}
                           type="button"
                           disabled={busy}
-                          onClick={() => setChosenTypeId(sd.baseTypeId)}
+                          onClick={() => setChosenItemId(sd.itemId)}
                           className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-left text-sm ${
                             active ? "border-emerald-500 bg-emerald-50" : "border-[#f3ece0] bg-white"
                           } disabled:opacity-50`}
                         >
-                          <span className="text-xl">{t?.emoji}</span>
-                          <span className="flex-1 text-[#3c2a14]">{t?.name ?? sd.baseTypeId}のタネ</span>
+                          {item ? <ItemIcon item={item} size={26} /> : null}
+                          <span className="flex-1 text-[#3c2a14]">
+                            {item?.name ?? sd.itemId}のタネ
+                            {type && <span className="ml-1 text-[11px] text-[#a8937a]">（{type.name}になる）</span>}
+                          </span>
                           <span className="text-xs text-[#a8937a]">×{sd.quantity}</span>
                         </button>
                       );
@@ -274,7 +278,7 @@ function Here({ userId }: { userId: string }) {
                   <button
                     type="button"
                     onClick={handlePlant}
-                    disabled={busy || !chosenTypeId}
+                    disabled={busy || !chosenItemId}
                     className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
                   >
                     {busy ? "まいています..." : "🌱 この地区にタネをまく"}
@@ -286,6 +290,7 @@ function Here({ userId }: { userId: string }) {
                   <p className="text-sm text-[#3c2a14] mb-2">
                     <span className="text-xl mr-1">{typeHere?.emoji}</span>
                     {district.townName}の{typeHere?.name ?? "タネ"}
+                    <span className="ml-1 text-xs text-[#a8937a]">（{TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}）</span>
                     <span className="ml-2 text-xs font-bold text-emerald-700">Lv.{baseHere.rank}</span>
                     {baseHere.ownerId === userId && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
                   </p>

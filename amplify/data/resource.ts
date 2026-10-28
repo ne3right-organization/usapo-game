@@ -338,6 +338,7 @@ const schema = a
         cityName: a.string().required(),
         townName: a.string().required(),
         baseTypeId: a.string().required(),
+        seedItemId: a.string().required(), // まいたタネのもの(梨の木など)。訪ねた人はこれをもらう
         rank: a.integer().required(),
         plantedAt: a.datetime().required(),
         // 最後に持ち主のタネが増えた日時(訪ねられた・持ち主が訪ねた・時間で増えた)。誰も来ないまま3日たつごとに1個増える
@@ -377,14 +378,14 @@ const schema = a
       .identifier(["userId", "itemId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
-    // 持っているタネ(ユーザー×拠点の種類)。まくと1つ減る
-    GameTaneSeed: a
+    // 持っているタネ(ユーザー×もの。みかんの木のタネ、梨の木のタネ…)。まくと1つ減る
+    GameTaneHeldSeed: a
       .model({
         userId: a.id().required(),
-        baseTypeId: a.string().required(),
+        itemId: a.string().required(),
         quantity: a.integer().required(),
       })
-      .identifier(["userId", "baseTypeId"])
+      .identifier(["userId", "itemId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // 箱庭(画面では「タネニワ」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
@@ -407,7 +408,7 @@ const schema = a
       quantity: a.integer(),
       level: a.integer(), // もらえたときのレベル
       leveledUp: a.boolean(), // このチェックインでレベルが上がったか
-      seedsGained: a.json(), // 増えたタネ: { baseTypeId, count, reason }[](reason: visit / owner / level)
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: visit / owner / level)
     }),
 
     TaneGardenState: a.customType({
@@ -528,7 +529,7 @@ const schema = a
       .handler(a.handler.function(chizuTanePlayer)),
 
     // 地図タネ: いまいる地区にタネをまく。位置と、ブラウザで調べた市区町村(探す範囲を絞るためだけに使う)と、
-    // まくタネの種類(持っているタネ。1つ減る)を送る
+    // まくタネ(もの。持っているタネが1つ減る)を送る
     placeTaneBase: a
       .mutation()
       .arguments({
@@ -536,7 +537,7 @@ const schema = a
         lat: a.float().required(),
         prefCode: a.string().required(),
         cityCode: a.string().required(),
-        baseTypeId: a.string().required(),
+        itemId: a.string().required(),
       })
       .returns(a.ref("GameTaneBase"))
       .authorization((allow) => [allow.authenticated()])
@@ -556,7 +557,7 @@ const schema = a
       .handler(a.handler.function(chizuTaneCheckin)),
 
     // 地図タネ: 自分のタネのうち、誰も来ないまま3日以上たったものからタネを受け取る(トップを開いたときに呼ぶ)。
-    // 増えたタネ { baseTypeId, count, townName }[] を返す
+    // 増えたタネ { itemId, count, townName }[] を返す
     collectTaneSeeds: a
       .mutation()
       .returns(a.json())

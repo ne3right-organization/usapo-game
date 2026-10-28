@@ -15,7 +15,7 @@ export const handler: Schema["collectTaneSeeds"]["functionHandler"] = async (eve
   const userId = (event.identity as AppSyncIdentityCognito).sub;
   const c = await dataClient(env);
   const now = Date.now();
-  const gains: { baseTypeId: string; count: number; townName: string }[] = [];
+  const gains: { itemId: string; count: number; townName: string }[] = [];
 
   let nextToken: string | null | undefined;
   do {
@@ -24,10 +24,10 @@ export const handler: Schema["collectTaneSeeds"]["functionHandler"] = async (eve
       const since = new Date(base.lastSeedAt ?? base.plantedAt).getTime();
       const periods = Math.floor((now - since) / PERIOD_MS);
       if (periods < 1) continue;
-      await addSeeds(c, userId, base.baseTypeId, periods);
+      await addSeeds(c, userId, base.seedItemId, periods);
       // 端数の時間は次に持ち越す
       unwrap(await c.models.GameTaneBase.update({ areaKey: base.areaKey, lastSeedAt: new Date(since + periods * PERIOD_MS).toISOString() }));
-      gains.push({ baseTypeId: base.baseTypeId, count: periods, townName: base.townName });
+      gains.push({ itemId: base.seedItemId, count: periods, townName: base.townName });
     }
     nextToken = page.nextToken;
   } while (nextToken);
