@@ -46,6 +46,12 @@ for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
   fn.addEnvironment("CHIZU_TANE_HARVEST_TABLE", taneHarvestTable.tableName);
 }
 
+// 届いた通知は最新の1日分だけ残す。期限(expiresAt)が過ぎたら DynamoDB が消す
+backend.data.resources.cfnResources.amplifyDynamoDbTables["GameNotification"].timeToLiveAttribute = {
+  attributeName: "expiresAt",
+  enabled: true,
+};
+
 // 費用を Cost Explorer で見分けられるよう、バックエンドの全リソースに付ける
 // (使うには Payer の請求コンソールでコスト配分タグとして有効にする)
 Tags.of(backend.stack).add("project", "usapo-game");

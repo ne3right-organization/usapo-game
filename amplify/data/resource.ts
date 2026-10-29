@@ -209,6 +209,22 @@ const schema = a
       .identifier(["userId", "endpoint"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["create", "read", "delete"])]),
 
+    // 届いた通知(ユーザーごと)。通知の一覧(/notifications)に出す。端末で通知を受け取っていなくても残す。
+    // 書くのは通知を送る Lambda(amplify/functions/shared/push.ts)。最新の1日分だけ残し、古いものは expiresAt(TTL)で DynamoDB が消す
+    // (消えるまで少し時間がかかることがあるので、画面でも1日より古いものは出さない)。noticeId = `${送った日時}#${乱数}`
+    GameNotification: a
+      .model({
+        userId: a.id().required(),
+        noticeId: a.string().required(),
+        title: a.string().required(),
+        body: a.string().required(),
+        url: a.string().required(),
+        notifiedAt: a.datetime().required(),
+        expiresAt: a.integer().required(), // TTL(UNIX秒)
+      })
+      .identifier(["userId", "noticeId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
     // ─── フォロー ───────────────────────────────────────────────────────────
     // フォロー関係はフォローした本人とされた本人にしか見えない。フォロー・解除は「お互いにニックネーム設定済み」の
     // 確認が要るので、カスタムミューテーション(setFollowing)だけが書く
