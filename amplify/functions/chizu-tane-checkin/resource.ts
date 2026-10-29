@@ -1,7 +1,7 @@
-import { defineFunction } from "@aws-amplify/backend";
+import { defineFunction, secret } from "@aws-amplify/backend";
 
 // 地図タネで、いまいる地区のタネ(拠点)にチェックインする(checkInTaneBase。水やり・実をもらう)と、自分のタネに遠くから水をやる
-// (waterTaneBaseRemotely)。町丁の geojson を読むので、既定の3秒では足りない
+// (waterTaneBaseRemotely)。タネの持ち主に通知を送る(実った・誰かが来た)。町丁の geojson を読むので、既定の3秒では足りない
 export const chizuTaneCheckin = defineFunction({
   name: "chizu-tane-checkin",
   resourceGroupName: "data",
@@ -15,5 +15,7 @@ export const chizuTaneCheckin = defineFunction({
     // 「1日」の長さ。1日1回のチェックイン・遠くからの水やりの区切り
     // (本番は24時間、それ以外は試しやすいように5分。src/lib/game/chizuTane/geo.ts と同じ値)
     CHIZU_TANE_DAY_MS: process.env.AWS_BRANCH === "main" ? String(24 * 3_600_000) : String(5 * 60_000),
+    // PWA の通知を送るための秘密鍵(amplify/functions/shared/push.ts)
+    VAPID_PRIVATE_KEY: secret("VAPID_PRIVATE_KEY"),
   },
 });

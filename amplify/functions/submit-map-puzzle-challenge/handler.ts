@@ -2,6 +2,7 @@ import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/submit-map-puzzle-challenge";
 import { areaKeysOf, dataClient, ensureProfile, touchRecentClear, unwrap } from "../shared/dataClient";
+import { followerIdsOf, notifyUsers } from "../shared/push";
 
 const MAX_PIECES = 10000;
 const MAX_COMMENT_LENGTH = 200;
@@ -120,5 +121,21 @@ export const handler: Schema["submitMapPuzzleChallenge"]["functionHandler"] = as
   } while (nextToken);
   unwrap(await c.models.GameProfile.update({ userId, totalScore, areasPlayedCount }));
 
+  // フォロワーに知らせる(フォローはお互いにニックネームを設定した人どうしなので、ニックネームがあるときだけ)
+  if (profile.nickname) {
+    await notifyUsers(c, await followerIdsOf(c, userId), {
+      title: "地図パズルのクリア",
+      body: `${profile.nickname}さんが地図パズル「${clearedAreaLabel(a)}」をクリアしました（${score.toLocaleString()}pt）`,
+      url: `/profile/${userId}?game=map-puzzle`,
+      tag: `clear-${userId}`,
+    });
+  }
+
   return challenge;
 };
+
+/** 通知に出すエリアの名前(初級は全国) */
+function clearedAreaLabel(a: { difficulty: string; prefName: string; cityName?: string | null }): string {
+  if (a.difficulty === "beginner") return "全国";
+  return a.cityName ? `${a.prefName} ${a.cityName}` : a.prefName;
+}

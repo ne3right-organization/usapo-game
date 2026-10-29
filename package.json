@@ -30,12 +30,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "aws-cdk-lib": "^2.274.0",
     "constructs": "^10.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "sharp": "^0.34.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "web-push": "^3.6.7"
   }
 }

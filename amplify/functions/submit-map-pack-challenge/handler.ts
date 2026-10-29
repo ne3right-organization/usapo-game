@@ -2,6 +2,7 @@ import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/submit-map-pack-challenge";
 import { areaKeysOf, dataClient, ensureProfile, touchRecentClear, unwrap, type DataClient } from "../shared/dataClient";
+import { followerIdsOf, notifyUsers } from "../shared/push";
 
 // 得点の式はクライアント(MapPackGame.tsx)と同じ。変えるときは両方そろえる
 const RESTACK_PENALTY = 50;
@@ -119,6 +120,16 @@ export const handler: Schema["submitMapPackChallenge"]["functionHandler"] = asyn
 
   await refreshUserTotal(c, userId, a.difficulty, nickname);
 
+  // クリアしたらフォロワーに知らせる(あきらめた挑戦は知らせない)
+  if (a.cleared && nickname) {
+    await notifyUsers(c, await followerIdsOf(c, userId), {
+      title: "地図ポットンのクリア",
+      body: `${nickname}さんが地図ポットン「${clearedAreaLabel(a)}」を完成させました（${score.toLocaleString()}点）`,
+      url: `/profile/${userId}?game=map-pack`,
+      tag: `clear-${userId}`,
+    });
+  }
+
   return { score, isNewBest };
 };
 
@@ -162,4 +173,10 @@ async function refreshUserTotal(
   };
   const existing = unwrap(await c.models.GameMapPackUserTotal.get({ userId, level: difficulty }));
   unwrap(existing ? await c.models.GameMapPackUserTotal.update(fields) : await c.models.GameMapPackUserTotal.create(fields));
+}
+
+/** 通知に出すエリアの名前(初級は全国) */
+function clearedAreaLabel(a: { difficulty: string; prefName: string; cityName?: string | null }): string {
+  if (a.difficulty === "beginner") return "全国";
+  return a.cityName ? `${a.prefName} ${a.cityName}` : a.prefName;
 }

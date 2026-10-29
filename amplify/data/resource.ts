@@ -195,6 +195,20 @@ const schema = a
       ])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
 
+    // ─── PWA の通知 ─────────────────────────────────────────────────────────
+    // 通知の購読(ブラウザ・端末ごと)。endpoint は通知の届け先の URL。本人が画面から作る・消す(自分の分しか触れない)。
+    // update は許さない(userId をほかの人に書き換えて、その人宛ての通知を自分の端末で受け取れてしまうため)。
+    // 送るのは Lambda(amplify/functions/shared/push.ts)で、期限切れの購読はそこで消す
+    GamePushSubscription: a
+      .model({
+        userId: a.id().required(),
+        endpoint: a.string().required(),
+        p256dh: a.string().required(),
+        auth: a.string().required(),
+      })
+      .identifier(["userId", "endpoint"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["create", "read", "delete"])]),
+
     // ─── フォロー ───────────────────────────────────────────────────────────
     // フォロー関係はフォローした本人とされた本人にしか見えない。フォロー・解除は「お互いにニックネーム設定済み」の
     // 確認が要るので、カスタムミューテーション(setFollowing)だけが書く

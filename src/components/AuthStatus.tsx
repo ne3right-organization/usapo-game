@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { currentUser, signOutUser } from "@/lib/auth";
 import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
+import { disablePush } from "@/lib/push/client";
 
 // サイト共通ヘッダー(SiteHeader)の右に出す、ログインの状態。元実装(team-kokuusa-platform-frontend)の NicknameBadge 相当。
 // 未ログイン: ログインへの導線 / ログイン済み: ニックネーム(設定画面へ)+ログアウト
@@ -40,7 +41,9 @@ export default function AuthStatus() {
   }, [pathname]);
 
   const handleSignOut = async () => {
+    // この端末の通知を止めてから(共用の端末で、ログアウトしたあとも前の人の通知が届かないように)、
     // Cognito のログアウト画面を経由してトップに戻る
+    await disablePush().catch(() => {});
     await signOutUser();
   };
 

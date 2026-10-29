@@ -2,6 +2,7 @@ import type { AppSyncIdentityCognito } from "aws-lambda";
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/set-following";
 import { dataClient, unwrap } from "../shared/dataClient";
+import { notifyUsers } from "../shared/push";
 
 /**
  * フォローする(follow = true)・やめる(false)。Supabase 版の RLS と同じく、フォローできるのは
@@ -29,5 +30,11 @@ export const handler: Schema["setFollowing"]["functionHandler"] = async (event) 
   // すでにフォロー済み(別のタブで押した等)なら結果は同じなので、そのまま返す
   if (unwrap(await c.models.GameFollow.get({ followerId, followeeId }))) return true;
   unwrap(await c.models.GameFollow.create({ followerId, followeeId, followedAt: new Date().toISOString() }));
+  await notifyUsers(c, [followeeId], {
+    title: "フォローされました",
+    body: `${unwrap(me)?.nickname}さんにフォローされました`,
+    url: `/profile/${followerId}`,
+    tag: `follow-${followerId}`,
+  });
   return true;
 };

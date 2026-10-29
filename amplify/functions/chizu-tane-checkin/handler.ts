@@ -16,7 +16,8 @@ import {
   type LocateArgs,
   type SeedGain,
 } from "../shared/chizuTane";
-import { DROPPED_SEEDS_MAX, SEEDS_PER_CHECKIN, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
+import { DROPPED_SEEDS_MAX, SEEDS_PER_CHECKIN, TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
+import { notifyUsers } from "../shared/push";
 import { DAY_MS_PRODUCTION, dayKey } from "../../../src/lib/game/chizuTane/geo";
 import {
   FRUITS_WHEN_RIPE,
@@ -124,6 +125,16 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     unwrap(await c.models.GameTaneBase.update({ areaKey: base.areaKey, lastOwnerVisitOn: today }));
     return result;
   }
+
+  // 持ち主に知らせる(実ったときは「実った」だけ。1つのタネの通知は、新しいものが古いものを置き換える)
+  const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`;
+  const notice =
+    result.status === "ripened"
+      ? { title: "タネが実りました", body: `${place}が実りました！ 実が${FRUITS_WHEN_RIPE}個なっています` }
+      : result.status === "fruit"
+        ? { title: "実が収穫されました", body: `誰かが${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
+        : { title: "タネに誰かが来ました", body: `誰かが${place}に来て、水をやってくれました` };
+  await notifyUsers(c, [ownerId], { ...notice, url: "/game/chizu-tane", tag: `tane-${base.areaKey}` });
 
   // ほかの人のタネに初めて来たときだけ、拠点にタネが1個落ちる(直接はもらわない。要らなければ拾わずに置いていける)
   const seedsGained: SeedGain[] = [];

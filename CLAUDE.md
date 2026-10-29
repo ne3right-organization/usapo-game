@@ -41,7 +41,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 | 本番 | `main` | `d312w90schmrzl` | `https://game.usapo.net` | ゲーム専用のメンバーアカウント |
 
 - 環境変数は `NEXT_PUBLIC_CLOUDFRONT_URL` のみ（ビルド時に埋め込まれるので、変えたら再ビルド）
-- シークレット: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`（Cognito 用の Google OAuth クライアント）
+- シークレット: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`（Cognito 用の Google OAuth クライアント）、`VAPID_PRIVATE_KEY`（PWA の通知の秘密鍵。対になる公開鍵は `src/lib/push/vapid.ts`。**無いブランチでは通知を送らないだけだが、シークレットを参照する Lambda が起動時に失敗しないよう、どの環境にも入れておく**）
 - サービスロールに `AmplifyBackendDeployFullAccess` が要る（無いとバックエンドのデプロイが失敗する）
 - **Gen2 ではバックエンド（ユーザープール・テーブル・Lambda）がブランチごとに別**。ブランチを変えるとデータもユーザーも引き継がれない。テーブル名は `<モデル名>-<AppSyncのAPI ID>-NONE`
 - バックエンドの全リソースに `project=usapo-game` タグ（`amplify/backend.ts`。Cost Explorer で使うには Payer でコスト配分タグとして有効化する）
@@ -124,6 +124,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - **プロフィール**（`/profile`・`/profile/[userId]`、`src/components/profile/`・`src/lib/game/completionData.ts`）: ニックネーム・フォローと、ゲーム×レベルごとにクリアしたエリアを地図で塗るコンプリート状況。地図パズルを選ぶと合計スコアとベストスコアの一覧も出す（2026-10-29 に地図パズルのマイプロフィール `/game/map-puzzle/profile` をここにまとめた。古い URL は転送する）。市区町村は**全国ぶんの geojson を一度に読まない**（全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県だけ読む）。地図ポットンは `firstClearedAt` で完成済みかを見る
 - **フォロー**（`GameFollow`）: フォロー関係はフォローした本人とされた本人にしか見えない（2つの所有者ルール）。フォローは Lambda `set-following` が「お互いにニックネーム設定済み」を確認してから行う。クリア時の通知は見送った
 - **PWA**: `src/app/manifest.ts`・アイコン・`public/sw.js`。サービスワーカーは**オフライン時に `/offline` を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないように）。登録は本番ビルドのみ
+- **PWA の通知**（Web Push）: 設定画面（`/nickname`、`src/components/PushSettings.tsx`）で端末ごとに受け取りを切り替える。購読は `GamePushSubscription`（本人が作る・消す。`userId` を書き換えられないよう update は許さない）。送るのは `amplify/functions/shared/push.ts`（`web-push`。送れなくても本来の処理は失敗させず、3秒で待つのをやめる。404・410 の購読は消す）。通知するのは、うさぽ農園の「自分のタネが実った・誰かが来た」（`chizu-tane-checkin`）、フォローされた（`set-following`）、フォローしている人のクリア（`submit-map-*`）。受けて出すのは `public/sw.js`。iPhone はホーム画面に追加したアプリだけ（iOS 16.4〜）。サービスワーカーは本番ビルドだけなので、手元では試せない（dev で試す）。ログアウトするとその端末の購読を消す
 - **Xシェア**（`src/lib/game/share.ts`）
 - **管理ページ**（`/admin` 以下。`src/app/admin/`）: 開発・運営用。どこからもリンクせず noindex。トップ（`/admin`）にリンクを並べるので、ページを足したら `src/app/admin/page.tsx` の `ADMIN_LINKS` にも足す。いまは公開して困る情報を出していないのでログインの確認はしていない（利用者のデータを出すページを足すときは認可を考える）
 
