@@ -2,7 +2,10 @@
 // 画面(src/components/game/chizu-tane)と Lambda(amplify/functions/chizu-tane-*)の両方から使うので、
 // ブラウザ・Node のどちらにも依存しない純粋な TS にしておく。
 //
-// もらえるものを足すときは TANE_ITEMS に1行足すだけ。絵ができたら imageUrl を足す(無いあいだは emoji を出す)
+// もらえるものを足すときは TANE_ITEMS に1行足すだけ。絵は scripts/chizu-tane/process-item-images.mts で作ると
+// itemImages.generated.ts に載り、imageUrl になる(無いあいだは emoji を出す。docs/地図タネ_絵の作り方.md)
+
+import { ITEM_IMAGE_URLS } from "./itemImages.generated";
 
 export type TaneCourse = "plant" | "animal" | "hobby" | "vehicle" | "building";
 
@@ -119,7 +122,10 @@ export interface TaneItem {
 }
 
 const items = (baseTypeId: string, list: [name: string, emoji: string][]): TaneItem[] =>
-  list.map(([name, emoji], i) => ({ itemId: `${baseTypeId}_${i + 1}`, baseTypeId, rank: i + 1, name, emoji }));
+  list.map(([name, emoji], i) => {
+    const itemId = `${baseTypeId}_${i + 1}`;
+    return { itemId, baseTypeId, rank: i + 1, name, emoji, imageUrl: ITEM_IMAGE_URLS[itemId] };
+  });
 
 // 各種類に3点(1〜3)。建物コースは「小物 → 小物 → その建物」の並び(3つ目がガーデンに建物として並ぶ)。試作で手に入るのは Lv.1〜3 の種類の45点(PROTOTYPE_MAX_LEVEL)。
 // Lv.4〜10 の種類の分は、全体を眺めるために名前と絵文字だけ仮に決めたもの(2026-10-29。まだ手に入らない)

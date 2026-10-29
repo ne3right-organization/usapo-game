@@ -193,4 +193,4 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
 - **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
-- 絵は未作成で、アイテムごとの絵文字を出している。絵ができたら `courses.ts` のアイテムに `imageUrl` を足す。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`
+- 絵は未作成で、アイテムごとの絵文字を出している。絵は画像生成AIで作り、`art/chizu-tane/` に置いて `scripts/chizu-tane/process-item-images.mts` を動かすと `public/chizu-tane/items/` と `itemImages.generated.ts` ができて `imageUrl` になる（手順は `docs/地図タネ_絵の作り方.md`）。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`
