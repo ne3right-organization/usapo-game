@@ -5,6 +5,7 @@ import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
 import {
   addWater,
   assertNotTooFast,
+  baseOwnerId,
   dropSeed,
   grantLevelSeeds,
   locateTownDistrict,
@@ -65,7 +66,8 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
 
   const picked = TANE_ITEM_BY_ID.get(base.seedItemId);
   if (!picked) throw new Error("このタネでもらえるものがありません");
-  const isOwn = base.ownerId === userId;
+  const ownerId = await baseOwnerId(c, base.areaKey);
+  const isOwn = ownerId === userId;
   const result: CheckInResult = {
     status: "already",
     townName: base.townName,
@@ -94,7 +96,7 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
 
   // 実が残っていれば実を1個、無ければ水をやる
   if ((base.fruits ?? 0) > 0) {
-    const left = await takeFruit(base, userId, picked.itemId);
+    const left = await takeFruit({ ...base, ownerId }, userId, picked.itemId);
     if (left !== null) {
       result.status = "fruit";
       result.gainedItems = 1;
@@ -156,7 +158,8 @@ async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
   const now = new Date();
   const today = dayKey(now, DAY_MS);
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey }));
-  if (!base || base.ownerId !== userId) throw new Error("自分のタネにだけ、遠くから水をやれます");
+  const own = unwrap(await c.models.GameTaneOwnership.get({ ownerId: userId, areaKey }));
+  if (!base || !own) throw new Error("自分のタネにだけ、遠くから水をやれます");
   if ((base.fruits ?? 0) > 0) throw new Error("実っているので、水はいりません。現地で実をもらってください");
   if (base.lastRemoteWaterOn === today) throw new Error("遠くからの水やりは、1つのタネに1日1回です");
   unwrap(await c.models.GameTaneBase.update({ areaKey, lastRemoteWaterOn: today }));

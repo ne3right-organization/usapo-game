@@ -15,7 +15,7 @@ import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from
 import { useTanePlayer } from "./useTanePlayer";
 
 // 集めたもの: 収穫した実(もの)の一覧。まだ持っていないものは影絵で出して、そのタネを育てれば手に入ることが分かるようにする。
-// 実をタップすると産地ごと(「戸塚区矢部町のりんご ×3」)に分けて、実がなった日・収穫した日・生産者(そのタネをまいた人。フレンドのときだけ)を出す
+// 実をタップすると産地ごと(「戸塚区矢部町のりんご ×3」)に分けて、実がなった日・収穫した日・生産者(そのタネをまいた人。その人が農園を見せてくれているときだけ)を出す
 export default function CollectionView() {
   const [state] = useTanePlayer();
   return (
@@ -185,12 +185,12 @@ function HarvestSheet({ item, harvests, onClose }: { item: TaneItem; harvests: T
                     "…"
                   ) : owner.kind === "me" ? (
                     "あなた"
-                  ) : owner.kind === "friend" ? (
+                  ) : owner.kind === "shared" ? (
                     <Link href={`/profile/${owner.userId}`} className="text-emerald-700 underline">
                       {owner.nickname}
                     </Link>
                   ) : (
-                    <span className="text-[#c8b8a0]">ひみつ（フレンドなら表示されます）</span>
+                    <span className="text-[#c8b8a0]">ひみつ</span>
                   )}
                 </p>
                 <table className="w-full mt-2 text-[11px] text-[#78716c]">

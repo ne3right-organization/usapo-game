@@ -7,6 +7,7 @@ import { FRUITS_WHEN_RIPE, waterUntilRipe } from "@/lib/game/chizuTane/growth";
 import {
   checkIn,
   fetchBasesInCity,
+  fetchMyAreaKeys,
   fetchMySeeds,
   getCurrentLocation,
   isLocationOverrideAllowed,
@@ -39,7 +40,7 @@ export default function HereView() {
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
-      {state.status === "ready" && <Here userId={state.player.userId} />}
+      {state.status === "ready" && <Here />}
     </TaneScreen>
   );
 }
@@ -56,10 +57,12 @@ function describeSeeds(gains: CheckInResult["seedsGained"]): string {
     .join("、");
 }
 
-function Here({ userId }: { userId: string }) {
+function Here() {
   const [loc, setLoc] = useState<Location | null>(null);
   const [district, setDistrict] = useState<TownDistrict | null>(null);
   const [bases, setBases] = useState<TaneBase[]>([]);
+  // 自分のタネの地区(タネの行には持ち主を持たないので、本人しか読めない一覧から)。まいたら読み直す
+  const [ownAreaKeys, setOwnAreaKeys] = useState<ReadonlySet<string>>(new Set());
   const [locating, setLocating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -97,15 +100,21 @@ function Here({ userId }: { userId: string }) {
   const cityKey = district ? `${district.prefCode}${district.cityCode}` : null;
 
   const reloadBases = useCallback(async (d: TownDistrict) => {
-    setBases(await fetchBasesInCity(d.prefCode, d.cityCode));
+    const [list, mine] = await Promise.all([fetchBasesInCity(d.prefCode, d.cityCode), fetchMyAreaKeys()]);
+    setBases(list);
+    setOwnAreaKeys(mine);
   }, []);
 
   // 市区町村が変わったら、その市区町村のタネを読み直す
   useEffect(() => {
     if (!district) return;
     let cancelled = false;
-    fetchBasesInCity(district.prefCode, district.cityCode)
-      .then((b) => !cancelled && setBases(b))
+    Promise.all([fetchBasesInCity(district.prefCode, district.cityCode), fetchMyAreaKeys()])
+      .then(([b, mine]) => {
+        if (cancelled) return;
+        setBases(b);
+        setOwnAreaKeys(mine);
+      })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     return () => {
       cancelled = true;
@@ -169,6 +178,7 @@ function Here({ userId }: { userId: string }) {
   };
 
   const baseHere = district ? bases.find((b) => b.areaKey === district.areaKey) ?? null : null;
+  const isMine = baseHere ? ownAreaKeys.has(baseHere.areaKey) : false;
 
   const handlePlant = async () => {
     if (!loc || !district || busy || !chosenItemId) return;
@@ -302,7 +312,7 @@ function Here({ userId }: { userId: string }) {
             selectedCode={district.areaKey}
             location={loc}
             bases={bases}
-            userId={userId}
+            ownAreaKeys={ownAreaKeys}
             onPointSelect={overrideAllowed ? handleMapPoint : undefined}
           />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mt-2 mb-3">
@@ -355,11 +365,11 @@ function Here({ userId }: { userId: string }) {
                     <span className="text-xl mr-1">{typeHere?.emoji}</span>
                     {district.townName}の{typeHere?.name ?? "タネ"}
                     <span className="ml-1 text-xs text-[#a8937a]">（{TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}）</span>
-                    {baseHere.ownerId === userId && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
+                    {isMine && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
                   </p>
                   <div className="mb-2">
                     <GrowthBadge base={baseHere} />
-                    <WaterHint base={baseHere} remote={baseHere.ownerId === userId} />
+                    <WaterHint base={baseHere} remote={isMine} />
                   </div>
                   {/* 1人1日1回(dev は「1日」が短い)。チェックインは水やりと同じで、実っていれば実を1個もらう(誰でも)。
                       ほかの人のタネに初めて来たときは、そこにタネが1個落ちる(拾うかは選べる)。まいた直後から水をやれる */}

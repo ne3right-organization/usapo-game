@@ -5,7 +5,7 @@ import Link from "next/link";
 import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
-import { fetchAllBases, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
+import { fetchAllBases, fetchMyAreaKeys, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
 import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { OTHER_COLOR, OWN_COLOR, taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
@@ -20,7 +20,7 @@ export default function TaneMapView() {
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
-      {state.status === "ready" && <TaneMap userId={state.player.userId} />}
+      {state.status === "ready" && <TaneMap />}
     </TaneScreen>
   );
 }
@@ -38,8 +38,10 @@ interface CityGroup {
   own: number;
 }
 
-function TaneMap({ userId }: { userId: string }) {
+function TaneMap() {
   const [bases, setBases] = useState<PlacedBase[] | null>(null);
+  // 自分のタネの地区(タネの行には持ち主を持たないので、本人しか読めない一覧から)
+  const [own, setOwn] = useState<ReadonlySet<string>>(new Set());
   // 代表点を持たないタネ(地図に出せない)の数
   const [unplaced, setUnplaced] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -50,9 +52,10 @@ function TaneMap({ userId }: { userId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAllBases()
-      .then((list) => {
+    Promise.all([fetchAllBases(), fetchMyAreaKeys()])
+      .then(([list, mine]) => {
         if (cancelled) return;
+        setOwn(mine);
         const placed = list.filter(isPlaced);
         setBases(placed);
         setUnplaced(list.length - placed.length);
@@ -77,7 +80,7 @@ function TaneMap({ userId }: { userId: string }) {
       mapRef.current = { map, Lmod };
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.6 }).addTo(map);
       for (const b of bases) {
-        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b, b.ownerId === userId) })
+        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b, own.has(b.areaKey)) })
           .addTo(map)
           .on("click", () => setSelected(b.areaKey));
       }
@@ -90,7 +93,7 @@ function TaneMap({ userId }: { userId: string }) {
       mapInstance?.remove();
       mapRef.current = null;
     };
-  }, [bases, userId]);
+  }, [bases, own]);
 
   // 市区町村ごとの数(多い順)
   const cities = useMemo<CityGroup[]>(() => {
@@ -98,11 +101,11 @@ function TaneMap({ userId }: { userId: string }) {
     for (const b of bases ?? []) {
       const g = groups.get(b.cityKey) ?? { cityKey: b.cityKey, label: `${b.prefName}${b.cityName}`, bases: [], own: 0 };
       g.bases.push(b);
-      if (b.ownerId === userId) g.own++;
+      if (own.has(b.areaKey)) g.own++;
       groups.set(b.cityKey, g);
     }
     return [...groups.values()].sort((a, b) => b.bases.length - a.bases.length);
-  }, [bases, userId]);
+  }, [bases, own]);
 
   const focusCity = (g: CityGroup) => {
     const m = mapRef.current;
@@ -149,7 +152,7 @@ function TaneMap({ userId }: { userId: string }) {
           </p>
           <p className="mt-1">
             <GrowthBadge base={sel} />
-            {sel.ownerId === userId && <span className="ml-2 text-xs text-[#a8937a]">あなたのタネ</span>}
+            {own.has(sel.areaKey) && <span className="ml-2 text-xs text-[#a8937a]">あなたのタネ</span>}
           </p>
           {(sel.droppedSeeds ?? 0) > 0 && <p className="text-xs text-amber-700 mt-1">🌰 タネが{sel.droppedSeeds}個落ちています</p>}
           {overrideAllowed && (

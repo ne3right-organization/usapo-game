@@ -130,11 +130,18 @@ export async function plantedItemIds(c: DataClient, userId: string): Promise<Set
   const ids = new Set<string>();
   let nextToken: string | null | undefined;
   do {
-    const page = await c.models.GameTaneBase.listTaneBasesByOwner({ ownerId: userId }, { nextToken });
-    for (const b of unwrap(page)) ids.add(b.seedItemId);
+    const page = await c.models.GameTaneOwnership.list({ ownerId: userId, nextToken });
+    for (const o of unwrap(page)) ids.add(o.seedItemId);
     nextToken = page.nextToken;
   } while (nextToken);
   return ids;
+}
+
+/** 拠点の持ち主の ID(拠点の行には持ち主を持たないので、GameTaneOwnership から引く) */
+export async function baseOwnerId(c: DataClient, areaKey: string): Promise<string> {
+  const rows = unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey }));
+  if (!rows[0]) throw new Error("このタネの持ち主が分かりません");
+  return rows[0].ownerId;
 }
 
 /**

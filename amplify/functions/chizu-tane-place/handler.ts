@@ -30,7 +30,6 @@ export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event)
   // 同時にまこうとしたときは、Amplify Data の create が主キーの重複で失敗するので、先に書いた方だけが通る
   const res = await c.models.GameTaneBase.create({
     areaKey: district.areaKey,
-    ownerId: userId,
     cityKey: `${district.prefCode}${district.cityCode}`,
     prefCode: district.prefCode,
     prefName: district.prefName,
@@ -47,6 +46,10 @@ export const handler: Schema["placeTaneBase"]["functionHandler"] = async (event)
     droppedSeeds: 0,
   });
   if (res.errors?.length || !res.data) throw new Error("この地区にはもうタネがあります");
+  // 持ち主は、本人しか読めない別の行に持つ(拠点の行は誰でも読めるので持ち主を書かない)
+  unwrap(
+    await c.models.GameTaneOwnership.create({ ownerId: userId, areaKey: district.areaKey, seedItemId: item.itemId, plantedAt: now.toISOString() })
+  );
   unwrap(await c.models.GameTaneHeldSeed.update({ userId, itemId: item.itemId, quantity: seed.quantity - 1 }));
   // 今のレベルのタネを3つともまき終えたら、たずねた数しだいでレベルが上がり、次のタネがもらえる
   await grantLevelSeeds(c, player);

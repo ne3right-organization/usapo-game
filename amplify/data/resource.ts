@@ -254,12 +254,12 @@ const schema = a
       .identifier(["userId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
-    // 拠点(画面では「タネ」)。1地区に1つで、主キーは町丁のコード(e-Stat 小地域の KEY_CODE)。
-    // ログインしていれば誰でも読める(持ち主の ID は画面に出さない)。cityKey = `${prefCode}${cityCode}`
+    // 拠点(画面では「タネ」)。1地区に1つで、主キーは町丁のコード(e-Stat 小地域の KEY_CODE)。cityKey = `${prefCode}${cityCode}`
+    // ログインしていれば誰でも読めるので、**持ち主の ID は持たない**(持たせると、プロフィールの URL などから分かる ID で
+    // その人のタネの場所を全部たどれてしまう。生活圏が分かる)。持ち主は本人しか読めない GameTaneOwnership に持つ
     GameTaneBase: a
       .model({
         areaKey: a.string().required(),
-        ownerId: a.id().required(),
         cityKey: a.string().required(),
         prefCode: a.string().required(),
         prefName: a.string().required(),
@@ -288,10 +288,36 @@ const schema = a
       })
       .identifier(["areaKey"])
       .secondaryIndexes((index) => [
-        index("ownerId").sortKeys(["plantedAt"]).queryField("listTaneBasesByOwner"),
         index("cityKey").queryField("listTaneBasesByCity"),
       ])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
+
+    // 拠点の持ち主(ユーザー×拠点)。本人しか読めない(自分のタネの一覧・自分のタネかどうか)。書くのはタネをまく Lambda。
+    // Lambda は areaKey から持ち主を引く(listTaneOwnershipByArea。画面から引いても、自分の分しか返らない)
+    GameTaneOwnership: a
+      .model({
+        ownerId: a.id().required(),
+        areaKey: a.string().required(),
+        seedItemId: a.string().required(), // まいたタネのもの(レベルの条件「今のレベルのタネを3つともまいたか」に使う)
+        plantedAt: a.datetime().required(),
+      })
+      .identifier(["ownerId", "areaKey"])
+      .secondaryIndexes((index) => [index("areaKey").queryField("listTaneOwnershipByArea")])
+      .authorization((allow) => [allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["read"])]),
+
+    // うさぽ農園を見せるフォロワー(持ち主×見せる相手)。行があり、かつ相手が持ち主をフォローしている間だけ、
+    // 実の詳細の「生産者」にその持ち主のニックネームを出す(はじめは誰にも見せない)。
+    // 持ち主が画面から作る・消す。見せる相手も読める(自分に見せてくれているか)。update は許さない(持ち主を書き換えられないように)
+    GameTaneShare: a
+      .model({
+        ownerId: a.id().required(),
+        viewerId: a.id().required(),
+      })
+      .identifier(["ownerId", "viewerId"])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["create", "read", "delete"]),
+        allow.ownerDefinedIn("viewerId").identityClaim("sub").to(["read"]),
+      ]),
 
     // 訪問(ユーザー×拠点)。lastReceivedOn は最後にもらった日(日本時間の YYYY-MM-DD)で、1日1回の判定に使う。
     // のちにレベル(たずねた拠点の数)を数えるのにも使える
@@ -331,6 +357,7 @@ const schema = a
         cityName: a.string().required(),
         townName: a.string().required(),
         ripenedAt: a.datetime(),
+        // 生産者(そのタネをまいた人)。ID だけではタネの場所はたどれない。ニックネームは、生産者が見せている相手にだけ出す
         ownerId: a.id().required(),
       })
       .identifier(["userId", "harvestedAt"])

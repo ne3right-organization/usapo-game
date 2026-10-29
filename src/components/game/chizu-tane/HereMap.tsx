@@ -19,12 +19,13 @@ export interface HereMapProps {
   /** 現在地(位置情報、または開発用の位置指定で選んだ点) */
   location: { lat: number; lng: number } | null;
   bases: TaneBase[];
-  userId: string;
+  /** 自分がまいたタネの地区(areaKey) */
+  ownAreaKeys: ReadonlySet<string>;
   /** 地図のどこかをタップしたとき(開発用の位置指定)。渡さなければタップしても何もしない */
   onPointSelect?: (lat: number, lng: number) => void;
 }
 
-export default function HereMap({ geojsonUrl, selectedCode, location, bases, userId, onPointSelect }: HereMapProps) {
+export default function HereMap({ geojsonUrl, selectedCode, location, bases, ownAreaKeys, onPointSelect }: HereMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; Lmod: typeof L } | null>(null);
   const layersRef = useRef<Map<string, L.GeoJSON[]>>(new Map());
@@ -117,11 +118,11 @@ export default function HereMap({ geojsonUrl, selectedCode, location, bases, use
       if (typeof b.repLat !== "number" || typeof b.repLng !== "number") continue;
       const lat = b.repLat;
       const lng = b.repLng;
-      m.Lmod.marker([lat, lng], { icon: taneMarkerIcon(m.Lmod, b, b.ownerId === userId) })
+      m.Lmod.marker([lat, lng], { icon: taneMarkerIcon(m.Lmod, b, ownAreaKeys.has(b.areaKey)) })
         .on("click", () => onPointSelectRef.current?.(lat, lng))
         .addTo(group);
     }
-  }, [loading, bases, userId]);
+  }, [loading, bases, ownAreaKeys]);
 
   // 現在地
   useEffect(() => {

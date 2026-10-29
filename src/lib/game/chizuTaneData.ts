@@ -58,17 +58,30 @@ export async function fetchCourseCounts(): Promise<Map<string, number>> {
   return new Map(rows.filter((r) => r != null).map((r) => [r.course, r.players]));
 }
 
-/** 自分がまいたタネ(新しい順) */
-export async function fetchMyBases(): Promise<TaneBase[]> {
+/** 自分がまいたタネの地区(areaKey)。タネの行には持ち主を持たないので、本人しか読めない GameTaneOwnership から引く */
+export async function fetchMyAreaKeys(): Promise<Set<string>> {
   const ownerId = await requireUserId();
-  const bases: TaneBase[] = [];
+  const keys = new Set<string>();
   let nextToken: string | null | undefined;
   do {
-    const page = await data.models.GameTaneBase.listTaneBasesByOwner({ ownerId }, { sortDirection: "DESC", nextToken });
-    bases.push(...unwrap(page));
+    const page = await data.models.GameTaneOwnership.list({ ownerId, nextToken });
+    for (const o of unwrap(page)) keys.add(o.areaKey);
     nextToken = page.nextToken;
   } while (nextToken);
-  return bases;
+  return keys;
+}
+
+/** 自分がまいたタネ(新しい順) */
+export async function fetchMyBases(): Promise<TaneBase[]> {
+  const keys = await fetchMyAreaKeys();
+  const bases: TaneBase[] = [];
+  await Promise.all(
+    [...keys].map(async (areaKey) => {
+      const b = unwrap(await data.models.GameTaneBase.get({ areaKey }));
+      if (b) bases.push(b);
+    })
+  );
+  return bases.sort((a, b) => b.plantedAt.localeCompare(a.plantedAt));
 }
 
 /** その市区町村にあるタネ */
@@ -124,26 +137,53 @@ export async function fetchMyHarvests(): Promise<TaneHarvest[]> {
   return harvests;
 }
 
-/** 生産者(タネをまいた人)の見え方: 自分 / フレンド(お互いにフォローしている。ニックネームを出す) / それ以外(出さない) */
-export type TaneOwnerView = { kind: "me" } | { kind: "friend"; userId: string; nickname: string } | { kind: "hidden" };
+/** 生産者(タネをまいた人)の見え方: 自分 / 農園を見せてくれている人(ニックネームを出す) / それ以外(出さない) */
+export type TaneOwnerView = { kind: "me" } | { kind: "shared"; userId: string; nickname: string } | { kind: "hidden" };
 
-/** 生産者を、フレンドのときだけ明かす(フォロー関係は本人どうしにしか読めないので、ほかの人のフォローは分からない) */
+/**
+ * 生産者を、その人が自分に農園を見せてくれていて(GameTaneShare)、自分がその人をフォローしている間だけ明かす。
+ * パズルのランキングなどからフォローされただけでは、畑の場所(生活圏)が分からないように、はじめは誰にも見せない
+ */
 export async function fetchOwnerViews(ownerIds: string[]): Promise<Map<string, TaneOwnerView>> {
   const me = await requireUserId();
   const views = new Map<string, TaneOwnerView>();
   await Promise.all(
     [...new Set(ownerIds)].map(async (ownerId) => {
       if (ownerId === me) return views.set(ownerId, { kind: "me" });
-      const [following, followed] = await Promise.all([
+      const [share, following] = await Promise.all([
+        data.models.GameTaneShare.get({ ownerId, viewerId: me }),
         data.models.GameFollow.get({ followerId: me, followeeId: ownerId }),
-        data.models.GameFollow.get({ followerId: ownerId, followeeId: me }),
       ]);
       const nickname =
-        unwrap(following) && unwrap(followed) ? unwrap(await data.models.GameProfile.get({ userId: ownerId }))?.nickname : null;
-      views.set(ownerId, nickname ? { kind: "friend", userId: ownerId, nickname } : { kind: "hidden" });
+        unwrap(share) && unwrap(following) ? unwrap(await data.models.GameProfile.get({ userId: ownerId }))?.nickname : null;
+      views.set(ownerId, nickname ? { kind: "shared", userId: ownerId, nickname } : { kind: "hidden" });
     })
   );
   return views;
+}
+
+/** 自分が農園を見せているフォロワーの ID */
+export async function fetchTaneShareViewerIds(): Promise<Set<string>> {
+  const ownerId = await requireUserId();
+  const ids = new Set<string>();
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneShare.list({ ownerId, nextToken });
+    for (const s of unwrap(page)) ids.add(s.viewerId);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return ids;
+}
+
+/** そのフォロワーに農園を見せる・見せない */
+export async function setTaneShare(viewerId: string, share: boolean): Promise<void> {
+  const ownerId = await requireUserId();
+  if (share) {
+    if (unwrap(await data.models.GameTaneShare.get({ ownerId, viewerId }))) return;
+    unwrap(await data.models.GameTaneShare.create({ ownerId, viewerId }));
+  } else {
+    await data.models.GameTaneShare.delete({ ownerId, viewerId });
+  }
 }
 
 /** 持っているタネ(もの単位。みかんの木のタネ、梨の木のタネ…) */
