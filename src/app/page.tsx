@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
 
 export const metadata: Metadata = {
   title: "usapo-game",
@@ -19,10 +18,7 @@ export default function Home() {
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
             うさぽの境界データ（geojson）を使った<br />地図ゲームコーナーです
           </p>
-          <div className="mt-3">
-            <AuthStatus />
-          </div>
-          <div className="mt-2 flex items-center justify-center gap-4">
+          <div className="mt-3 flex items-center justify-center gap-4">
             <Link href="/history" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
               📜 遊んだ履歴
             </Link>
@@ -102,15 +98,9 @@ export default function Home() {
         {/* ログインについて */}
         <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5">
           <h2 className="text-sm font-bold text-[#3c2a14] mb-2">ログインについて</h2>
-          <p className="text-sm text-[#78716c] leading-relaxed mb-3">
-            ログインしなくてもゲームは遊べます。ログインすると、プレイ履歴の記録・ニックネームの登録・ランキングへの参加ができるようになります。
+          <p className="text-sm text-[#78716c] leading-relaxed">
+            地図パズルと地図ポットンは、ログインしなくても遊べます。ログインすると、遊んだ記録が残り、ニックネームを付けてランキングに参加できます。うさぽ農園はログインが必要です。ログインは右上の「ログイン」からできます。
           </p>
-          <Link
-            href="/login"
-            className="inline-block text-sm text-teal-700 underline underline-offset-2 font-semibold"
-          >
-            ログインする →
-          </Link>
         </div>
 
         {/* ホーム画面に追加(PWA) */}

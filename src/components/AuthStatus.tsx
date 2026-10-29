@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { currentUser, signOutUser } from "@/lib/auth";
 import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
 
-// 元実装(team-kokuusa-platform-frontend)の NicknameBadge 相当。
-// ログイン状態も合わせて出し分ける(未ログイン: ログインへの導線 / ログイン済み: ニックネーム+ログアウト)
+// サイト共通ヘッダー(SiteHeader)の右に出す、ログインの状態。元実装(team-kokuusa-platform-frontend)の NicknameBadge 相当。
+// 未ログイン: ログインへの導線 / ログイン済み: ニックネーム(設定画面へ)+ログアウト
 export default function AuthStatus() {
   const [state, setState] = useState<
     | { status: "loading" }
     | { status: "signed-out" }
     | { status: "signed-in"; nickname: string | null }
   >({ status: "loading" });
+  // ヘッダーはページを移っても作り直されないので、ログインした直後・ニックネームを変えた直後にも合うよう、ページを移るたびに読み直す
+  const pathname = usePathname();
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +37,7 @@ export default function AuthStatus() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname]);
 
   const handleSignOut = async () => {
     // Cognito のログアウト画面を経由してトップに戻る
@@ -42,14 +45,14 @@ export default function AuthStatus() {
   };
 
   if (state.status === "loading") {
-    return <div className="h-5" />;
+    return <div className="h-4" />;
   }
 
   if (state.status === "signed-out") {
     return (
       <Link
         href="/login"
-        className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2"
+        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
       >
         ログイン
       </Link>
@@ -57,14 +60,14 @@ export default function AuthStatus() {
   }
 
   return (
-    <div className="inline-flex items-center gap-3 text-sm">
-      <Link href="/nickname" className="text-[#78716c] underline underline-offset-2">
-        {state.nickname ? `👤 ${state.nickname}` : "ニックネームを設定"}
+    <div className="inline-flex items-center gap-3 text-xs min-w-0">
+      <Link href="/nickname" className="text-[#78716c] hover:text-[#3c2a14] truncate max-w-[9rem]">
+        {state.nickname ? `👤 ${state.nickname}` : "⚙️ 設定"}
       </Link>
       <button
         type="button"
         onClick={handleSignOut}
-        className="text-[#a8937a] underline underline-offset-2"
+        className="shrink-0 text-[#a8937a] underline underline-offset-2 hover:text-[#78716c]"
       >
         ログアウト
       </button>

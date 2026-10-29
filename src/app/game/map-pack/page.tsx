@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
 import MapPackSavedGames from "@/components/game/map-pack/MapPackSavedGames";
 import RecentClears from "@/components/game/RecentClears";
 
@@ -58,9 +57,6 @@ export default function MapPackPage() {
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
             ピースを箱に落として、隣り合う地域同士を<br />くっつけて地図を完成させよう
           </p>
-          <div className="mt-3">
-            <AuthStatus />
-          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-6">

@@ -115,7 +115,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 
 ## サイト共通の機能（2026-10-20〜）
 
-- **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）
+- **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）: 全ページ（トップも）に出す。左はサイトのトップへ、右はログイン・ログアウトとニックネーム（`src/components/AuthStatus.tsx`。ヘッダーはページを移っても作り直されないので、ページを移るたびにログインの状態を読み直す）
 - **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack`）
 - **ニックネーム設定**（`/nickname`）: 全ゲーム共通。Lambda `set-nickname` がベスト記録・合計のニックネームも書き直す
 - **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=`
