@@ -157,4 +157,5 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
 - **畑の場所は生活圏が分かるので守る**（2026-10-29）: 誰でも読める `GameTaneBase` には持ち主の ID を入れない（ID はプロフィールの URL などから分かり、そこからタネの場所を全部たどれてしまうため）。持ち主は本人しか読めない `GameTaneOwnership`。実の「生産者」は、持ち主が「農園を見せる」にしたフォロワー（`GameTaneShare`、フォロワーの一覧で一人ずつ選ぶ。はじめは誰にも見せない）にだけ出す。フォローはパズルのランキングからもできるため
 - **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
+- **フォローしている人のガーデン**: ガーデンの画面の下から見に行ける（`/game/chizu-tane/garden/[userId]`、見るだけ）。`GameTaneGarden` はログインしていれば誰でも読める（飾っているものと置き場所だけで、畑の場所は入っていない）
 - 絵は未作成で、アイテムごとの絵文字を出している。絵は画像生成AIで作り、`art/chizu-tane/` に置いて `scripts/chizu-tane/process-item-images.mts` を動かすと `public/chizu-tane/items/` と `itemImages.generated.ts` ができて `imageUrl` になる（手順は `docs/地図タネ_絵の作り方.md`）。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`

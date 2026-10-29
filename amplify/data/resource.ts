@@ -374,7 +374,8 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // 箱庭(画面では「ガーデン」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
-    // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む
+    // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む。
+    // フォローしている人のガーデンを見に行けるよう、ログインしていれば誰でも読める(飾っているものと置き場所だけで、畑の場所は入っていない)
     GameTaneGarden: a
       .model({
         userId: a.id().required(),
@@ -383,7 +384,7 @@ const schema = a
         objects: a.json().required(),
       })
       .identifier(["userId"])
-      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+      .authorization((allow) => [allow.authenticated().to(["read"])]),
 
     TaneCheckInResult: a.customType({
       // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / already(今日はもう来た)

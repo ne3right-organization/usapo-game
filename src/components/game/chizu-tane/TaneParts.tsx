@@ -97,7 +97,7 @@ function TaneTabs() {
     <nav className="fixed bottom-0 inset-x-0 z-[1100] bg-white/95 backdrop-blur border-t border-[#f3ece0] pb-[env(safe-area-inset-bottom)]">
       <ul className="max-w-lg mx-auto grid grid-cols-5">
         {TANE_TABS.map((t) => {
-          const active = pathname === t.href;
+          const active = pathname === t.href || (t.href !== "/game/chizu-tane" && pathname.startsWith(`${t.href}/`));
           return (
             <li key={t.href}>
               <Link

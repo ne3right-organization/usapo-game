@@ -408,6 +408,15 @@ export async function openGarden(): Promise<GardenState> {
   return toGardenState(unwrap(await data.mutations.openTaneGarden()));
 }
 
+/** ほかの人(フォローしている人)のガーデン。見るだけ。ガーデンを作っていなければ null */
+export async function fetchGardenOf(userId: string): Promise<{ nickname: string | null; width: number; height: number; objects: GardenObject[] } | null> {
+  await requireUserId();
+  const [garden, profile] = await Promise.all([data.models.GameTaneGarden.get({ userId }), data.models.GameProfile.get({ userId })]);
+  const g = unwrap(garden);
+  if (!g) return null;
+  return { nickname: unwrap(profile)?.nickname ?? null, width: g.width, height: g.height, objects: parseJson<GardenObject[]>(g.objects) };
+}
+
 export async function saveGarden(objects: GardenObject[]): Promise<GardenState> {
   await requireUserId();
   return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects) })));

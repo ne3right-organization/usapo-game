@@ -5,10 +5,12 @@ import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { countPlaced, type GardenObject } from "@/lib/game/chizuTane/garden";
 import { openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
+import { FollowingGardens } from "./FriendGardenView";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
-// ガーデン(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う
+// ガーデン(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う。
+// 下に、フォローしている人のガーデンへのリンクを並べる(見るだけ。FriendGardenView)
 
 export default function TaneGardenView() {
   const [state] = useTanePlayer();
@@ -18,7 +20,12 @@ export default function TaneGardenView() {
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
-      {state.status === "ready" && <Garden />}
+      {state.status === "ready" && (
+        <>
+          <Garden />
+          <FollowingGardens />
+        </>
+      )}
     </TaneScreen>
   );
 }
