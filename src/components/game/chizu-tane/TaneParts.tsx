@@ -54,6 +54,16 @@ export function SeedIcon({ item, size = 40 }: { item: TaneItem; size?: number })
   );
 }
 
+/** 画面の見出し。右に短い説明を並べる(説明が2行になっても、見出しと上下の中央をそろえる) */
+export function TaneHeading({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <h1 className="shrink-0 text-xl font-bold text-[#3c2a14] leading-tight">{title}</h1>
+      {children && <p className="text-xs text-[#a8937a] leading-snug">{children}</p>}
+    </div>
+  );
+}
+
 export function TaneScreen({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-full bg-[#fdf8f0]">

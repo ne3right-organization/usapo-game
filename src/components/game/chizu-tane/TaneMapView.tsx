@@ -6,7 +6,7 @@ import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { fetchAllBases, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
-import { ErrorText, GrowthBadge, Loading, NeedStart, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { OTHER_COLOR, OWN_COLOR, taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -16,8 +16,7 @@ export default function TaneMapView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🗾 全国農地</h1>
-      <p className="text-xs text-[#a8937a] mb-4">全国のどこにタネがあるか見られます。点は地区の真ん中あたりに出しています</p>
+      <TaneHeading title="🗾 全国農地">全国のどこにタネがあるか見られます。点は地区の真ん中あたりに出しています</TaneHeading>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}

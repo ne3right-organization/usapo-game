@@ -26,6 +26,7 @@ import {
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
+import SwipePages from "./SwipePages";
 import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { dayKey } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
@@ -73,7 +74,6 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
   const [selected, setSelected] = useState<TaneCourse | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
   // コースごとの遊んでいる人数(出せなくても選べるので、失敗しても何も出さないだけ)
   const [counts, setCounts] = useState<Map<string, number> | null>(null);
   useEffect(() => {
@@ -85,6 +85,7 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
       cancelled = true;
     };
   }, []);
+
   const handleStart = async () => {
     if (!selected || saving) return;
     setSaving(true);
@@ -119,8 +120,8 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
                 <span className="text-3xl">{c.emoji}</span>
                 <div className="flex-1 min-w-0">
                   <span className="font-bold text-[#3c2a14] text-sm">{c.label}コース</span>
-                  <p className="text-xs text-[#78716c] mt-0.5">{c.description}</p>
                   {counts && <span className="ml-2 text-[11px] text-emerald-700">👥 {counts.get(c.id) ?? 0}人が遊んでいます</span>}
+                  <p className="text-xs text-[#78716c] mt-0.5">{c.description}</p>
                   <p className="text-xs text-[#a8937a] mt-0.5">
                     最初のタネ: {firstSeeds.map((i) => `${i.emoji}${i.name}`).join("・")}
                   </p>
@@ -238,7 +239,9 @@ function Home({ course }: { course: TaneCourse }) {
         </div>
       )}
 
-      <h2 className="text-sm font-bold text-[#3c2a14] mb-2">あなたがまいたタネ</h2>
+      <h2 className="text-sm font-bold text-[#3c2a14] mb-2">
+        あなたがまいたタネ{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
+      </h2>
       {error && <ErrorText message={error} />}
       {bases === null && !error && <Loading />}
       {bases?.length === 0 && (
@@ -247,11 +250,15 @@ function Home({ course }: { course: TaneCourse }) {
         </p>
       )}
       {bases && bases.length > 0 && (
-        <ul className="bg-white rounded-2xl divide-y divide-[#f3ece0]">
-          {bases.map((b) => {
+        <SwipePages
+          items={bases}
+          perPage={3}
+          layout="rows"
+          keyOf={(b) => b.areaKey}
+          render={(b) => {
             const type = TANE_BASE_TYPE_BY_ID.get(b.baseTypeId);
             return (
-              <li key={b.areaKey} className="px-4 py-3">
+              <div className="bg-white rounded-2xl px-4 py-3">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{type?.emoji}</span>
                   <div className="flex-1 min-w-0">
@@ -272,10 +279,10 @@ function Home({ course }: { course: TaneCourse }) {
                   </div>
                   <RemoteWaterButton base={b} onWatered={(next) => setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null)} />
                 </div>
-              </li>
+              </div>
             );
-          })}
-        </ul>
+          }}
+        />
       )}
 
       <div className="mt-8 bg-white rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">

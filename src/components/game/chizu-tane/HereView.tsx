@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID, fruitName } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
 import { FRUITS_WHEN_RIPE, waterUntilRipe } from "@/lib/game/chizuTane/growth";
@@ -20,8 +20,9 @@ import {
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
-import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
+import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneHeading, TaneScreen, WaterHint } from "./TaneParts";
 import HereMap from "./HereMap";
+import SeedPicker from "./SeedPicker";
 import { OTHER_COLOR, OWN_COLOR } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -34,8 +35,7 @@ export default function HereView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🚶 おでかけ</h1>
-      <p className="text-xs text-[#a8937a] mb-4">いまいる地区でタネをまいたり、ほかの人のタネを訪ねたりできます</p>
+      <TaneHeading title="🚶 おでかけ">いまいる地区でタネをまいたり、ほかの人のタネを訪ねたりできます</TaneHeading>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
@@ -66,6 +66,12 @@ function Here({ userId }: { userId: string }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const overrideAllowed = useMemo(() => isLocationOverrideAllowed(), []);
   const [manualInput, setManualInput] = useState("");
+  // 地区が分かったら、まく・チェックインのカードまで画面を動かす(地区名と地図はその上に見えている)
+  const actionRef = useRef<HTMLDivElement>(null);
+  const [located, setLocated] = useState(0);
+  useEffect(() => {
+    if (located > 0) actionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [located]);
   // 持っているタネ。まくと1つ減る(種類やレベルの制限は無い)
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [chosenItemId, setChosenItemId] = useState<string | null>(null);
@@ -117,6 +123,7 @@ function Here({ userId }: { userId: string }) {
       if (!d) throw new Error("この場所の地区が分かりませんでした（海の上など、地区のデータが無い場所かもしれません）");
       setLoc(next);
       setDistrict(d);
+      setLocated((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -251,14 +258,17 @@ function Here({ userId }: { userId: string }) {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={handleLocate}
-        disabled={locating || busy}
-        className="w-full rounded-xl py-3 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 mb-3"
-      >
-        {locating ? "現在地を調べています..." : district ? "📍 現在地を調べ直す" : "📍 現在地を調べる"}
-      </button>
+      {/* 地区が分かったあとは、調べ直すボタンを地区名のカードの中に出す */}
+      {!district && (
+        <button
+          type="button"
+          onClick={handleLocate}
+          disabled={locating || busy}
+          className="w-full rounded-xl py-3 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 mb-3"
+        >
+          {locating ? "現在地を調べています..." : "📍 現在地を調べる"}
+        </button>
+      )}
       {!district && !locating && (
         <p className="text-xs text-[#a8937a] mb-3 leading-relaxed">
           ボタンを押すと、ブラウザから位置情報の利用を求められます。位置は地区を調べるのに使うだけで、保存はしません。
@@ -270,8 +280,20 @@ function Here({ userId }: { userId: string }) {
       {district && (
         <>
           <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-3">
-            <p className="text-xs text-[#a8937a]">{district.cityName}</p>
-            <p className="text-lg font-bold text-[#3c2a14]">{district.townName}</p>
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-[#a8937a]">{district.cityName}</p>
+                <p className="text-lg font-bold text-[#3c2a14]">{district.townName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleLocate}
+                disabled={locating || busy}
+                className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-60"
+              >
+                {locating ? "調べています..." : "📍 調べ直す"}
+              </button>
+            </div>
             <p className="text-[11px] text-[#a8937a] mt-1">位置情報には誤差があります。違う地区になっていたら、少し動いてから調べ直してください。</p>
           </div>
 
@@ -302,7 +324,7 @@ function Here({ userId }: { userId: string }) {
             </span>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4">
+          <div ref={actionRef} className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4 scroll-mt-4">
             <div>
               {!baseHere && (
                 <>
@@ -314,31 +336,9 @@ function Here({ userId }: { userId: string }) {
                   ) : (
                     <p className="text-sm text-[#78716c] mb-2">この地区にはまだタネがありません。どのタネをまきますか？</p>
                   )}
-                  <div className="flex flex-col gap-1.5 mb-3 max-h-[16.5rem] overflow-y-auto overscroll-contain pr-1">
-                    {(seeds ?? []).map((sd) => {
-                      const item = TANE_ITEM_BY_ID.get(sd.itemId);
-                      const type = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
-                      const active = chosenItemId === sd.itemId;
-                      return (
-                        <button
-                          key={sd.itemId}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setChosenItemId(sd.itemId)}
-                          className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-left text-sm ${
-                            active ? "border-emerald-500 bg-emerald-50" : "border-[#f3ece0] bg-white"
-                          } disabled:opacity-50`}
-                        >
-                          {item ? <SeedIcon item={item} size={30} /> : null}
-                          <span className="flex-1 text-[#3c2a14]">
-                            {item?.name ?? sd.itemId}のタネ
-                            {type && <span className="ml-1 text-[11px] text-[#a8937a]">（{type.name}になる）</span>}
-                          </span>
-                          <span className="text-xs text-[#a8937a]">×{sd.quantity}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {seeds && seeds.length > 0 && (
+                    <SeedPicker seeds={seeds} chosenItemId={chosenItemId} onChoose={setChosenItemId} disabled={busy} />
+                  )}
                   <button
                     type="button"
                     onClick={handlePlant}

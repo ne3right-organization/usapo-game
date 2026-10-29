@@ -11,7 +11,7 @@ import {
   type TaneOwnedItem,
   type TaneOwnerView,
 } from "@/lib/game/chizuTaneData";
-import { ErrorText, ItemIcon, Loading, NeedStart, TaneScreen } from "./TaneParts";
+import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 集めたもの: 収穫した実(もの)の一覧。まだ持っていないものは影絵で出して、そのタネを育てれば手に入ることが分かるようにする。
@@ -20,7 +20,7 @@ export default function CollectionView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <h1 className="text-xl font-bold text-[#3c2a14] mb-4">🧺 集めたもの</h1>
+      <TaneHeading title="🧺 集めたもの">全国の畑で収穫した実が集まります。タップすると産地が分かります</TaneHeading>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
@@ -63,7 +63,6 @@ function Collection() {
 
   return (
     <div>
-      <p className="text-xs text-[#a8937a] mb-2">自分でまいて育てたタネを収穫すると、ここに集まります</p>
       <p className="text-sm text-[#78716c] mb-4">
         {shown.size}種類のうち <span className="font-bold text-[#3c2a14]">{ownedCount}</span> 種類を集めました
       </p>
@@ -101,7 +100,7 @@ function Collection() {
                     ) : (
                       <>
                         <p className="text-xs font-bold text-[#c8b8a0] mt-1">？？？</p>
-                        <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{type?.name ?? "タネ"}のタネを育てて収穫</p>
+                        <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{type?.name ?? "タネ"}が実ったら収穫</p>
                       </>
                     )}
                   </button>
