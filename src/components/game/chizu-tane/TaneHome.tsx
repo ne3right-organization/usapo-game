@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   TANE_ITEMS,
@@ -17,6 +17,7 @@ import {
   fetchMyBases,
   fetchMySeeds,
   fetchVisitedCount,
+  isLocationOverrideAllowed,
   openGarden,
   taneDayMs,
   waterRemotely,
@@ -35,6 +36,8 @@ import { useTanePlayer } from "./useTanePlayer";
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のガーデンの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
 export default function TaneHome() {
   const [state, reload] = useTanePlayer();
+  // 開発環境(devgame.usapo.net・手元)だけ注意書きを出す。サーバーでの描画では出さない(ホスト名はブラウザでしか分からない)
+  const isDev = useSyncExternalStore(noopSubscribe, isLocationOverrideAllowed, () => false);
 
   return (
     <TaneScreen>
@@ -51,9 +54,11 @@ export default function TaneHome() {
         </p>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-6 leading-relaxed">
-        🚧 開発中のプロトタイプです。自由に遊んでかまいませんが、まいたタネや集めたものなどの記録は、正式リリースのときにすべて削除します。
-      </div>
+      {isDev && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-6 leading-relaxed">
+          🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。
+        </div>
+      )}
 
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
@@ -303,6 +308,8 @@ function Home({ course }: { course: TaneCourse }) {
     </div>
   );
 }
+
+const noopSubscribe = () => () => {};
 
 /** 自分のタネに遠くから水をやるボタン(タネごとに朝・昼・夜に1回、効き目は現地の10分の1)。実っている間は出さない */
 function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (next: TaneBase) => void }) {
