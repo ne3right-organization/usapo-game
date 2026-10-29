@@ -10,6 +10,16 @@ const ADMIN_LINKS: { section: string; links: { href: string; label: string; desc
         label: "アイテム一覧",
         description: "コース・タネの種類・アイテムの定義と、実とタネの絵（courses.ts）",
       },
+      {
+        href: "/admin/chizu-tane/levels",
+        label: "レベルとガーデンの条件",
+        description: "ユーザーのレベルアップの条件・もらえるタネ・家と柵、ガーデンが増える条件、畑のランク",
+      },
+      {
+        href: "/admin/chizu-tane/gardens",
+        label: "ガーデンのデザイン",
+        description: "ガーデン4種類 × 家と柵の4段階の見た目",
+      },
     ],
   },
 ];
