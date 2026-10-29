@@ -156,7 +156,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・拠点に落ちているタネを拾う。ほかの人のタネに初めてチェックインするとそこに1個落ちる）は全体設計書 6.4、数は `courses.ts`。持ち主の手元に直接増えたり、時間で増えたりはしない
 - **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
-- **畑の場所は生活圏が分かるので守る**（2026-10-29）: 誰でも読める `GameTaneBase` には持ち主の ID を入れない（ID はプロフィールの URL などから分かり、そこからタネの場所を全部たどれてしまうため）。持ち主は本人しか読めない `GameTaneOwnership`。実の「生産者」は、持ち主が「農園を見せる」にしたフォロワー（`GameTaneShare`、フォロワーの一覧で一人ずつ選ぶ。はじめは誰にも見せない）にだけ出す。フォローはパズルのランキングからもできるため
+- **畑の場所は生活圏が分かるので守る**（2026-10-29）: 誰でも読める `GameTaneBase` には持ち主の ID を入れない（ID はプロフィールの URL などから分かり、そこからタネの場所を全部たどれてしまうため）。持ち主は本人しか読めない `GameTaneOwnership`。ガーデンと実の「生産者」は、持ち主が「農園を見せる」にしたフォロワー（`GameTaneShare`、フォロワーの一覧で一人ずつ選ぶ。はじめは誰にも見せない）にだけ出す。フォローはパズルのランキングからもできるため
 - **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
-- **フォローしている人のガーデン**: ガーデンの画面の下から見に行ける（`/game/chizu-tane/garden/[userId]`、見るだけ）。`GameTaneGarden` はログインしていれば誰でも読める（飾っているものと置き場所だけで、畑の場所は入っていない）
+- **フォローしている人のガーデン**: ガーデンの画面の下から見に行ける（`/game/chizu-tane/garden/[userId]`、見るだけ）。見られるのは、持ち主が自分に「農園を見せる」にしていて（`GameTaneShare`）、自分が持ち主をフォローしているときだけ（はじめは見せない）。`GameTaneGarden` は本人しか読めず、ほかの人のガーデンは Lambda（`viewTaneGarden`）が確かめてから返す
 - 絵は未作成で、アイテムごとの絵文字を出している。絵は画像生成AIで作り、`art/chizu-tane/` に置いて `scripts/chizu-tane/process-item-images.mts` を動かすと `public/chizu-tane/items/` と `itemImages.generated.ts` ができて `imageUrl` になる（手順は `docs/地図タネ_絵の作り方.md`）。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`

@@ -5,18 +5,21 @@ import { isTaneCourse, seedsForLevel } from "../../../src/lib/game/chizuTane/cou
 import { addSeeds } from "../shared/chizuTane";
 import { GARDEN_HEIGHT, GARDEN_WIDTH, validateGardenObjects, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
 
-type Args = { course?: string; objects?: unknown };
+type Args = { course?: string; objects?: unknown; ownerId?: string };
 
 /**
  * 地図タネの、始める(startTane)・箱庭を開く(openTaneGarden)・箱庭を保存する(saveTaneGarden)。
- * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(course があれば始める、objects があれば保存、どちらも無ければ開く)
+ * ほかの人のガーデンを見る(viewTaneGarden)も受ける。
+ * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(course があれば始める、ownerId があればほかの人のガーデンを見る、
+ * objects があれば保存、どれも無ければ開く)
  */
 export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
   const c = await dataClient(env);
-  const { course, objects } = event.arguments;
+  const { course, objects, ownerId } = event.arguments;
 
   if (course !== undefined && course !== null) return start(c, userId, course);
+  if (typeof ownerId === "string") return viewGarden(c, userId, ownerId);
 
   const player = unwrap(await c.models.GameTanePlayer.get({ userId }));
   if (!player) throw new Error("先にコースを選んでください");
@@ -72,4 +75,26 @@ function parseJson<T = unknown>(value: unknown): T {
   let v = value;
   while (typeof v === "string") v = JSON.parse(v);
   return v as T;
+}
+
+/**
+ * ほかの人のガーデンを見る。持ち主が見る人に「農園を見せる」にしていて(GameTaneShare)、見る人が持ち主をフォローしているときだけ返す。
+ * ガーデンの行は本人しか読めないので、ここで確かめてから中身を渡す
+ */
+async function viewGarden(c: DataClient, viewerId: string, ownerId: string) {
+  if (viewerId === ownerId) throw new Error("自分のガーデンはガーデンの画面で見てください");
+  const [share, follow] = await Promise.all([
+    c.models.GameTaneShare.get({ ownerId, viewerId }),
+    c.models.GameFollow.get({ followerId: viewerId, followeeId: ownerId }),
+  ]);
+  if (!unwrap(share) || !unwrap(follow)) throw new Error("この人のガーデンは見られません");
+  const [garden, profile] = await Promise.all([c.models.GameTaneGarden.get({ userId: ownerId }), c.models.GameProfile.get({ userId: ownerId })]);
+  const g = unwrap(garden);
+  if (!g) throw new Error("この人はまだガーデンを作っていません");
+  return {
+    nickname: unwrap(profile)?.nickname ?? null,
+    width: g.width,
+    height: g.height,
+    objects: JSON.stringify(parseJson<GardenObject[]>(g.objects)),
+  };
 }

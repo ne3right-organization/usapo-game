@@ -12,7 +12,7 @@ type Tab = "followers" | "following";
 type Props = { searchParams: Promise<{ tab?: string }> };
 
 // 自分のフォロワー・自分がフォローしている人の一覧。他の人のフォロー関係は見られない(RLS)。
-// フォロワーには、うさぽ農園を見せるかどうかを一人ずつ選べる(はじめは見せない。畑の場所で生活圏が分かってしまうため)
+// フォロワーには、うさぽ農園(ガーデンと実の生産者)を見せるかどうかを一人ずつ選べる(はじめは見せない。畑の場所で生活圏が分かってしまうため)
 export default function FollowsPage({ searchParams }: Props) {
   const { tab: initialTab } = use(searchParams);
   const router = useRouter();
@@ -118,7 +118,7 @@ export default function FollowsPage({ searchParams }: Props) {
             )}
             {!errorMsg && items && items.length > 0 && tab === "followers" && (
               <p className="text-xs text-[#a8937a] leading-relaxed mb-3">
-                🌱 うさぽ農園は、「見せる」にしたフォロワーにだけ、あなたがタネをまいた畑（実の生産者）が分かるようになります。はじめは誰にも見せていません。
+                🌱 うさぽ農園は、「見せる」にしたフォロワーにだけ、あなたのガーデンと、あなたがタネをまいた畑（実の生産者）が見えるようになります。はじめは誰にも見せていません。
               </p>
             )}
             {items && items.length > 0 && (

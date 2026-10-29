@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
-import { fetchGardenOf } from "@/lib/game/chizuTaneData";
+import { fetchGardenOf, fetchTaneSharerIds } from "@/lib/game/chizuTaneData";
 import type { GardenObject } from "@/lib/game/chizuTane/garden";
 import GardenSvg from "./GardenSvg";
 import { ErrorText, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
-// フォローしている人のガーデンを見る(見るだけ)。ガーデンには飾っているものだけで、畑の場所は入っていない
+// フォローしている人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしているときだけ見られる(確かめるのは Lambda)
 export default function FriendGardenView({ userId }: { userId: string }) {
   const [state] = useTanePlayer();
   return (
@@ -23,9 +23,7 @@ export default function FriendGardenView({ userId }: { userId: string }) {
 }
 
 function FriendGarden({ userId }: { userId: string }) {
-  const [garden, setGarden] = useState<{ nickname: string | null; width: number; height: number; objects: GardenObject[] } | null | undefined>(
-    undefined
-  );
+  const [garden, setGarden] = useState<{ nickname: string | null; width: number; height: number; objects: GardenObject[] } | undefined>(undefined);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -38,34 +36,40 @@ function FriendGarden({ userId }: { userId: string }) {
     };
   }, [userId]);
 
-  if (error) return <ErrorText message={error} />;
+  const back = (
+    <Link href="/game/chizu-tane/garden" className="text-sm text-emerald-700 underline underline-offset-2">
+      ← 自分のガーデンへ
+    </Link>
+  );
+  if (error) {
+    return (
+      <div>
+        <ErrorText message={error} />
+        {back}
+      </div>
+    );
+  }
   if (garden === undefined) return <Loading />;
 
   return (
     <div>
-      <TaneHeading title={`🏡 ${garden?.nickname ?? "ニックネーム未設定"}さんのガーデン`} />
-      {garden ? (
-        <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-2 mb-3">
-          <GardenSvg width={garden.width} height={garden.height} objects={garden.objects} />
-        </div>
-      ) : (
-        <p className="text-sm text-[#78716c] bg-white rounded-2xl p-4 mb-3">まだガーデンがありません。</p>
-      )}
-      <Link href="/game/chizu-tane/garden" className="text-sm text-emerald-700 underline underline-offset-2">
-        ← 自分のガーデンへ
-      </Link>
+      <TaneHeading title={`🏡 ${garden.nickname ?? "ニックネーム未設定"}さんのガーデン`} />
+      <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-2 mb-3">
+        <GardenSvg width={garden.width} height={garden.height} objects={garden.objects} />
+      </div>
+      {back}
     </div>
   );
 }
 
-/** フォローしている人のガーデンへのリンクの一覧(自分のガーデンの画面の下に出す) */
+/** フォローしていて、自分に農園を見せてくれている人のガーデンへのリンクの一覧(自分のガーデンの画面の下に出す) */
 export function FollowingGardens() {
   const [users, setUsers] = useState<FollowUser[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchFollowList("following")
-      .then((list) => !cancelled && setUsers(list.filter((u) => u.nickname)))
+    Promise.all([fetchFollowList("following"), fetchTaneSharerIds()])
+      .then(([list, sharers]) => !cancelled && setUsers(list.filter((u) => u.nickname && sharers.has(u.userId))))
       .catch(() => !cancelled && setUsers([]));
     return () => {
       cancelled = true;
@@ -74,11 +78,11 @@ export function FollowingGardens() {
 
   return (
     <section className="mt-6">
-      <h2 className="text-xs font-bold text-[#a8937a] mb-2">フォロー中の人のガーデン</h2>
+      <h2 className="text-xs font-bold text-[#a8937a] mb-2">見せてもらえるガーデン</h2>
       {users === null && <Loading />}
       {users?.length === 0 && (
         <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">
-          フォローしている人がいません。プロフィールやランキングから、ほかの人をフォローできます。
+          まだありません。フォローしている人が、フォロワーの一覧であなたに「農園を見せる」にすると、その人のガーデンを見に行けます。
         </p>
       )}
       {users && users.length > 0 && (

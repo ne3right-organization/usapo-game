@@ -336,7 +336,8 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["read"])]),
 
     // うさぽ農園を見せるフォロワー(持ち主×見せる相手)。行があり、かつ相手が持ち主をフォローしている間だけ、
-    // 実の詳細の「生産者」にその持ち主のニックネームを出す(はじめは誰にも見せない)。
+    // その持ち主のガーデンを見られ、実の詳細の「生産者」にニックネームが出る(はじめは誰にも見せない)。
+    // 見せる相手の側から「誰が見せてくれているか」を引けるよう、viewerId でも引ける
     // 持ち主が画面から作る・消す。見せる相手も読める(自分に見せてくれているか)。update は許さない(持ち主を書き換えられないように)
     GameTaneShare: a
       .model({
@@ -344,6 +345,7 @@ const schema = a
         viewerId: a.id().required(),
       })
       .identifier(["ownerId", "viewerId"])
+      .secondaryIndexes((index) => [index("viewerId").queryField("listTaneSharesByViewer")])
       .authorization((allow) => [
         allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["create", "read", "delete"]),
         allow.ownerDefinedIn("viewerId").identityClaim("sub").to(["read"]),
@@ -405,7 +407,7 @@ const schema = a
 
     // 箱庭(画面では「ガーデン」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
     // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む。
-    // フォローしている人のガーデンを見に行けるよう、ログインしていれば誰でも読める(飾っているものと置き場所だけで、畑の場所は入っていない)
+    // 本人しか読めない。ほかの人のガーデンは、持ち主が「農園を見せる」にしている相手にだけ Lambda が返す(viewTaneGarden)
     GameTaneGarden: a
       .model({
         userId: a.id().required(),
@@ -414,7 +416,7 @@ const schema = a
         objects: a.json().required(),
       })
       .identifier(["userId"])
-      .authorization((allow) => [allow.authenticated().to(["read"])]),
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
       // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / already(今日はもう来た)
@@ -439,6 +441,14 @@ const schema = a
     TaneCourseCount: a.customType({
       course: a.string().required(),
       players: a.integer().required(),
+    }),
+
+    // ほかの人のガーデン(見るだけ)。nickname は持ち主のニックネーム
+    TaneGardenView: a.customType({
+      nickname: a.string(),
+      width: a.integer().required(),
+      height: a.integer().required(),
+      objects: a.json().required(), // GardenObject[]
     }),
 
     TaneGardenState: a.customType({
@@ -554,6 +564,14 @@ const schema = a
       .returns(a.integer())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneSeeds)),
+
+    // ほかの人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ返す
+    viewTaneGarden: a
+      .query()
+      .arguments({ ownerId: a.id().required() })
+      .returns(a.ref("TaneGardenView"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
 
     openTaneGarden: a
       .mutation()

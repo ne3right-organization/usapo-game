@@ -408,13 +408,28 @@ export async function openGarden(): Promise<GardenState> {
   return toGardenState(unwrap(await data.mutations.openTaneGarden()));
 }
 
-/** ほかの人(フォローしている人)のガーデン。見るだけ。ガーデンを作っていなければ null */
-export async function fetchGardenOf(userId: string): Promise<{ nickname: string | null; width: number; height: number; objects: GardenObject[] } | null> {
+/**
+ * ほかの人のガーデン(見るだけ)。持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ見られる
+ * (確かめるのは Lambda。見られなければエラー)
+ */
+export async function fetchGardenOf(userId: string): Promise<{ nickname: string | null; width: number; height: number; objects: GardenObject[] }> {
   await requireUserId();
-  const [garden, profile] = await Promise.all([data.models.GameTaneGarden.get({ userId }), data.models.GameProfile.get({ userId })]);
-  const g = unwrap(garden);
-  if (!g) return null;
-  return { nickname: unwrap(profile)?.nickname ?? null, width: g.width, height: g.height, objects: parseJson<GardenObject[]>(g.objects) };
+  const g = unwrap(await data.queries.viewTaneGarden({ ownerId: userId }));
+  if (!g) throw new Error("この人のガーデンは見られません");
+  return { nickname: g.nickname ?? null, width: g.width, height: g.height, objects: parseJson<GardenObject[]>(g.objects) };
+}
+
+/** 自分に農園を見せてくれている人の ID(見せてくれている側が作った行を、見せてもらっている側から引く) */
+export async function fetchTaneSharerIds(): Promise<Set<string>> {
+  const viewerId = await requireUserId();
+  const ids = new Set<string>();
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneShare.listTaneSharesByViewer({ viewerId }, { nextToken });
+    for (const s of unwrap(page)) ids.add(s.ownerId);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return ids;
 }
 
 export async function saveGarden(objects: GardenObject[]): Promise<GardenState> {
