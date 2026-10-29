@@ -45,7 +45,6 @@ export default function TaneHome() {
         <div className="text-5xl mb-3">🌱</div>
         <h1 className="text-2xl font-bold text-[#3c2a14] tracking-wide">
           うさぽ農園
-          <span className="ml-2 text-[10px] font-bold text-emerald-600 align-middle">プロトタイプ</span>
         </h1>
         <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
           街のいろいろな地区にまかれたタネを訪ねて、

@@ -52,7 +52,6 @@ export default function MapPackPage() {
           <div className="text-5xl mb-3">📦</div>
           <h1 className="text-2xl font-bold text-[#3c2a14] tracking-wide">
             地図ポットン
-            <span className="ml-2 text-[10px] font-bold text-purple-600 align-middle">プロトタイプ</span>
           </h1>
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
             ピースを箱に落として、隣り合う地域同士を<br />くっつけて地図を完成させよう

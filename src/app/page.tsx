@@ -63,7 +63,6 @@ export default function Home() {
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-[#3c2a14] text-sm block mb-1">
                   地図ポットン
-                  <span className="ml-2 text-[10px] font-bold text-purple-600 align-middle">プロトタイプ</span>
                 </span>
                 <p className="text-sm text-[#78716c] leading-snug">
                   都道府県・市区町村・町丁のピースを箱に落として、隣り合う地域同士をくっつけて地図を完成させるパズル
@@ -84,7 +83,6 @@ export default function Home() {
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-[#3c2a14] text-sm block mb-1">
                   うさぽ農園
-                  <span className="ml-2 text-[10px] font-bold text-emerald-600 align-middle">プロトタイプ</span>
                 </span>
                 <p className="text-sm text-[#78716c] leading-snug">
                   街の地区にタネをまき、ほかの人のタネを現地で訪ねて分けてもらい、育てて収穫する位置情報ゲーム（ログインが必要）
