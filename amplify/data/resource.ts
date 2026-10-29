@@ -413,7 +413,9 @@ const schema = a
         userId: a.id().required(),
         width: a.integer().required(),
         height: a.integer().required(),
-        objects: a.json().required(),
+        objects: a.json().required(), // おうちの庭(はじめからあるガーデン)
+        // まいたタネの数で増えるほかのガーデンの配置({ flower: GardenObject[], ... }。src/lib/game/chizuTane/garden.ts の GardenLayouts)
+        layouts: a.json(),
       })
       .identifier(["userId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
@@ -448,14 +450,20 @@ const schema = a
       nickname: a.string(),
       width: a.integer().required(),
       height: a.integer().required(),
-      objects: a.json().required(), // GardenObject[]
+      objects: a.json().required(), // おうちの庭の GardenObject[]
+      layouts: a.json().required(), // ほかのガーデン(GardenLayouts)
+      level: a.integer().required(), // 持ち主のレベル(家と柵の見た目)
+      plantedCount: a.integer().required(), // 持ち主がまいたタネの数(使えるガーデン)
     }),
 
     TaneGardenState: a.customType({
       width: a.integer().required(),
       height: a.integer().required(),
-      objects: a.json().required(), // GardenObject[]
+      objects: a.json().required(), // おうちの庭の GardenObject[]
+      layouts: a.json().required(), // ほかのガーデン(GardenLayouts)
       items: a.json().required(), // { itemId, quantity }[]
+      level: a.integer().required(), // レベル(家と柵の見た目)
+      plantedCount: a.integer().required(), // まいたタネの数(使えるガーデン)
     }),
 
     MapPackSubmitResult: a.customType({
@@ -579,10 +587,11 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlayer)),
 
-    // 配置を丸ごと保存する(所持数・範囲・1マス1個を Lambda で確かめる)
+    // 1つのガーデンの配置を丸ごと保存する(所持数はすべてのガーデンを合わせて・範囲・1マス1個・使えるガーデンかを Lambda で確かめる)。
+    // gardenId は garden.ts の GardenDesignId(省略するとおうちの庭)
     saveTaneGarden: a
       .mutation()
-      .arguments({ objects: a.json().required() })
+      .arguments({ objects: a.json().required(), gardenId: a.string() })
       .returns(a.ref("TaneGardenState"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlayer)),

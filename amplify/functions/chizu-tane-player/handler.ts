@@ -1,17 +1,27 @@
 import type { AppSyncIdentityCognito, AppSyncResolverHandler } from "aws-lambda";
 import { env } from "$amplify/env/chizu-tane-player";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { isTaneCourse, seedsForLevel } from "../../../src/lib/game/chizuTane/courses";
-import { addSeeds } from "../shared/chizuTane";
-import { GARDEN_HEIGHT, GARDEN_WIDTH, validateGardenObjects, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
+import { isTaneCourse, levelFor, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import { addSeeds, countPlanted, countVisitedBases, plantedItemIds } from "../shared/chizuTane";
+import {
+  GARDEN_HEIGHT,
+  GARDEN_WIDTH,
+  countPlaced,
+  isGardenDesignId,
+  unlockedGardenDesigns,
+  validateGardenObjects,
+  type GardenDesignId,
+  type GardenLayouts,
+  type GardenObject,
+} from "../../../src/lib/game/chizuTane/garden";
 
-type Args = { course?: string; objects?: unknown; ownerId?: string };
+type Args = { course?: string; objects?: unknown; ownerId?: string; gardenId?: string | null };
 
 /**
  * 地図タネの、始める(startTane)・箱庭を開く(openTaneGarden)・箱庭を保存する(saveTaneGarden)。
  * ほかの人のガーデンを見る(viewTaneGarden)も受ける。
  * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(course があれば始める、ownerId があればほかの人のガーデンを見る、
- * objects があれば保存、どれも無ければ開く)
+ * objects があれば保存(gardenId のガーデン)、どれも無ければ開く)
  */
 export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
@@ -25,22 +35,42 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   if (!player) throw new Error("先にコースを選んでください");
   const garden = unwrap(await c.models.GameTaneGarden.get({ userId }));
   if (!garden) throw new Error("ガーデンが見つかりません");
-  const owned = await listOwned(c, userId);
+  const [owned, progress] = await Promise.all([listOwned(c, userId), gardenProgress(c, userId, player.course)]);
 
-  let placed: GardenObject[];
-  if (objects === undefined || objects === null) {
-    placed = parseJson<GardenObject[]>(garden.objects);
-  } else {
-    placed = validateGardenObjects(parseJson(objects), owned);
-    unwrap(await c.models.GameTaneGarden.update({ userId, objects: JSON.stringify(placed) }));
+  let home = parseJson<GardenObject[]>(garden.objects);
+  const layouts = parseJson<GardenLayouts | null>(garden.layouts) ?? {};
+  if (objects !== undefined && objects !== null) {
+    // 1つのガーデンを保存する。所持数は、ほかのガーデンに置いている分も合わせて数える
+    const requested = event.arguments.gardenId ?? "home";
+    if (!isGardenDesignId(requested)) throw new Error("ガーデンの指定が正しくありません");
+    const gardenId: GardenDesignId = requested;
+    if (!unlockedGardenDesigns(progress.plantedCount).some((d) => d.id === gardenId)) throw new Error("このガーデンはまだ使えません");
+    const elsewhere = countPlaced([...(gardenId === "home" ? [] : home), ...Object.entries(layouts).flatMap(([id, objs]) => (id === gardenId ? [] : (objs ?? [])))]);
+    const placed = validateGardenObjects(parseJson(objects), owned, elsewhere);
+    if (gardenId === "home") {
+      home = placed;
+      unwrap(await c.models.GameTaneGarden.update({ userId, objects: JSON.stringify(placed) }));
+    } else {
+      layouts[gardenId] = placed;
+      unwrap(await c.models.GameTaneGarden.update({ userId, layouts: JSON.stringify(layouts) }));
+    }
   }
   return {
     width: garden.width,
     height: garden.height,
-    objects: JSON.stringify(placed),
+    objects: JSON.stringify(home),
+    layouts: JSON.stringify(layouts),
     items: JSON.stringify([...owned].map(([itemId, quantity]) => ({ itemId, quantity }))),
+    level: progress.level,
+    plantedCount: progress.plantedCount,
   };
 };
+
+/** レベル(家と柵の見た目)と、まいたタネの数(使えるガーデン) */
+async function gardenProgress(c: DataClient, userId: string, course: string): Promise<{ level: number; plantedCount: number }> {
+  const [visited, planted, plantedCount] = await Promise.all([countVisitedBases(c, userId), plantedItemIds(c, userId), countPlanted(c, userId)]);
+  return { level: levelFor(course as TaneCourse, visited, planted), plantedCount };
+}
 
 /** コースを決めて、最初のタネ(自分のコースの Lv.1 の種類のもの3つを1個ずつ)を渡し、空の箱庭を作る。もう始めていればそのまま返す */
 async function start(c: DataClient, userId: string, course: string) {
@@ -88,13 +118,22 @@ async function viewGarden(c: DataClient, viewerId: string, ownerId: string) {
     c.models.GameFollow.get({ followerId: viewerId, followeeId: ownerId }),
   ]);
   if (!unwrap(share) || !unwrap(follow)) throw new Error("この人のガーデンは見られません");
-  const [garden, profile] = await Promise.all([c.models.GameTaneGarden.get({ userId: ownerId }), c.models.GameProfile.get({ userId: ownerId })]);
+  const [garden, profile, player] = await Promise.all([
+    c.models.GameTaneGarden.get({ userId: ownerId }),
+    c.models.GameProfile.get({ userId: ownerId }),
+    c.models.GameTanePlayer.get({ userId: ownerId }),
+  ]);
   const g = unwrap(garden);
-  if (!g) throw new Error("この人はまだガーデンを作っていません");
+  const p = unwrap(player);
+  if (!g || !p) throw new Error("この人はまだガーデンを作っていません");
+  const progress = await gardenProgress(c, ownerId, p.course);
   return {
     nickname: unwrap(profile)?.nickname ?? null,
     width: g.width,
     height: g.height,
     objects: JSON.stringify(parseJson<GardenObject[]>(g.objects)),
+    layouts: JSON.stringify(parseJson<GardenLayouts | null>(g.layouts) ?? {}),
+    level: progress.level,
+    plantedCount: progress.plantedCount,
   };
 }

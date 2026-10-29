@@ -26,6 +26,7 @@ import {
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
+import { houseTierFor } from "@/lib/game/chizuTane/garden";
 import SwipePages from "./SwipePages";
 import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
@@ -197,7 +198,7 @@ function Home({ course }: { course: TaneCourse }) {
 
       <Link href="/game/chizu-tane/garden" className="block bg-[#eaf6ea] rounded-2xl p-2 mb-1 active:scale-[0.99] transition-transform">
         {garden ? (
-          <GardenSvg width={garden.width} height={garden.height} objects={garden.objects} />
+          <GardenSvg width={garden.width} height={garden.height} objects={garden.objects} houseTier={houseTierFor(garden.level).id} />
         ) : (
           <div className="aspect-[2/1] flex items-center justify-center text-sm text-[#a8937a]">ガーデンを読み込み中...</div>
         )}

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
-import { fetchGardenOf, fetchTaneSharerIds } from "@/lib/game/chizuTaneData";
-import type { GardenObject } from "@/lib/game/chizuTane/garden";
+import { fetchGardenOf, fetchTaneSharerIds, gardenObjectsOf, type FriendGarden as FriendGardenData } from "@/lib/game/chizuTaneData";
+import { GARDEN_DESIGNS, houseTierFor, type GardenDesignId } from "@/lib/game/chizuTane/garden";
 import GardenSvg from "./GardenSvg";
 import { ErrorText, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
@@ -23,7 +23,8 @@ export default function FriendGardenView({ userId }: { userId: string }) {
 }
 
 function FriendGarden({ userId }: { userId: string }) {
-  const [garden, setGarden] = useState<{ nickname: string | null; width: number; height: number; objects: GardenObject[] } | undefined>(undefined);
+  const [garden, setGarden] = useState<FriendGardenData | undefined>(undefined);
+  const [designId, setDesignId] = useState<GardenDesignId>("home");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -50,12 +51,38 @@ function FriendGarden({ userId }: { userId: string }) {
     );
   }
   if (garden === undefined) return <Loading />;
+  // 持ち主が使えるガーデン(まいたタネの数で増える)
+  const opened = GARDEN_DESIGNS.filter((d) => garden.plantedCount >= d.unlockPlanted);
 
   return (
     <div>
-      <TaneHeading title={`🏡 ${garden.nickname ?? "ニックネーム未設定"}さんのガーデン`} />
+      <TaneHeading title={`🏡 ${garden.nickname ?? "ニックネーム未設定"}さんのガーデン`}>
+        家と柵: {houseTierFor(garden.level).name}（Lv.{garden.level}）
+      </TaneHeading>
+      {opened.length > 1 && (
+        <div className="flex gap-1.5 mb-2 overflow-x-auto">
+          {opened.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setDesignId(d.id)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold border ${
+                d.id === designId ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-[#78716c] border-[#e7dccb]"
+              }`}
+            >
+              {d.emoji} {d.name}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-2 mb-3">
-        <GardenSvg width={garden.width} height={garden.height} objects={garden.objects} />
+        <GardenSvg
+          width={garden.width}
+          height={garden.height}
+          design={designId}
+          houseTier={houseTierFor(garden.level).id}
+          objects={gardenObjectsOf(garden, designId)}
+        />
       </div>
       {back}
     </div>

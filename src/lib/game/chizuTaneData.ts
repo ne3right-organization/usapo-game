@@ -3,7 +3,7 @@
 import { currentUser } from "@/lib/auth";
 import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
-import type { GardenObject } from "@/lib/game/chizuTane/garden";
+import type { GardenDesignId, GardenLayouts, GardenObject } from "@/lib/game/chizuTane/garden";
 import {
   DAY_MS_DEV,
   DAY_MS_PRODUCTION,
@@ -389,8 +389,20 @@ export async function pickUpSeeds(loc: Location, district: TownDistrict, count: 
 export interface GardenState {
   width: number;
   height: number;
+  /** おうちの庭 */
   objects: GardenObject[];
+  /** まいたタネの数で増えるほかのガーデン */
+  layouts: GardenLayouts;
   items: { itemId: string; quantity: number }[];
+  /** レベル(家と柵の見た目) */
+  level: number;
+  /** まいたタネの数(使えるガーデン) */
+  plantedCount: number;
+}
+
+/** そのガーデンの配置 */
+export function gardenObjectsOf(state: Pick<GardenState, "objects" | "layouts">, id: GardenDesignId): GardenObject[] {
+  return id === "home" ? state.objects : (state.layouts[id] ?? []);
 }
 
 function toGardenState(res: Schema["TaneGardenState"]["type"] | null | undefined): GardenState {
@@ -399,7 +411,10 @@ function toGardenState(res: Schema["TaneGardenState"]["type"] | null | undefined
     width: res.width,
     height: res.height,
     objects: parseJson<GardenObject[]>(res.objects),
+    layouts: parseJson<GardenLayouts | null>(res.layouts) ?? {},
     items: parseJson<{ itemId: string; quantity: number }[]>(res.items),
+    level: res.level,
+    plantedCount: res.plantedCount,
   };
 }
 
@@ -412,11 +427,29 @@ export async function openGarden(): Promise<GardenState> {
  * ほかの人のガーデン(見るだけ)。持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ見られる
  * (確かめるのは Lambda。見られなければエラー)
  */
-export async function fetchGardenOf(userId: string): Promise<{ nickname: string | null; width: number; height: number; objects: GardenObject[] }> {
+export interface FriendGarden {
+  nickname: string | null;
+  width: number;
+  height: number;
+  objects: GardenObject[];
+  layouts: GardenLayouts;
+  level: number;
+  plantedCount: number;
+}
+
+export async function fetchGardenOf(userId: string): Promise<FriendGarden> {
   await requireUserId();
   const g = unwrap(await data.queries.viewTaneGarden({ ownerId: userId }));
   if (!g) throw new Error("この人のガーデンは見られません");
-  return { nickname: g.nickname ?? null, width: g.width, height: g.height, objects: parseJson<GardenObject[]>(g.objects) };
+  return {
+    nickname: g.nickname ?? null,
+    width: g.width,
+    height: g.height,
+    objects: parseJson<GardenObject[]>(g.objects),
+    layouts: parseJson<GardenLayouts | null>(g.layouts) ?? {},
+    level: g.level,
+    plantedCount: g.plantedCount,
+  };
 }
 
 /** 自分に農園を見せてくれている人の ID(見せてくれている側が作った行を、見せてもらっている側から引く) */
@@ -432,9 +465,10 @@ export async function fetchTaneSharerIds(): Promise<Set<string>> {
   return ids;
 }
 
-export async function saveGarden(objects: GardenObject[]): Promise<GardenState> {
+/** 1つのガーデンの配置を保存する(gardenId を省略するとおうちの庭) */
+export async function saveGarden(objects: GardenObject[], gardenId: GardenDesignId = "home"): Promise<GardenState> {
   await requireUserId();
-  return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects) })));
+  return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects), gardenId })));
 }
 
 /** チェックイン・遠くからの水やりの区切りの長さ。dev(devgame.usapo.net・手元)は5分、本番は朝・昼・夜(Lambda 側も同じ値にしている) */

@@ -137,6 +137,18 @@ export async function plantedItemIds(c: DataClient, userId: string): Promise<Set
   return ids;
 }
 
+/** まいたタネの数(使えるガーデンの数に使う) */
+export async function countPlanted(c: DataClient, userId: string): Promise<number> {
+  let count = 0;
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneOwnership.list({ ownerId: userId, nextToken });
+    count += unwrap(page).length;
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return count;
+}
+
 /** 拠点の持ち主の ID(拠点の行には持ち主を持たないので、GameTaneOwnership から引く) */
 export async function baseOwnerId(c: DataClient, areaKey: string): Promise<string> {
   const rows = unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey }));

@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
-import { countPlaced, type GardenObject } from "@/lib/game/chizuTane/garden";
-import { openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
+import { GARDEN_DESIGNS, countPlaced, houseTierFor, type GardenDesignId, type GardenObject } from "@/lib/game/chizuTane/garden";
+import { gardenObjectsOf, openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
 import { FollowingGardens } from "./FriendGardenView";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // ガーデン(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う。
+// ガーデンは、まいたタネの数で別のデザインのものが増える(上のタブで切り替える)。家と柵はレベルで立派になる。
+// 所持数は、すべてのガーデンに置いている分を合わせて数える。
 // 下に、フォローしている人のガーデンへのリンクを並べる(見るだけ。FriendGardenView)
 
 export default function TaneGardenView() {
@@ -36,6 +38,7 @@ function newObjectId(): string {
 
 function Garden() {
   const [garden, setGarden] = useState<GardenState | null>(null);
+  const [designId, setDesignId] = useState<GardenDesignId>("home");
   const [objects, setObjects] = useState<GardenObject[]>([]);
   const [dirty, setDirty] = useState(false);
   const [paletteItemId, setPaletteItemId] = useState<string | null>(null);
@@ -72,7 +75,12 @@ function Garden() {
     };
   }, [dirty]);
 
-  const placedCounts = useMemo(() => countPlaced(objects), [objects]);
+  // 所持数から引く数は、いま編集しているガーデン(objects)と、ほかのガーデンに置いている分を合わせたもの
+  const placedCounts = useMemo(() => {
+    if (!garden) return countPlaced(objects);
+    const others = GARDEN_DESIGNS.filter((d) => d.id !== designId).flatMap((d) => gardenObjectsOf(garden, d.id));
+    return countPlaced([...objects, ...others]);
+  }, [objects, garden, designId]);
   const objectAt = useMemo(() => new Map(objects.map((o) => [`${o.x},${o.y}`, o])), [objects]);
 
   if (error && !garden) return <ErrorText message={error} />;
@@ -110,14 +118,25 @@ function Garden() {
     setSelectedObjectId(null);
   };
 
+  const switchDesign = (id: GardenDesignId) => {
+    if (id === designId || !garden) return;
+    if (dirty && !window.confirm("保存していない変更があります。保存せずにほかのガーデンに移りますか？")) return;
+    setDesignId(id);
+    setObjects(gardenObjectsOf(garden, id));
+    setDirty(false);
+    setPaletteItemId(null);
+    setSelectedObjectId(null);
+    setSavedMessage("");
+  };
+
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
     setError("");
     try {
-      const saved = await saveGarden(objects);
+      const saved = await saveGarden(objects, designId);
       setGarden(saved);
-      setObjects(saved.objects);
+      setObjects(gardenObjectsOf(saved, designId));
       setDirty(false);
       setSavedMessage("保存しました");
     } catch (err) {
@@ -129,12 +148,43 @@ function Garden() {
 
   const placing = paletteItemId !== null || selectedObjectId !== null;
 
+  const tier = houseTierFor(garden.level);
+
   return (
     <div>
+      {/* ガーデンのタブ(まいたタネの数で増える) */}
+      <div className="flex gap-1.5 mb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {GARDEN_DESIGNS.map((d) => {
+          const locked = garden.plantedCount < d.unlockPlanted;
+          const active = d.id === designId;
+          const tabClass = active
+            ? "bg-emerald-600 text-white border-emerald-600"
+            : locked
+              ? "bg-[#f5f0e8] text-[#c8b8a0] border-transparent"
+              : "bg-white text-[#78716c] border-[#e7dccb]";
+          return (
+            <button
+              key={d.id}
+              type="button"
+              disabled={locked}
+              onClick={() => switchDesign(d.id)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold border ${tabClass}`}
+            >
+              {locked ? "🔒" : d.emoji} {d.name}
+              {locked && <span className="ml-1 font-normal">あと{d.unlockPlanted - garden.plantedCount}個</span>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-[#a8937a] mb-2">
+        家と柵: {tier.name}（Lv.{garden.level}）。タネをまくとガーデンが増え（いま{garden.plantedCount}個まいています）、レベルが上がると家と柵が立派になります
+      </p>
       <div className="bg-[#eaf6ea] rounded-2xl p-2 mb-3">
         <GardenSvg
           width={garden.width}
           height={garden.height}
+          design={designId}
+          houseTier={tier.id}
           objects={objects}
           onTileClick={handleTile}
           selectedObjectId={selectedObjectId}
