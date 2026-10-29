@@ -23,7 +23,7 @@ export default function Home() {
               📜 遊んだ履歴
             </Link>
             <Link href="/profile" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
-              🏅 コンプリート状況
+              👤 プロフィール
             </Link>
           </div>
         </div>

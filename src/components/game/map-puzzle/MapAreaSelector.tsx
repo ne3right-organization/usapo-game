@@ -19,8 +19,8 @@ export interface AreaInfo {
 
 export interface MapAreaSelectorProps {
   difficulty: MapAreaSelectorDifficulty;
-  title: string;
-  onBack: () => void;
+  /** 見出しに出す説明(「都道府県を選んで、市区町村をくっつけよう」など) */
+  description: string;
   onConfirm: (geojsonUrl: string, areaLabel: string, area: AreaInfo) => void;
 }
 
@@ -96,6 +96,8 @@ function ChoroplethMap({ geojsonUrl, getFeatureInfo, onSelect }: ChoroplethMapPr
           fillOpacity: 0.75,
         };
         const layer = Lmod.geoJSON(feature as Parameters<typeof L.geoJSON>[0], { style: normalStyle }).addTo(map);
+        // どこがどこか分かるよう、地域の名前を地図の上に出しておく(タップの邪魔にならないよう、名前はクリックを受けない)
+        layer.bindTooltip(info.name, { permanent: true, direction: "center", className: "area-name-label", interactive: false });
 
         const b = layer.getBounds();
         if (b.isValid()) {
@@ -144,7 +146,7 @@ function ChoroplethMap({ geojsonUrl, getFeatureInfo, onSelect }: ChoroplethMapPr
 
 // ─── メインコンポーネント ───────────────────────────────────────────────────────
 
-export default function MapAreaSelector({ difficulty, title, onBack, onConfirm }: MapAreaSelectorProps) {
+export default function MapAreaSelector({ difficulty, description, onConfirm }: MapAreaSelectorProps) {
   const theme = THEME[difficulty];
 
   const [step, setStep] = useState<"prefecture" | "city">("prefecture");
@@ -192,34 +194,27 @@ export default function MapAreaSelector({ difficulty, title, onBack, onConfirm }
     });
   };
 
-  const handleHeaderBack = () => {
-    if (step === "city") {
-      setStep("prefecture");
-      setSelectedCity(null);
-    } else {
-      onBack();
-    }
+  // 市区町村を選ぶ段階から、都道府県を選ぶ段階に戻る(ゲームのトップへはサイトのヘッダー・下のタブから戻る)
+  const backToPrefecture = () => {
+    setStep("prefecture");
+    setSelectedCity(null);
   };
 
   const showingCityStep = difficulty === "advanced" && step === "city" && selectedPref;
 
   return (
-    <div className="fixed inset-0 z-[1100] flex flex-col bg-[#fdf8f0]">
-      {/* ヘッダー */}
-      <div className={`flex items-center gap-2 px-4 h-[52px] shrink-0 shadow-md ${theme.header}`}>
-        <button
-          type="button"
-          onClick={handleHeaderBack}
-          className="text-white opacity-90 shrink-0 text-lg leading-none"
-          title="戻る"
-        >
-          ←
-        </button>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${theme.badge}`}>
-          {difficulty === "intermediate" ? "中級" : "上級"}
-        </span>
+    // 画面全体は覆わず、サイトのヘッダー(h-10)と地図ゲームの下のタブ(4rem)の間に収める(エリアを選ぶ間もヘッダー・タブを使えるように)。
+    // 地図(Leaflet)は高さが決まっていないと潰れるので、画面の高さから引いて決める
+    <div className="h-[calc(100dvh-2.5rem-4rem-env(safe-area-inset-bottom))] min-h-[24rem] flex flex-col bg-[#fdf8f0]">
+      {/* 見出し: 何をする画面かの説明だけ。市区町村を選ぶ段階では、都道府県を選び直す「←」と都道府県名を出す */}
+      <div className={`flex items-center gap-2 px-4 h-[44px] shrink-0 shadow-md ${theme.header}`}>
+        {showingCityStep && (
+          <button type="button" onClick={backToPrefecture} className="text-white opacity-90 shrink-0 text-lg leading-none" title="都道府県を選び直す">
+            ←
+          </button>
+        )}
         <span className="text-sm font-semibold text-white truncate">
-          {showingCityStep ? `${selectedPref!.name}の市区町村を選ぶ` : title}
+          {showingCityStep ? `${selectedPref!.name}の市区町村を選んでね` : description}
         </span>
       </div>
 

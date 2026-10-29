@@ -6,6 +6,7 @@ import Link from "next/link";
 import { notFound, useRouter, useSearchParams } from "next/navigation";
 import type { Difficulty } from "@/lib/game/mapPuzzleData";
 import type { AreaInfo } from "@/components/game/map-puzzle/MapAreaSelector";
+import MapGameTabs from "@/components/game/MapGameTabs";
 import { areaFromQuery } from "@/lib/game/playLinks";
 import {
   MAP_PACK_BEGINNER_AREA,
@@ -189,14 +190,16 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
 
   if (!config) {
     return (
-      <MapAreaSelector
-        difficulty={difficulty as "intermediate" | "advanced"}
-        title={meta.title}
-        onBack={() => router.push("/game/map-pack")}
-        onConfirm={(url, _label, area: AreaInfo) =>
-          setConfig({ geojsonUrl: url, areaLabel: area.cityName ?? area.prefName, area: { ...area, difficulty } })
-        }
-      />
+      <>
+        <MapAreaSelector
+          difficulty={difficulty as "intermediate" | "advanced"}
+          description={difficulty === "intermediate" ? "都道府県を選んで、市区町村をくっつけよう" : "市区町村を選んで、町丁をくっつけよう"}
+          onConfirm={(url, _label, area: AreaInfo) =>
+            setConfig({ geojsonUrl: url, areaLabel: area.cityName ?? area.prefName, area: { ...area, difficulty } })
+          }
+        />
+        <MapGameTabs onPlayPath />
+      </>
     );
   }
 

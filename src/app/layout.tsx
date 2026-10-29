@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, M_PLUS_Rounded_1c } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
 import ReturnPathTracker from "@/components/ReturnPathTracker";
@@ -8,6 +8,15 @@ import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+});
+
+// エリア選択の地図に出す地域の名前(globals.css の .area-name-label)だけに使う丸ゴシック。
+// 日本語の文字は、使った文字の範囲の分だけ読み込まれる(preload するのは latin だけ)
+const rounded = M_PLUS_Rounded_1c({
+  variable: "--font-rounded",
+  subsets: ["latin"],
+  weight: ["800"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -39,7 +48,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${rounded.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <SiteHeader />

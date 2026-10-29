@@ -18,6 +18,7 @@ import {
 import { areaLabelOf } from "@/lib/game/format";
 import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/profile/CompletionMap";
 import { FollowButton, FollowSummary } from "@/components/profile/FollowControls";
+import MapPuzzleScores from "@/components/profile/MapPuzzleScores";
 import { currentUser } from "@/lib/auth";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
@@ -216,6 +217,8 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
           isSelf={view.isSelf}
         />
       )}
+      {/* 地図パズルは点数があるので、合計スコアとベストスコアの一覧も出す(もとは地図パズルのマイプロフィール) */}
+      {game === "map-puzzle" && <MapPuzzleScores userId={view.userId} />}
     </div>
   );
 }

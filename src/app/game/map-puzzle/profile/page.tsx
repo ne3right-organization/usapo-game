@@ -1,20 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import Link from "next/link";
-import GameProfileView from "@/components/game/map-puzzle/GameProfileView";
-
-export default function ProfilePage() {
-  return (
-    <main className="min-h-full bg-[#fdf8f0]">
-      <div className="max-w-lg mx-auto px-4 pt-6 pb-16">
-        <div className="flex items-center gap-2 mb-6">
-          <Link href="/game/map-puzzle" className="text-[#78716c] text-lg leading-none">
-            ←
-          </Link>
-          <h1 className="text-lg font-bold text-[#3c2a14]">マイプロフィール</h1>
-        </div>
-        <GameProfileView />
-      </div>
-    </main>
-  );
+// 地図パズルのマイプロフィールは、全ゲーム共通のプロフィール(/profile)にまとめた(古いURLからの転送)
+export default function MapPuzzleProfileRedirect() {
+  redirect("/profile?game=map-puzzle");
 }

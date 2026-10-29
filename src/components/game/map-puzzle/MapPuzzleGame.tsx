@@ -942,22 +942,10 @@ export default function MapPuzzleGame({
             padding: 0,
             cursor: "pointer",
           }}
-          title="ゲームトップに戻る"
+          title="地図パズルのトップに戻る"
         >
-          ←
+          🏠
         </button>
-        <span
-          style={{
-            fontSize: "10px",
-            fontWeight: 700,
-            padding: "2px 6px",
-            borderRadius: "4px",
-            background: "rgba(255,255,255,0.25)",
-            flexShrink: 0,
-          }}
-        >
-          {diffLabel}
-        </span>
         <span
           style={{
             fontSize: "13px",
@@ -969,7 +957,8 @@ export default function MapPuzzleGame({
             whiteSpace: "nowrap",
           }}
         >
-          {areaLabel}
+          地図パズル
+          <span style={{ fontSize: "11px", fontWeight: 400, opacity: 0.85, marginLeft: "6px" }}>{areaLabel}</span>
         </span>
         <span
           style={{

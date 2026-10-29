@@ -116,11 +116,12 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 ## サイト共通の機能（2026-10-20〜）
 
 - **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）: 全ページ（トップも）に出す。左はサイトのトップへ、右はログイン・ログアウトとニックネーム（`src/components/AuthStatus.tsx`。ヘッダーはページを移っても作り直されないので、ページを移るたびにログインの状態を読み直す）
+- **地図ゲームの下のタブ**（`src/components/game/MapGameTabs.tsx`）: 地図パズルと地図ポットンを「地図ゲーム」としてまとめ、パズル・ポットン・ランキング・履歴・プロフィールを下のタブで切り替える（うさぽ農園のタブと同じ形）。各ゲームと `/history`・`/profile` の layout で出す。プレイ画面（`/game/{map-puzzle|map-pack}/{difficulty}`）では出さない。ランキング・履歴・プロフィールは、いま見ているゲームの画面を開く。エリア選択（`MapAreaSelector`）は画面全体を覆わず、ヘッダーとタブの間に出し、地図に地域の名前を出す
 - **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack`）
 - **ニックネーム設定**（`/nickname`）: 全ゲーム共通。Lambda `set-nickname` がベスト記録・合計のニックネームも書き直す
 - **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=`
 - **最近クリアされたエリア**（各ゲームのトップ）: `GameRecentClear`（地図パズル・地図ポットン共通、誰がクリアしたかは持たない、未ログインでも読める）。記録を送る Lambda が更新する
-- **コンプリート状況**（`/profile`・`/profile/[userId]`、`src/components/profile/`・`src/lib/game/completionData.ts`）: ゲーム×レベルごとにクリアしたエリアを地図で塗る。市区町村は**全国ぶんの geojson を一度に読まない**（全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県だけ読む）。地図ポットンは `firstClearedAt` で完成済みかを見る
+- **プロフィール**（`/profile`・`/profile/[userId]`、`src/components/profile/`・`src/lib/game/completionData.ts`）: ニックネーム・フォローと、ゲーム×レベルごとにクリアしたエリアを地図で塗るコンプリート状況。地図パズルを選ぶと合計スコアとベストスコアの一覧も出す（2026-10-29 に地図パズルのマイプロフィール `/game/map-puzzle/profile` をここにまとめた。古い URL は転送する）。市区町村は**全国ぶんの geojson を一度に読まない**（全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県だけ読む）。地図ポットンは `firstClearedAt` で完成済みかを見る
 - **フォロー**（`GameFollow`）: フォロー関係はフォローした本人とされた本人にしか見えない（2つの所有者ルール）。フォローは Lambda `set-following` が「お互いにニックネーム設定済み」を確認してから行う。クリア時の通知は見送った
 - **PWA**: `src/app/manifest.ts`・アイコン・`public/sw.js`。サービスワーカーは**オフライン時に `/offline` を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないように）。登録は本番ビルドのみ
 - **Xシェア**（`src/lib/game/share.ts`）

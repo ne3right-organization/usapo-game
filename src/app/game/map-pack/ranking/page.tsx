@@ -61,11 +61,16 @@ export default function MapPackRankingPage() {
   return (
     <main className="min-h-full bg-[#fdf8f0]">
       <div className="max-w-lg mx-auto px-4 pt-6 pb-16">
-        <div className="flex items-center gap-2 mb-6">
-          <Link href="/game/map-pack" className="text-[#78716c] text-lg leading-none">
-            ←
-          </Link>
-          <h1 className="text-lg font-bold text-[#3c2a14]">🏆 地図ポットン ランキング</h1>
+        <div className="flex items-center justify-between gap-2 mb-6">
+          <h1 className="text-lg font-bold text-[#3c2a14]">🏆 ランキング</h1>
+          <div className="flex rounded-full bg-white border border-[#efe6d8] p-0.5 text-xs font-semibold">
+            <Link href="/game/map-puzzle/ranking" className="rounded-full px-3 py-1 text-[#78716c]">
+              🗺️ パズル
+            </Link>
+            <Link href="/game/map-pack/ranking" className="rounded-full px-3 py-1 bg-teal-700 text-white" aria-current="page">
+              📦 ポットン
+            </Link>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-5">
