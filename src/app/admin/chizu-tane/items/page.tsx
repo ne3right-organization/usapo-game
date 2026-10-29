@@ -18,7 +18,8 @@ export default function ChizuTaneItemsPage() {
       </Link>
       <h1 className="text-xl font-bold mb-1 mt-2">うさぽ農園 アイテム一覧</h1>
       <p className="text-xs text-[#78716c] mb-1">
-        定義: <code>src/lib/game/chizuTane/courses.ts</code>。アイテム {TANE_ITEMS.length}件（絵あり {withImage}件、ほかは絵文字で仮置き）
+        定義: <code>src/lib/game/chizuTane/courses.ts</code>。アイテム {TANE_ITEMS.length}件（絵あり {withImage}件、ほかは絵文字で仮置き）。
+        絵は <code>public/chizu-tane/items/</code>（作り方は docs/地図タネ_絵の作り方.md）
       </p>
       <p className="text-xs text-[#78716c] mb-6">いまの試作で手に入るのは Lv.{PROTOTYPE_MAX_LEVEL} までの種類です（それより上は名前と絵文字を仮に決めただけで、まだ手に入りません）。アイテムが未定義の種類は「—」</p>
 
@@ -82,7 +83,16 @@ export default function ChizuTaneItemsPage() {
                       </td>
                       <td className="px-2 py-1.5 text-[11px]">
                         {item.imageUrl ? (
-                          <span className="text-emerald-700 break-all">{item.imageUrl}</span>
+                          // 元の大きさ(96px)で、ガーデンの芝に近い色の上に出す(白いふちや背景の消し残しが見分けられる)
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            width={96}
+                            height={96}
+                            className="rounded-md"
+                            style={{ background: "#a8d08d" }}
+                          />
                         ) : (
                           <span className="text-[#a8937a]">絵文字（仮）</span>
                         )}
