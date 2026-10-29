@@ -142,14 +142,20 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     return result;
   }
 
-  // 持ち主に知らせる(実ったときは「実った」だけ。1つのタネの通知は、新しいものが古いものを置き換える)
+  // 持ち主に知らせる(1つのタネの通知は、新しいものが古いものを置き換える)。
+  // 来た人の名前は、来た人が持ち主に「農園を見せる」にしているときだけ出す(いつどこにいたかは来た人の生活圏の情報なので。それ以外は「誰か」)
   const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`;
+  const visitorName = await visitorNameFor(c, userId, ownerId);
+  const who = visitorName ? `${visitorName}さん` : "誰か";
   const notice =
     result.status === "ripened"
-      ? { title: "タネが実りました", body: `${place}が実りました！ 生産者の取り分として実が1個届きました（のこり${result.fruits}個）` }
+      ? {
+          title: "タネが実りました",
+          body: `${visitorName ? `${who}が水をやって、` : ""}${place}が実りました！ 生産者の取り分として実が1個届きました（のこり${result.fruits}個）`,
+        }
       : result.status === "fruit"
-        ? { title: "実が収穫されました", body: `誰かが${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
-        : { title: "タネに誰かが来ました", body: `誰かが${place}に来て、水をやってくれました` };
+        ? { title: "実が収穫されました", body: `${who}が${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
+        : { title: `タネに${who}が来ました`, body: `${who}が${place}に来て、水をやってくれました` };
   await notifyUsers(c, [ownerId], { ...notice, url: "/game/chizu-tane", tag: `tane-${base.areaKey}` });
 
   // ほかの人のタネに初めて来たときだけ、拠点にタネが1個落ちる(直接はもらわない。要らなければ拾わずに置いていける)
@@ -178,6 +184,19 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   result.leveledUp = granted.gains.length > 0;
   result.seedsGained = JSON.stringify(seedsGained);
   return result;
+}
+
+/**
+ * 通知に出す来た人のニックネーム。来た人が持ち主に「農園を見せる」にしていて(GameTaneShare)、持ち主が来た人をフォローしているときだけ。
+ * それ以外は null(通知では「誰か」にする)
+ */
+async function visitorNameFor(c: DataClient, visitorId: string, ownerId: string): Promise<string | null> {
+  const [share, follow] = await Promise.all([
+    c.models.GameTaneShare.get({ ownerId: visitorId, viewerId: ownerId }),
+    c.models.GameFollow.get({ followerId: ownerId, followeeId: visitorId }),
+  ]);
+  if (!unwrap(share) || !unwrap(follow)) return null;
+  return unwrap(await c.models.GameProfile.get({ userId: visitorId }))?.nickname || null;
 }
 
 /**
