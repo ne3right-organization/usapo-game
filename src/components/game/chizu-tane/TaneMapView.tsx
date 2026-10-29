@@ -11,12 +11,12 @@ import { OTHER_COLOR, OWN_COLOR, taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
 
-// タネ地図: 全国のタネを、地区の代表点に点で出す(まいた人の実際の位置ではない)。持ち主の名前は出さない
+// 全国農地(旧称: タネ地図): 全国のタネを、地区の代表点に点で出す(まいた人の実際の位置ではない)。持ち主の名前は出さない
 export default function TaneMapView() {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
-      <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🗾 タネ地図</h1>
+      <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🗾 全国農地</h1>
       <p className="text-xs text-[#a8937a] mb-4">全国のどこにタネがあるか見られます。点は地区の真ん中あたりに出しています</p>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}

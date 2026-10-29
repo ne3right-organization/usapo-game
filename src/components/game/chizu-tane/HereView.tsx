@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
+import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID, fruitName } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
 import { FRUITS_WHEN_RIPE, waterUntilRipe } from "@/lib/game/chizuTane/growth";
 import {
@@ -124,7 +124,7 @@ function Here({ userId }: { userId: string }) {
     }
   };
 
-  // 開発用: タネ地図の「ここへ行く」から ?lat=&lng= で来たら、その点にいることにする
+  // 開発用: 全国農地の「ここへ行く」から ?lat=&lng= で来たら、その点にいることにする
   useEffect(() => {
     if (!overrideAllowed) return;
     const q = new URLSearchParams(window.location.search);
@@ -195,7 +195,7 @@ function Here({ userId }: { userId: string }) {
       const item = res.itemId ? TANE_ITEM_BY_ID.get(res.itemId) : undefined;
       const parts: string[] = [];
       if (res.status === "fruit") {
-        parts.push(`${item?.name ?? "実"}を1個もらいました！（${res.quantity ?? 1}個目）`);
+        parts.push(`${item ? fruitName(district, item.name) : "実"}を1個もらいました！（${item?.name ?? "実"}は${res.quantity ?? 1}個目）`);
         parts.push(res.fruits > 0 ? `ここの実は、あと${res.fruits}個です。` : `実がなくなったので、芽に戻ってランク${res.rank ?? ""}になりました。`);
       } else if (res.status === "ripened") {
         parts.push(`💧 水をやりました。実りました！ 実が${FRUITS_WHEN_RIPE}個なっています。次にチェックインすると1個もらえます。`);

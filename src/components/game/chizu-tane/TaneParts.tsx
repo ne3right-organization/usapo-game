@@ -62,7 +62,7 @@ export function TaneScreen({ children }: { children: React.ReactNode }) {
 const TANE_TABS = [
   { href: "/game/chizu-tane", label: "ホーム", emoji: "🏠" },
   { href: "/game/chizu-tane/here", label: "おでかけ", emoji: "🚶" },
-  { href: "/game/chizu-tane/map", label: "タネ地図", emoji: "🗾" },
+  { href: "/game/chizu-tane/map", label: "全国農地", emoji: "🗾" },
   { href: "/game/chizu-tane/collection", label: "集めたもの", emoji: "🧺" },
   { href: "/game/chizu-tane/garden", label: "ガーデン", emoji: "🏡" },
 ];
@@ -120,10 +120,10 @@ export function NeedStart({ signedOut }: { signedOut: boolean }) {
   return (
     <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5 text-center">
       <p className="text-sm text-[#78716c] mb-3">
-        {signedOut ? "地図タネで遊ぶにはログインが必要です。" : "まずはトップでコースを選んでください。"}
+        {signedOut ? "うさぽ農園で遊ぶにはログインが必要です。" : "まずはトップでコースを選んでください。"}
       </p>
       <Link href={signedOut ? "/login" : "/game/chizu-tane"} className="text-sm font-semibold text-emerald-700 underline underline-offset-2">
-        {signedOut ? "ログインする →" : "地図タネのトップへ →"}
+        {signedOut ? "ログインする →" : "うさぽ農園のトップへ →"}
       </Link>
     </div>
   );

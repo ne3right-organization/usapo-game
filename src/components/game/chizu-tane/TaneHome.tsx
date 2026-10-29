@@ -38,7 +38,7 @@ export default function TaneHome() {
       <div className="text-center mb-8">
         <div className="text-5xl mb-3">🌱</div>
         <h1 className="text-2xl font-bold text-[#3c2a14] tracking-wide">
-          地図タネ
+          うさぽ農園
           <span className="ml-2 text-[10px] font-bold text-emerald-600 align-middle">プロトタイプ</span>
         </h1>
         <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
@@ -56,7 +56,7 @@ export default function TaneHome() {
       {state.status === "error" && <ErrorText message={state.message} />}
       {state.status === "signed-out" && (
         <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5 text-center">
-          <p className="text-sm text-[#78716c] mb-3">地図タネで遊ぶにはログインが必要です。</p>
+          <p className="text-sm text-[#78716c] mb-3">うさぽ農園で遊ぶにはログインが必要です。</p>
           <Link href="/login" className="text-sm font-semibold text-emerald-700 underline underline-offset-2">
             ログインする →
           </Link>
@@ -275,7 +275,7 @@ function Home({ course }: { course: TaneCourse }) {
           <li>実ると実が10個なり、現地でチェックインした人は誰でも1個もらえます（早い者勝ち）。実がなくなると芽に戻り、ランクが上がります</li>
           <li>ほかの人のタネに初めてチェックインしたときだけ、そのタネを1個分けてもらえます。そのタネの場所にもタネが1個落ち（3個まで）、誰でも早い者勝ちで拾えます</li>
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
-          <li>下の「タネ地図」で、全国のどこにタネがあるか見られます</li>
+          <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
           <li>ほかの人のタネをたずねた数でレベルが上がり、新しい種類のタネがもらえます</li>
         </ol>
       </div>

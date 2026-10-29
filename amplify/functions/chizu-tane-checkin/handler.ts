@@ -94,9 +94,8 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   }
 
   // 実が残っていれば実を1個、無ければ水をやる
-  const areaName = `${base.cityName} ${base.townName}`;
   if ((base.fruits ?? 0) > 0) {
-    const left = await takeFruit(base.areaKey, userId, picked.itemId, areaName);
+    const left = await takeFruit(base, userId, picked.itemId);
     if (left !== null) {
       result.status = "fruit";
       result.gainedItems = 1;

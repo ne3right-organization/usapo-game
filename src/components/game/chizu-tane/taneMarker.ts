@@ -1,7 +1,7 @@
 import type L from "leaflet";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 
-// 地図に出すタネのアイコン(タネ地図とおでかけで同じもの)。まかれたもの(梨の木など)の絵文字を、
+// 地図に出すタネのアイコン(全国農地とおでかけで同じもの)。まかれたもの(梨の木など)の絵文字を、
 // 自分のタネは緑・ほかの人のタネは橙の丸で囲む
 
 export const OWN_COLOR = "#10b981";

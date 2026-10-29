@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css";
 import type { TaneBase } from "@/lib/game/chizuTaneData";
 import { taneMarkerIcon } from "./taneMarker";
 
-// おでかけの地図: その市区町村の町丁 geojson を読み、現在地・いまいる地区・まかれているタネ(タネ地図と同じアイコン)を出す。
+// おでかけの地図: その市区町村の町丁 geojson を読み、現在地・いまいる地区・まかれているタネ(全国農地と同じアイコン)を出す。
 // 地区は線も塗りも透明にして下の地図をそのまま見せ、いまいる地区だけ縁取る(透明でもタップは効く)
 
 const SELECTED_STYLE = { color: "#1d4ed8", weight: 3, opacity: 1, fillColor: "#1d4ed8", fillOpacity: 0.08 };

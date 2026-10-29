@@ -15,7 +15,7 @@ export default function TaneGardenView() {
   return (
     <TaneScreen>
       <h1 className="text-xl font-bold text-[#3c2a14] mb-1">🏡 ガーデン</h1>
-      <p className="text-xs text-[#a8937a] mb-4">集めたものを、持っている数まで飾れます</p>
+      <p className="text-xs text-[#a8937a] mb-4">全国で生産したものを自分のガーデンに飾ろう！</p>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}

@@ -23,6 +23,7 @@ const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 export type TanePlayer = Schema["GameTanePlayer"]["type"];
 export type TaneBase = Schema["GameTaneBase"]["type"];
 export type TaneOwnedItem = Schema["GameTaneItem"]["type"];
+export type TaneHarvest = Schema["GameTaneHarvest"]["type"];
 
 async function requireUserId(): Promise<string> {
   const user = await currentUser();
@@ -77,7 +78,7 @@ export async function fetchBasesInCity(prefCode: string, cityCode: string): Prom
 }
 
 /**
- * 全国のタネ(全国のタネ地図用)。試作の規模なので全件を読む。遊ぶ人が増えたら、都道府県・市区町村ごとの数をまとめた行を持つなどに変える
+ * 全国のタネ(全国農地用)。試作の規模なので全件を読む。遊ぶ人が増えたら、都道府県・市区町村ごとの数をまとめた行を持つなどに変える
  */
 export async function fetchAllBases(): Promise<TaneBase[]> {
   await requireUserId();
@@ -101,6 +102,41 @@ export async function fetchMyItems(): Promise<TaneOwnedItem[]> {
     nextToken = page.nextToken;
   } while (nextToken);
   return items;
+}
+
+/** 収穫の記録(実1個ごと)。新しい順 */
+export async function fetchMyHarvests(): Promise<TaneHarvest[]> {
+  const userId = await requireUserId();
+  const harvests: TaneHarvest[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneHarvest.list({ userId, nextToken, sortDirection: "DESC" });
+    harvests.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return harvests;
+}
+
+/** 生産者(タネをまいた人)の見え方: 自分 / フレンド(お互いにフォローしている。ニックネームを出す) / それ以外(出さない) */
+export type TaneOwnerView = { kind: "me" } | { kind: "friend"; userId: string; nickname: string } | { kind: "hidden" };
+
+/** 生産者を、フレンドのときだけ明かす(フォロー関係は本人どうしにしか読めないので、ほかの人のフォローは分からない) */
+export async function fetchOwnerViews(ownerIds: string[]): Promise<Map<string, TaneOwnerView>> {
+  const me = await requireUserId();
+  const views = new Map<string, TaneOwnerView>();
+  await Promise.all(
+    [...new Set(ownerIds)].map(async (ownerId) => {
+      if (ownerId === me) return views.set(ownerId, { kind: "me" });
+      const [following, followed] = await Promise.all([
+        data.models.GameFollow.get({ followerId: me, followeeId: ownerId }),
+        data.models.GameFollow.get({ followerId: ownerId, followeeId: me }),
+      ]);
+      const nickname =
+        unwrap(following) && unwrap(followed) ? unwrap(await data.models.GameProfile.get({ userId: ownerId }))?.nickname : null;
+      views.set(ownerId, nickname ? { kind: "friend", userId: ownerId, nickname } : { kind: "hidden" });
+    })
+  );
+  return views;
 }
 
 /** 持っているタネ(もの単位。みかんの木のタネ、梨の木のタネ…) */

@@ -348,6 +348,8 @@ const schema = a
         // たまると実って fruits(残っている実の数)が10になり、実が全部取られると water を0に戻して芽から育ち直す
         water: a.integer(),
         fruits: a.integer(),
+        // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す
+        ripenedAt: a.datetime(),
         // 持ち主が最後に遠くから水をやった日(1日1回。dev は「1日」が短い)
         lastRemoteWaterOn: a.string(),
         // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
@@ -375,8 +377,8 @@ const schema = a
       .identifier(["userId", "areaKey"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
-    // 持っているもの(実。ユーザー×アイテム)。自分のタネを収穫したときだけ増える(訪ねてもらえるのはタネだけ)。
-    // firstAreaName は初めて収穫した地区(「○○区 ○○町」)
+    // 持っているもの(実。ユーザー×アイテム)。収穫したときだけ増える(訪ねてもらえるのはタネだけ)。ガーデンに飾れる数はこれ。
+    // firstAreaName は初めて収穫した地区(「○○区 ○○町」)。産地ごとの記録は GameTaneHarvest
     GameTaneItem: a
       .model({
         userId: a.id().required(),
@@ -386,6 +388,23 @@ const schema = a
         firstAreaName: a.string(),
       })
       .identifier(["userId", "itemId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 収穫の記録(実1個ごと。ユーザー×収穫した日時)。集めたもの画面で「戸塚区矢部町のりんご」のように産地ごとにまとめて出す。
+    // 地名・持ち主(タネをまいた人。画面では「生産者」)は収穫したときのものを写しておく(生産者は、フレンドのときだけ画面に出す)
+    GameTaneHarvest: a
+      .model({
+        userId: a.id().required(),
+        harvestedAt: a.datetime().required(),
+        itemId: a.string().required(),
+        areaKey: a.string().required(),
+        prefName: a.string().required(),
+        cityName: a.string().required(),
+        townName: a.string().required(),
+        ripenedAt: a.datetime(),
+        ownerId: a.id().required(),
+      })
+      .identifier(["userId", "harvestedAt"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // 持っているタネ(ユーザー×もの。みかんの木のタネ、梨の木のタネ…)。まくと1つ減る

@@ -162,6 +162,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - **フォロー**（`GameFollow`）: フォロー関係はフォローした本人とされた本人にしか見えない（2つの所有者ルール）。フォローは Lambda `set-following` が「お互いにニックネーム設定済み」を確認してから行う。クリア時の通知は見送った
 - **PWA**: `src/app/manifest.ts`・アイコン・`public/sw.js`。サービスワーカーは**オフライン時に `/offline` を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないように）。登録は本番ビルドのみ
 - **Xシェア**（`src/lib/game/share.ts`）
+- **管理ページ**（`/admin` 以下。`src/app/admin/`）: 開発・運営用。どこからもリンクせず noindex。トップ（`/admin`）にリンクを並べるので、ページを足したら `src/app/admin/page.tsx` の `ADMIN_LINKS` にも足す。いまは公開して困る情報を出していないのでログインの確認はしていない（利用者のデータを出すページを足すときは認可を考える）
 
 ## 地図ポットン（旧称: 地図パック。2026-10-19〜）
 
@@ -177,17 +178,19 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - **ランキングは地図パズルとは別集計**。難易度別ランキングは1人1行（`GameMapPackUserTotal`、記録のたびに Lambda が合計を書き直す）。あきらめた挑戦も記録する
 - **既知の課題**: ピース数が多いエリアは合体が起きにくく、クリアがかなり難しい（設計メモ参照）
 
-## 地図タネ（2026-10-28〜、初期試作）
+## うさぽ農園（旧称: 地図タネ。2026-10-28〜、初期試作）
+
+表示名は「うさぽ農園」（2026-10-29 に「地図タネ」から変えた）。URL（`/game/chizu-tane`）・モデル名（`GameTane*`）・コード上の名前（`chizuTane`）・設計書のファイル名は「地図タネ」のまま。
 
 現実の地区（町丁）にタネ（拠点）をまき、ほかの人のタネを現地で訪ねてタネを分けてもらい、自分で育てて収穫した実（アイテム）を集める位置情報ゲーム。集めたものはガーデン（箱庭、自宅の庭のイメージ。おまけ）に飾れる。**メインは訪ねること**。
 
 - 設計書: `docs/地図タネ_全体設計書.md`（ルール・決定事項・コースの表）、`docs/地図タネ_初期試作設計書.md`（いま作っている範囲）。検討のときは「箱庭コレクションゲーム」「地図コロ」と呼んでいた（名前の経緯は全体設計書の0章）
 - 画面での呼び名: 拠点＝タネ（種類ごとに果樹園・サイクルポート…）、箱庭＝ガーデン、町丁＝実際の地名と「地区」。**画面で「町丁」とは言わない**
-- 画面: `/game/chizu-tane`（トップ。ガーデンの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/map`（全国のタネ地図）、`/collection`、`/garden`。下に固定のタブで切り替える（`TaneParts.tsx` の `TaneScreen`）。ログイン必須
+- 画面: `/game/chizu-tane`（トップ。ガーデンの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/map`（全国農地。全国のタネの地図）、`/collection`、`/garden`。下に固定のタブで切り替える（`TaneParts.tsx` の `TaneScreen`）。ログイン必須
 - 実装: `src/lib/game/chizuTane/`（コースの表 `courses.ts`・地区の判定 `geo.ts`・箱庭の検証 `garden.ts`。画面と Lambda の両方から使う）、`src/lib/game/chizuTaneData.ts`、`src/components/game/chizu-tane/`
 - バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（落ちているタネを拾う）（共通処理は `amplify/functions/shared/chizuTane.ts`）
 - **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・チェックイン・拠点に落ちているタネを拾う）は全体設計書 6.4、数は `courses.ts`。持ち主の手元に直接増えたり、時間で増えたりはしない
 - **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
 - **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
-- 絵は未作成で、アイテムごとの絵文字を出している。絵ができたら `courses.ts` のアイテムに `imageUrl` を足す
+- 絵は未作成で、アイテムごとの絵文字を出している。絵ができたら `courses.ts` のアイテムに `imageUrl` を足す。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`

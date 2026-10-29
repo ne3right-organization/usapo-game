@@ -168,6 +168,7 @@ const ddb = new DynamoDBClient({});
 const BASE_TABLE = process.env.CHIZU_TANE_BASE_TABLE ?? "";
 const HELD_SEED_TABLE = process.env.CHIZU_TANE_HELD_SEED_TABLE ?? "";
 const ITEM_TABLE = process.env.CHIZU_TANE_ITEM_TABLE ?? "";
+const HARVEST_TABLE = process.env.CHIZU_TANE_HARVEST_TABLE ?? "";
 
 /**
  * 拠点に落ちているタネを count 個拾う。「拠点から count 個減らす(count 個以上落ちているときだけ)」と
@@ -278,7 +279,7 @@ export async function addWater(areaKey: string, amount: number, toRipe: number, 
       new UpdateItemCommand({
         TableName: BASE_TABLE,
         Key: { areaKey: { S: areaKey } },
-        UpdateExpression: "SET fruits = :f, water = :zero, updatedAt = :now",
+        UpdateExpression: "SET fruits = :f, water = :zero, ripenedAt = :now, updatedAt = :now",
         ConditionExpression: `water >= :ripe AND ${NOT_RIPE}`,
         ExpressionAttributeValues: {
           ":f": { N: String(fruitsWhenRipe) },
@@ -297,11 +298,24 @@ export async function addWater(areaKey: string, amount: number, toRipe: number, 
   }
 }
 
+/** 実をもらう拠点(収穫の記録に写すもの) */
+export interface FruitSource {
+  areaKey: string;
+  ownerId: string;
+  prefName: string;
+  cityName: string;
+  townName: string;
+  ripenedAt?: string | null;
+}
+
 /**
- * 実を1個もらう。「拠点の実を1個減らす(1個以上あるときだけ)」と「もらった人の実(GameTaneItem)を1個増やす」を
- * 1つのトランザクションで行う。もらえたら、残りの実の数を返す(先にほかの人が取りきっていたら null)
+ * 実を1個もらう。「拠点の実を1個減らす(1個以上あるときだけ)」「もらった人の実(GameTaneItem)を1個増やす」
+ * 「収穫の記録(GameTaneHarvest)を1行足す」を1つのトランザクションで行う。
+ * もらえたら、残りの実の数を返す(先にほかの人が取りきっていたら null)
  */
-export async function takeFruit(areaKey: string, userId: string, itemId: string, areaName: string): Promise<number | null> {
+export async function takeFruit(base: FruitSource, userId: string, itemId: string): Promise<number | null> {
+  const { areaKey } = base;
+  const areaName = `${base.cityName} ${base.townName}`;
   const now = new Date().toISOString();
   try {
     await ddb.send(
@@ -334,6 +348,26 @@ export async function takeFruit(areaKey: string, userId: string, itemId: string,
               },
             },
           },
+          {
+            Put: {
+              TableName: HARVEST_TABLE,
+              Item: {
+                userId: { S: userId },
+                harvestedAt: { S: now },
+                itemId: { S: itemId },
+                areaKey: { S: areaKey },
+                prefName: { S: base.prefName },
+                cityName: { S: base.cityName },
+                townName: { S: base.townName },
+                ...(base.ripenedAt ? { ripenedAt: { S: base.ripenedAt } } : {}),
+                ownerId: { S: base.ownerId },
+                __typename: { S: "GameTaneHarvest" },
+                createdAt: { S: now },
+                updatedAt: { S: now },
+              },
+              ConditionExpression: "attribute_not_exists(harvestedAt)",
+            },
+          },
         ],
       })
     );
@@ -341,8 +375,8 @@ export async function takeFruit(areaKey: string, userId: string, itemId: string,
     if (err instanceof TransactionCanceledException) return null;
     throw err;
   }
-  const base = await ddb.send(new GetItemCommand({ TableName: BASE_TABLE, Key: { areaKey: { S: areaKey } }, ConsistentRead: true }));
-  return Number(base.Item?.fruits?.N ?? 0);
+  const after = await ddb.send(new GetItemCommand({ TableName: BASE_TABLE, Key: { areaKey: { S: areaKey } }, ConsistentRead: true }));
+  return Number(after.Item?.fruits?.N ?? 0);
 }
 
 /** 実が全部取られた拠点を芽に戻し、ランクを上げる(1回だけ。先にほかの人が戻していれば何もしない) */
@@ -352,7 +386,7 @@ export async function resetAfterFruits(areaKey: string, newRank: number): Promis
       new UpdateItemCommand({
         TableName: BASE_TABLE,
         Key: { areaKey: { S: areaKey } },
-        UpdateExpression: "SET #rank = :rank, water = :zero, updatedAt = :now REMOVE fruits",
+        UpdateExpression: "SET #rank = :rank, water = :zero, updatedAt = :now REMOVE fruits, ripenedAt",
         ConditionExpression: "fruits = :zero",
         ExpressionAttributeNames: { "#rank": "rank" },
         ExpressionAttributeValues: { ":rank": { N: String(newRank) }, ":zero": { N: "0" }, ":now": { S: new Date().toISOString() } },

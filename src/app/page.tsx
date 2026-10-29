@@ -105,7 +105,7 @@ export default function Home() {
               <div className="text-3xl shrink-0">🌱</div>
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-[#3c2a14] text-sm block mb-1">
-                  地図タネ
+                  うさぽ農園
                   <span className="ml-2 text-[10px] font-bold text-emerald-600 align-middle">プロトタイプ</span>
                 </span>
                 <p className="text-sm text-[#78716c] leading-snug">

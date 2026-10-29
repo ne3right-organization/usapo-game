@@ -213,3 +213,19 @@ export function firstBaseType(course: TaneCourse): TaneBaseType {
 export function prototypeItems(): TaneItem[] {
   return TANE_ITEMS.filter((i) => (TANE_BASE_TYPE_BY_ID.get(i.baseTypeId)?.unlockLevel ?? Infinity) <= PROTOTYPE_MAX_LEVEL);
 }
+
+/** 実の産地(収穫の記録や地区に入っている地名) */
+export interface FruitPlace {
+  prefName?: string;
+  cityName: string;
+  townName: string;
+}
+
+/**
+ * 産地つきの実の名前。短い名前は「戸塚区矢部町のりんご」(政令市は区の名前だけ)、
+ * full なら都道府県から全部「神奈川県横浜市戸塚区矢部町のりんご」
+ */
+export function fruitName(place: FruitPlace, itemName: string, full = false): string {
+  const city = full ? `${place.prefName ?? ""}${place.cityName}` : place.cityName.replace(/^.+?市(?=.+区$)/, "");
+  return `${city}${place.townName}の${itemName}`;
+}
