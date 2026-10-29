@@ -18,9 +18,9 @@ import {
 } from "../shared/chizuTane";
 import { DROPPED_SEEDS_MAX, SEEDS_PER_CHECKIN, TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
 import { notifyUsers } from "../shared/push";
-import { DAY_MS_PRODUCTION, dayKey } from "../../../src/lib/game/chizuTane/geo";
+import { DAY_MS_PRODUCTION, slotKey } from "../../../src/lib/game/chizuTane/geo";
 import {
-  FRUITS_WHEN_RIPE,
+  fruitsWhenRipe,
   MAX_RANK,
   WATER_ONSITE,
   WATER_REMOTE,
@@ -28,7 +28,7 @@ import {
   growthStage,
 } from "../../../src/lib/game/chizuTane/growth";
 
-// 「1日」の長さ。1日1回の区切り(本番は24時間、それ以外は5分)
+// 区切りの長さ。チェックイン・遠くからの水やりは1つの区切りに1回(本番は朝・昼・夜、それ以外は5分ごと)
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
 
 type CheckInResult = Schema["TaneCheckInResult"]["type"];
@@ -47,15 +47,15 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
 };
 
 /**
- * 現地のチェックイン。持ち主でもほかの人でも同じで、1人1日1回(dev は「1日」が短い)。まいた直後からできる。
+ * 現地のチェックイン。持ち主でもほかの人でも同じで、1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。まいた直後からできる。
  * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個なら芽に戻り、ランクが1つ上がる
- * - 実っていなければ、水をやる(現地は10)。たまったら実って、実が10個できる
+ * - 実っていなければ、水をやる(現地は10)。たまったら実って、実ができる(ランク×10個。実らせた人は、そのまま1個もらう)
  * - ほかの人のタネに初めてチェックインしたときだけ、拠点にタネが1個落ちる(3個まで。直接はもらわず、拾うかどうかは選べる)。
  *   たずねた拠点の数が増えるので、レベルが上がることもある(自分のタネは訪問の記録に残さず、レベルにも数えない)
  */
 async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise<CheckInResult> {
   const now = new Date();
-  const today = dayKey(now, DAY_MS);
+  const today = slotKey(now, DAY_MS);
 
   const district = await locateTownDistrict(args);
   const player = await requirePlayer(c, userId);
@@ -87,7 +87,7 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     seedsGained: "[]",
   };
 
-  // 1日1回(自分の拠点は拠点の行に、ほかの人の拠点は訪問の記録に、最後に来た日を持つ)
+  // 1つの時間帯に1回(自分の拠点は拠点の行に、ほかの人の拠点は訪問の記録に、最後に来た時間帯を持つ)
   const visit = isOwn ? null : unwrap(await c.models.GameTaneVisit.get({ userId, areaKey: base.areaKey }));
   const lastOn = isOwn ? base.lastOwnerVisitOn : visit?.lastReceivedOn;
   if (lastOn === today) {
@@ -114,11 +114,20 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   }
   if (result.status === "already") {
     // 実が無かった(または先に取りきられた)ので水をやる
-    const watered = await addWater(base.areaKey, WATER_ONSITE, WATER_TO_RIPE, FRUITS_WHEN_RIPE);
+    const watered = await addWater(base.areaKey, WATER_ONSITE, WATER_TO_RIPE, fruitsWhenRipe(base.rank));
     result.status = watered.ripened ? "ripened" : "watered";
     result.water = watered.water ?? 0;
-    result.fruits = watered.ripened ? FRUITS_WHEN_RIPE : 0;
+    result.fruits = watered.ripened ? fruitsWhenRipe(base.rank) : 0;
     result.stage = growthStage({ water: result.water, fruits: result.fruits });
+    // 自分の水で実らせたら、そのまま実を1個もらう(実らせた人が次の日まで待たなくてよいように)
+    if (watered.ripened) {
+      const left = await takeFruit({ ...base, ownerId, ripenedAt: new Date().toISOString() }, userId, picked.itemId);
+      if (left !== null) {
+        result.gainedItems = 1;
+        result.fruits = left;
+        result.quantity = unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }))?.quantity ?? 1;
+      }
+    }
   }
 
   if (isOwn) {
@@ -130,7 +139,7 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`;
   const notice =
     result.status === "ripened"
-      ? { title: "タネが実りました", body: `${place}が実りました！ 実が${FRUITS_WHEN_RIPE}個なっています` }
+      ? { title: "タネが実りました", body: `${place}が実りました！ 実が${result.fruits}個なっています` }
       : result.status === "fruit"
         ? { title: "実が収穫されました", body: `誰かが${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
         : { title: "タネに誰かが来ました", body: `誰かが${place}に来て、水をやってくれました` };
@@ -164,16 +173,16 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   return result;
 }
 
-/** 自分のタネに遠くから水をやる。タネごとに1日1回で、効き目は現地の10分の1。実っている間はできない */
+/** 自分のタネに遠くから水をやる。タネごとに1つの時間帯(朝・昼・夜)に1回で、効き目は現地の10分の1。実っている間はできない */
 async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
   const now = new Date();
-  const today = dayKey(now, DAY_MS);
+  const today = slotKey(now, DAY_MS);
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey }));
   const own = unwrap(await c.models.GameTaneOwnership.get({ ownerId: userId, areaKey }));
   if (!base || !own) throw new Error("自分のタネにだけ、遠くから水をやれます");
   if ((base.fruits ?? 0) > 0) throw new Error("実っているので、水はいりません。現地で実をもらってください");
-  if (base.lastRemoteWaterOn === today) throw new Error("遠くからの水やりは、1つのタネに1日1回です");
+  if (base.lastRemoteWaterOn === today) throw new Error("遠くからの水やりは、1つのタネに朝・昼・夜それぞれ1回です");
   unwrap(await c.models.GameTaneBase.update({ areaKey, lastRemoteWaterOn: today }));
-  await addWater(areaKey, WATER_REMOTE, WATER_TO_RIPE, FRUITS_WHEN_RIPE);
+  await addWater(areaKey, WATER_REMOTE, WATER_TO_RIPE, fruitsWhenRipe(base.rank));
   return unwrap(await c.models.GameTaneBase.get({ areaKey }));
 }

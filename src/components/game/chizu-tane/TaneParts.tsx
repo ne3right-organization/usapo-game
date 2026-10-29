@@ -217,7 +217,7 @@ export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) 
 export function WaterHint({ base, remote = true }: { base: GrowingBase; remote?: boolean }) {
   const need = waterUntilRipe(base);
   if (!need) {
-    return <p className="text-[11px] text-amber-700">現地でチェックインすると、実を1個もらえます（1人1日1回、早い者勝ち）</p>;
+    return <p className="text-[11px] text-amber-700">現地でチェックインすると、実を1個もらえます（朝・昼・夜それぞれ1回、早い者勝ち）</p>;
   }
   return (
     <p className="text-[11px] text-[#78716c]">

@@ -309,11 +309,11 @@ const schema = a
         fruits: a.integer(),
         // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す
         ripenedAt: a.datetime(),
-        // 持ち主が最後に遠くから水をやった日(1日1回。dev は「1日」が短い)
+        // 持ち主が最後に遠くから水をやった時間帯(朝・昼・夜に1回。src/lib/game/chizuTane/geo.ts の slotKey。dev は5分ごと)
         lastRemoteWaterOn: a.string(),
         // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
         droppedSeeds: a.integer(),
-        // 持ち主が最後に自分のタネにチェックインした日(日本時間)。1日1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
+        // 持ち主が最後に自分のタネにチェックインした時間帯(slotKey)。朝・昼・夜に1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
         lastOwnerVisitOn: a.string(),
       })
       .identifier(["areaKey"])
@@ -351,7 +351,7 @@ const schema = a
         allow.ownerDefinedIn("viewerId").identityClaim("sub").to(["read"]),
       ]),
 
-    // 訪問(ユーザー×拠点)。lastReceivedOn は最後にもらった日(日本時間の YYYY-MM-DD)で、1日1回の判定に使う。
+    // 訪問(ユーザー×拠点)。lastReceivedOn は最後に来た時間帯(slotKey)で、朝・昼・夜に1回の判定に使う。
     // のちにレベル(たずねた拠点の数)を数えるのにも使える
     GameTaneVisit: a
       .model({
@@ -543,7 +543,7 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
-    // 地図タネ: 自分のタネに遠くから水をやる(1日1回、現地の10分の1)
+    // 地図タネ: 自分のタネに遠くから水をやる(朝・昼・夜に1回ずつ、現地の10分の1)
     waterTaneBaseRemotely: a
       .mutation()
       .arguments({ areaKey: a.string().required() })

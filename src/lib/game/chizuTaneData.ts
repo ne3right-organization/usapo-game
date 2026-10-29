@@ -360,7 +360,7 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
   };
 }
 
-/** 自分のタネに遠くから水をやる(タネごとに1日1回、効き目は現地の10分の1)。水をやったあとのタネを返す */
+/** 自分のタネに遠くから水をやる(タネごとに朝・昼・夜に1回、効き目は現地の10分の1)。水をやったあとのタネを返す */
 export async function waterRemotely(areaKey: string): Promise<TaneBase> {
   await requireUserId();
   const base = unwrap(await data.mutations.waterTaneBaseRemotely({ areaKey }));
@@ -437,7 +437,7 @@ export async function saveGarden(objects: GardenObject[]): Promise<GardenState> 
   return toGardenState(unwrap(await data.mutations.saveTaneGarden({ objects: JSON.stringify(objects) })));
 }
 
-/** 「1日」の長さ(1日1回の区切り)。dev(devgame.usapo.net・手元)は5分、本番は24時間(Lambda 側も同じ値にしている) */
+/** チェックイン・遠くからの水やりの区切りの長さ。dev(devgame.usapo.net・手元)は5分、本番は朝・昼・夜(Lambda 側も同じ値にしている) */
 export function taneDayMs(): number {
   return isLocationOverrideAllowed() ? DAY_MS_DEV : DAY_MS_PRODUCTION;
 }

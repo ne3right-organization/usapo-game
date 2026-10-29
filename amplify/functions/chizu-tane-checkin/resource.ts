@@ -12,9 +12,9 @@ export const chizuTaneCheckin = defineFunction({
     NEXT_PUBLIC_CLOUDFRONT_URL: "https://dbr7d89af0fox.cloudfront.net",
     // 本番以外は移動の速さを確かめない(開発用の位置指定で一瞬で移れるように)
     CHIZU_TANE_SKIP_SPEED_CHECK: process.env.AWS_BRANCH === "main" ? "0" : "1",
-    // 「1日」の長さ。1日1回のチェックイン・遠くからの水やりの区切り
-    // (本番は24時間、それ以外は試しやすいように5分。src/lib/game/chizuTane/geo.ts と同じ値)
-    CHIZU_TANE_DAY_MS: process.env.AWS_BRANCH === "main" ? String(24 * 3_600_000) : String(5 * 60_000),
+    // チェックイン・遠くからの水やりの区切りの長さ(本番は朝・昼・夜の8時間で、日本時間の時間帯で区切る。
+    // それ以外は試しやすいように5分。src/lib/game/chizuTane/geo.ts の DAY_MS_* と同じ値)
+    CHIZU_TANE_DAY_MS: process.env.AWS_BRANCH === "main" ? String(8 * 3_600_000) : String(5 * 60_000),
     // PWA の通知を送るための秘密鍵(amplify/functions/shared/push.ts)
     VAPID_PRIVATE_KEY: secret("VAPID_PRIVATE_KEY"),
   },

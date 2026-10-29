@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID, fruitName } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
-import { FRUITS_WHEN_RIPE, waterUntilRipe } from "@/lib/game/chizuTane/growth";
+import { waterUntilRipe } from "@/lib/game/chizuTane/growth";
 import {
   checkIn,
   fetchBasesInCity,
@@ -214,13 +214,17 @@ function Here() {
         parts.push(`${item ? fruitName(district, item.name) : "実"}を1個もらいました！（${item?.name ?? "実"}は${res.quantity ?? 1}個目）`);
         parts.push(res.fruits > 0 ? `ここの実は、あと${res.fruits}個です。` : `実がなくなったので、芽に戻ってランク${res.rank ?? ""}になりました。`);
       } else if (res.status === "ripened") {
-        parts.push(`💧 水をやりました。実りました！ 実が${FRUITS_WHEN_RIPE}個なっています。次にチェックインすると1個もらえます。`);
+        parts.push(
+          (res.gainedItems ?? 0) > 0
+            ? `💧 水をやりました。実りました！ ${item ? fruitName(district, item.name) : "実"}を1個もらいました（${item?.name ?? "実"}は${res.quantity ?? 1}個目）。ここの実は、あと${res.fruits}個です。`
+            : `💧 水をやりました。実りました！ 実が${res.fruits}個なっています。`
+        );
       } else if (res.status === "watered") {
         const need = waterUntilRipe({ water: res.water, fruits: res.fruits });
         parts.push(`💧 水をやりました。${need ? `あと現地で${need.onsite}回水をやると実ります。` : ""}`);
       } else {
         parts.push(
-          `このタネには今日はもう来ました。また明日来てください${overrideAllowed ? `（開発環境では「1日」が${Math.round(taneDayMs() / 60_000)}分なので、その区切りが変わればまた来られます）` : ""}`
+          `このタネには、この時間帯はもう来ました。朝（4〜12時）・昼（12〜20時）・夜（20〜翌4時）にそれぞれ1回来られます${overrideAllowed ? `（開発環境では${Math.round(taneDayMs() / 60_000)}分ごとに区切っているので、その区切りが変わればまた来られます）` : ""}`
         );
       }
       if (res.firstVisit) {
@@ -230,8 +234,8 @@ function Here() {
       setNotice({
         kind: res.status === "already" ? "info" : "ok",
         text: parts.join(" "),
-        itemId: res.status === "fruit" || res.firstVisit ? res.itemId ?? undefined : undefined,
-        seed: res.status !== "fruit",
+        itemId: res.status === "fruit" || (res.gainedItems ?? 0) > 0 || res.firstVisit ? res.itemId ?? undefined : undefined,
+        seed: res.status !== "fruit" && !((res.gainedItems ?? 0) > 0),
       });
       if (res.seedsGained.length > 0) await reloadSeeds();
       await reloadBases(district);
@@ -371,7 +375,7 @@ function Here() {
                     <GrowthBadge base={baseHere} />
                     <WaterHint base={baseHere} remote={isMine} />
                   </div>
-                  {/* 1人1日1回(dev は「1日」が短い)。チェックインは水やりと同じで、実っていれば実を1個もらう(誰でも)。
+                  {/* 1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。チェックインは水やりと同じで、実っていれば実を1個もらう(誰でも)。
                       ほかの人のタネに初めて来たときは、そこにタネが1個落ちる(拾うかは選べる)。まいた直後から水をやれる */}
                   <button
                     type="button"

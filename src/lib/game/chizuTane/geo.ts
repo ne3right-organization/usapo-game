@@ -124,17 +124,32 @@ export function jstDate(d: Date): string {
   return new Date(d.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
 }
 
+/** 水やりの時間帯(日本時間)。朝 4〜12時・昼 12〜20時・夜 20〜翌4時 */
+export const WATERING_SLOTS = ["朝", "昼", "夜"] as const;
+const SLOT_START_HOUR = 4;
+const SLOT_HOURS = 8;
+
 /**
- * 「1日1回」の区切り。本番(1日が24時間)は日本時間の日付(YYYY-MM-DD)。dev は1日を短くしているので、
- * その長さごとの通し番号にする(5分なら5分ごとに、もう一度チェックインできる)
+ * チェックイン・遠くからの水やりの区切り(1つの区切りに1回)。本番は日本時間の朝・昼・夜の3つ(1日3回)で、
+ * 「2026-10-29#0」(その日の朝)のような文字列にする。夜は日付をまたぐので、夜の始まり(20時)の日付で数える。
+ * dev は試しやすいように短い長さ(slotMs)ごとの通し番号にする(5分なら5分ごとに、もう一度チェックインできる)
  */
-export function dayKey(d: Date, dayMs: number): string {
-  return dayMs >= 24 * 3_600_000 ? jstDate(d) : `t${Math.floor(d.getTime() / dayMs)}`;
+export function slotKey(d: Date, slotMs: number): string {
+  if (slotMs < SLOT_HOURS * 3_600_000) return `t${Math.floor(d.getTime() / slotMs)}`;
+  const shifted = new Date(d.getTime() + (9 - SLOT_START_HOUR) * 3_600_000);
+  return `${shifted.toISOString().slice(0, 10)}#${Math.floor(shifted.getUTCHours() / SLOT_HOURS)}`;
+}
+
+/** いまの時間帯の名前(朝・昼・夜)。dev の短い区切りでは null */
+export function slotLabel(d: Date, slotMs: number): (typeof WATERING_SLOTS)[number] | null {
+  if (slotMs < SLOT_HOURS * 3_600_000) return null;
+  const shifted = new Date(d.getTime() + (9 - SLOT_START_HOUR) * 3_600_000);
+  return WATERING_SLOTS[Math.floor(shifted.getUTCHours() / SLOT_HOURS)];
 }
 
 /**
- * 「1日」の長さ。1日1回のチェックイン・遠くからの水やりの区切り(dayKey)に使う。
- * 本番は24時間、dev(devgame.usapo.net・手元)は試しやすいように5分
+ * 区切りの長さ。本番は朝・昼・夜の8時間、dev(devgame.usapo.net・手元)は試しやすいように5分。
+ * 名前は「1日1回」だったころのまま(Lambda の環境変数 CHIZU_TANE_DAY_MS も同じ)
  */
-export const DAY_MS_PRODUCTION = 24 * 3_600_000;
+export const DAY_MS_PRODUCTION = SLOT_HOURS * 3_600_000;
 export const DAY_MS_DEV = 5 * 60_000;

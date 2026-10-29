@@ -28,7 +28,7 @@ import {
 import GardenSvg from "./GardenSvg";
 import SwipePages from "./SwipePages";
 import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
-import { dayKey } from "@/lib/game/chizuTane/geo";
+import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
 
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のガーデンの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
@@ -291,8 +291,8 @@ function Home({ course }: { course: TaneCourse }) {
           <li>「おでかけ」で現在地の地区を調べます</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）</li>
           <li>まいたタネは、水をやると タネ → 芽 → 若葉 → つぼみ → 花 → 実り と育ちます（時間がたつだけでは育ちません）</li>
-          <li>現地でチェックインすると水やりになります（自分のタネでもほかの人のタネでも、1つのタネに1日1回）。自分のタネには、このページから遠くから水をやることもできます（1日1回、効き目は現地の10分の1）</li>
-          <li>実ると実が10個なり、現地でチェックインした人は誰でも1個もらえます（早い者勝ち）。実がなくなると芽に戻り、ランクが上がります</li>
+          <li>現地でチェックインすると水やりになります（自分のタネでもほかの人のタネでも、1つのタネに朝・昼・夜それぞれ1回）。自分のタネには、このページから遠くから水をやることもできます（朝・昼・夜それぞれ1回、効き目は現地の10分の1）</li>
+          <li>実ると実がなり（ランク1は10個。ランクが上がるほど多くなります）、現地でチェックインした人は誰でも1個もらえます（早い者勝ち。水をやって実らせた人は、そのまま1個もらえます）。実がなくなると芽に戻り、ランクが上がります</li>
           <li>ほかの人のタネに初めてチェックインすると、そこにタネが1個落ちます（3個まで）。欲しければ拾い、要らなければ次の人のために置いていけます（誰でも早い者勝ち）</li>
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
@@ -303,12 +303,14 @@ function Home({ course }: { course: TaneCourse }) {
   );
 }
 
-/** 自分のタネに遠くから水をやるボタン(タネごとに1日1回、効き目は現地の10分の1)。実っている間は出さない */
+/** 自分のタネに遠くから水をやるボタン(タネごとに朝・昼・夜に1回、効き目は現地の10分の1)。実っている間は出さない */
 function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (next: TaneBase) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   if ((base.fruits ?? 0) > 0) return null;
-  const done = base.lastRemoteWaterOn === dayKey(new Date(), taneDayMs());
+  const now = new Date();
+  const done = base.lastRemoteWaterOn === slotKey(now, taneDayMs());
+  const slot = slotLabel(now, taneDayMs());
 
   const handle = async () => {
     setBusy(true);
@@ -330,7 +332,7 @@ function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (ne
         disabled={busy || done}
         className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
       >
-        {done ? "今日は水やり済み" : busy ? "水をやっています..." : "💧 遠くから水をやる"}
+        {done ? `${slot ? `${slot}の` : ""}水やりは済み` : busy ? "水をやっています..." : "💧 遠くから水をやる"}
       </button>
       {error && <span className="block text-[10px] text-red-600 mt-0.5">{error}</span>}
     </span>

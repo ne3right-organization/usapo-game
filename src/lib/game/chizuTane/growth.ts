@@ -4,7 +4,8 @@
 // まく → タネ → 芽 → 若葉 → つぼみ → 花 → 実り。時間では育たず、必ず水をやって育つ(芽が出るのも水)。
 // 水は、現地のチェックイン(持ち主でもほかの人でも。チェックイン＝水やり)1回で10、持ち主が遠くからやると1(10分の1)。
 // たまった水が WATER_TO_RIPE になると実って、実が FRUITS_WHEN_RIPE 個できる。実は現地にチェックインした人が誰でも1個ずつもらえ
-// (1人1日1回、早い者勝ち)、全部なくなると芽に戻ってランクが1つ上がる。実っている間は水をやっても変わらない
+// (1人1つの時間帯に1回、早い者勝ち)、全部なくなると芽に戻ってランクが1つ上がる。実っている間は水をやっても変わらない。
+// 実の数はランクとともに増える(ランク1は10個、ランク2は20個…。人が来て育ててくれた畑ほど豊かになる)
 
 export interface GrowthStage {
   label: string;
@@ -27,8 +28,13 @@ export const WATER_ONSITE = 10;
 export const WATER_REMOTE = 1;
 /** これだけたまると実る(現地なら5回、遠くからなら50回。仮) */
 export const WATER_TO_RIPE = WATER_ONSITE * RIPE_STAGE;
-/** 実ったときにできる実の数(仮) */
+/** ランク1で実ったときにできる実の数(仮)。ランクが1つ上がるごとにこれだけ増える */
 export const FRUITS_WHEN_RIPE = 10;
+
+/** そのランクで実ったときにできる実の数 */
+export function fruitsWhenRipe(rank: number): number {
+  return FRUITS_WHEN_RIPE * Math.max(1, rank);
+}
 /** ランクの上限(コースの表の10段階) */
 export const MAX_RANK = 10;
 
