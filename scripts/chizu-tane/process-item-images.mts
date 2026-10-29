@@ -16,9 +16,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-// package.json が "type": "module" ではないので、courses.ts は CommonJS として読まれる。名前つきの import ができないので default から取り出す
-import courses from "../../src/lib/game/chizuTane/courses";
+import * as coursesModule from "../../src/lib/game/chizuTane/courses";
 
+// package.json が "type": "module" ではないので、tsx で動かすと courses.ts は CommonJS として読まれ、中身は default に入る。
+// 型の上(next build の型チェック)では ES モジュールなので、どちらでも取り出せるようにする
+const courses = (coursesModule as unknown as { default?: typeof coursesModule }).default ?? coursesModule;
 const { TANE_COURSES, TANE_ITEM_BY_ID, TANE_ITEMS, baseTypesOf } = courses;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
