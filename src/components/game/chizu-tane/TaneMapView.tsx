@@ -6,8 +6,8 @@ import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { fetchAllBases, fetchMyAreaKeys, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
-import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
-import { OTHER_COLOR, OWN_COLOR, taneMarkerIcon } from "./taneMarker";
+import { ErrorText, GrowthBadge, GrowthLegend, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
+import { taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
 
@@ -80,7 +80,7 @@ function TaneMap() {
       mapRef.current = { map, Lmod };
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.6 }).addTo(map);
       for (const b of bases) {
-        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b, own.has(b.areaKey)) })
+        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b) })
           .addTo(map)
           .on("click", () => setSelected(b.areaKey));
       }
@@ -125,15 +125,8 @@ function TaneMap() {
       <div className="relative h-[400px] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(120,90,40,0.08)] bg-white mb-2">
         <div ref={containerRef} className="w-full h-full" />
       </div>
-      <div className="flex items-center gap-4 text-[11px] text-[#78716c] mb-4">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OWN_COLOR }} />
-          あなたのタネ
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OTHER_COLOR }} />
-          ほかの人のタネ
-        </span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mb-4">
+        <GrowthLegend />
         <span>アイコンをタップすると詳しく見られます</span>
       </div>
 

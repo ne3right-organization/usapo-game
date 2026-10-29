@@ -54,6 +54,22 @@ export function SeedIcon({ item, size = 40 }: { item: TaneItem; size?: number })
   );
 }
 
+/** 地図のタネのアイコンの凡例(育ち具合で見せる。taneMarker.ts と同じ色) */
+export function GrowthLegend() {
+  return (
+    <>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-emerald-500 bg-white text-[9px] leading-none">🌱</span>
+        育っている（{GROWTH_STAGES.slice(0, RIPE_STAGE).map((s) => s.emoji).join("")}）
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-amber-500 bg-amber-50 text-[9px] leading-none">✨</span>
+        実っている（実をもらえる）
+      </span>
+    </>
+  );
+}
+
 /** 画面の見出し。右に短い説明を並べる(説明が2行になっても、見出しと上下の中央をそろえる) */
 export function TaneHeading({ title, children }: { title: string; children?: React.ReactNode }) {
   return (

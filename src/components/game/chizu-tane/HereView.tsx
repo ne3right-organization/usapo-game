@@ -21,10 +21,9 @@ import {
   type TaneBase,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
-import { ErrorText, GrowthBadge, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneHeading, TaneScreen, WaterHint } from "./TaneParts";
+import { ErrorText, GrowthBadge, GrowthLegend, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneHeading, TaneScreen, WaterHint } from "./TaneParts";
 import HereMap from "./HereMap";
 import SeedPicker from "./SeedPicker";
-import { OTHER_COLOR, OWN_COLOR } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
 
@@ -316,18 +315,10 @@ function Here() {
             selectedCode={district.areaKey}
             location={loc}
             bases={bases}
-            ownAreaKeys={ownAreaKeys}
             onPointSelect={overrideAllowed ? handleMapPoint : undefined}
           />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mt-2 mb-3">
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OWN_COLOR }} />
-              あなたのタネ
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded-full border-[3px] bg-white" style={{ borderColor: OTHER_COLOR }} />
-              ほかの人のタネ
-            </span>
+            <GrowthLegend />
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 h-3 rounded-full bg-blue-600 border-2 border-white shadow" />
               現在地
