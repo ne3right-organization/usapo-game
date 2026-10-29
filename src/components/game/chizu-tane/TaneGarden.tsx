@@ -5,14 +5,14 @@ import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { GARDEN_DESIGNS, countPlaced, houseTierFor, type GardenDesignId, type GardenObject } from "@/lib/game/chizuTane/garden";
 import { gardenObjectsOf, openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
-import { FollowingGardens } from "./FriendGardenView";
+import { FollowingGardens, MyFollowers } from "./FriendGardenView";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // ガーデン(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う。
 // ガーデンは、まいたタネの数で別のデザインのものが増える(上のタブで切り替える)。家と柵はレベルで立派になる。
 // 所持数は、すべてのガーデンに置いている分を合わせて数える。
-// 下に、フォローしている人のガーデンへのリンクを並べる(見るだけ。FriendGardenView)
+// 下に、フォローしている人のガーデンへのリンク(見るだけ)と、自分のフォロワー・フォローしてもらうリンクを並べる(FriendGardenView)
 
 export default function TaneGardenView() {
   const [state] = useTanePlayer();
@@ -26,6 +26,7 @@ export default function TaneGardenView() {
         <>
           <Garden />
           <FollowingGardens />
+          <MyFollowers />
         </>
       )}
     </TaneScreen>

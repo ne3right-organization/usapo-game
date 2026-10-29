@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
-import { fetchGardenOf, fetchTaneSharerIds, gardenObjectsOf, type FriendGarden as FriendGardenData } from "@/lib/game/chizuTaneData";
+import { currentUser } from "@/lib/auth";
+import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
+import { fetchGardenOf, fetchTaneShareViewerIds, fetchTaneSharerIds, gardenObjectsOf, type FriendGarden as FriendGardenData } from "@/lib/game/chizuTaneData";
 import { GARDEN_DESIGNS, houseTierFor, type GardenDesignId } from "@/lib/game/chizuTane/garden";
 import GardenSvg from "./GardenSvg";
+import SwipePages from "./SwipePages";
 import { ErrorText, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -127,6 +130,96 @@ export function FollowingGardens() {
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * 自分のフォロワー(3人ずつ横スワイプ)と、友達にフォローしてもらうためのリンク(自分のプロフィールの URL。そこでフォローできる)。
+ * 自分のガーデンの画面のいちばん下に出す。農園を見せるかどうかはフォロワーの一覧(/profile/follows)で選ぶ
+ */
+export function MyFollowers() {
+  const [view, setView] = useState<{ userId: string; nickname: string | null; followers: FollowUser[]; shared: Set<string> } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([currentUser(), fetchGameProfile(), fetchFollowList("followers"), fetchTaneShareViewerIds()])
+      .then(([user, profile, followers, shared]) => {
+        if (!cancelled && user) setView({ userId: user.id, nickname: profile?.nickname ?? null, followers, shared });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!view) return null;
+
+  const shareLink = async () => {
+    const url = `${window.location.origin}/profile/${view.userId}`;
+    const text = `うさぽゲームコーナーで${view.nickname}をフォローしてね`;
+    if (navigator.share) {
+      // 共有をやめたときも例外になるので、何もしない
+      await navigator.share({ title: "うさぽゲームコーナー", text, url }).catch(() => {});
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("このリンクを友達に送ってください", url);
+    }
+  };
+
+  return (
+    <section className="mt-6">
+      <h2 className="text-xs font-bold text-[#a8937a] mb-2">フォロワー（{view.followers.length}人）</h2>
+      {view.followers.length > 0 && (
+        <SwipePages
+          items={view.followers}
+          perPage={3}
+          layout="cols"
+          keyOf={(u) => u.userId}
+          render={(u) => (
+            <Link href={`/profile/${u.userId}`} className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-2 py-3 text-center">
+              <span className="block text-2xl mb-1">👤</span>
+              <span className="block text-xs font-semibold text-[#3c2a14] truncate">{u.nickname ?? "未設定"}</span>
+              <span className={`block text-[10px] mt-0.5 ${view.shared.has(u.userId) ? "text-emerald-700" : "text-[#a8937a]"}`}>
+                {view.shared.has(u.userId) ? "🌱 農園を見せている" : "🔒 見せていない"}
+              </span>
+            </Link>
+          )}
+        />
+      )}
+      {view.followers.length > 0 && (
+        <Link href="/profile/follows" className="block text-right text-[11px] text-emerald-700 underline underline-offset-2 mt-1">
+          農園を見せる人を選ぶ →
+        </Link>
+      )}
+      <div className="bg-white rounded-2xl p-3 mt-2 text-xs text-[#78716c]">
+        {view.nickname ? (
+          <>
+            <p className="mb-2">友達にこのリンクを送ると、あなたをフォローしてもらえます（フォローするには、友達もニックネームの設定が要ります）。</p>
+            <button
+              type="button"
+              onClick={shareLink}
+              className="w-full rounded-xl bg-emerald-600 text-white font-semibold text-sm py-2 active:scale-[0.98] transition-transform"
+            >
+              {copied ? "リンクをコピーしました" : "🔗 フォローしてもらうリンクを送る"}
+            </button>
+          </>
+        ) : (
+          <p>
+            友達にフォローしてもらうには、先に
+            <Link href="/nickname" className="text-emerald-700 underline underline-offset-2 mx-0.5">
+              ニックネームを設定
+            </Link>
+            してください。
+          </p>
+        )}
+      </div>
     </section>
   );
 }
