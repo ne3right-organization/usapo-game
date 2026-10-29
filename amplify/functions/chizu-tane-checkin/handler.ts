@@ -49,7 +49,8 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
 /**
  * 現地のチェックイン。持ち主でもほかの人でも同じで、1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。まいた直後からできる。
  * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個なら芽に戻り、ランクが1つ上がる
- * - 実っていなければ、水をやる(現地は10)。たまったら実って、実ができる(ランク×10個。実らせた人は、そのまま1個もらう)
+ * - 実っていなければ、水をやる(現地は10)。たまったら実って、実ができる(ランク×10個)。実ったら、持ち主に「生産者の取り分」が1個届き、
+ *   ほかの人が実らせたときは、実らせた人もそのまま1個もらう(持ち主が自分で実らせたときは取り分の1個だけ)
  * - ほかの人のタネに初めてチェックインしたときだけ、拠点にタネが1個落ちる(3個まで。直接はもらわず、拾うかどうかは選べる)。
  *   たずねた拠点の数が増えるので、レベルが上がることもある(自分のタネは訪問の記録に残さず、レベルにも数えない)
  */
@@ -119,13 +120,19 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     result.water = watered.water ?? 0;
     result.fruits = watered.ripened ? fruitsWhenRipe(base.rank) : 0;
     result.stage = growthStage({ water: result.water, fruits: result.fruits });
-    // 自分の水で実らせたら、そのまま実を1個もらう(実らせた人が次の日まで待たなくてよいように)
     if (watered.ripened) {
-      const left = await takeFruit({ ...base, ownerId, ripenedAt: new Date().toISOString() }, userId, picked.itemId);
+      const source = { ...base, ownerId, ripenedAt: new Date().toISOString() };
+      // 実らせた人は、そのまま実を1個もらう(実らせた人が次の時間帯まで待たなくてよいように)。持ち主ならこれが生産者の取り分
+      const left = await takeFruit(source, userId, picked.itemId);
       if (left !== null) {
         result.gainedItems = 1;
         result.fruits = left;
         result.quantity = unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }))?.quantity ?? 1;
+      }
+      // ほかの人が実らせたときは、持ち主にも生産者の取り分を1個届ける(遠くにまいたタネでも、人に来てもらえば実が手に入る)
+      if (!isOwn) {
+        const afterShare = await takeFruit(source, ownerId, picked.itemId);
+        if (afterShare !== null) result.fruits = afterShare;
       }
     }
   }
@@ -139,7 +146,7 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`;
   const notice =
     result.status === "ripened"
-      ? { title: "タネが実りました", body: `${place}が実りました！ 実が${result.fruits}個なっています` }
+      ? { title: "タネが実りました", body: `${place}が実りました！ 生産者の取り分として実が1個届きました（のこり${result.fruits}個）` }
       : result.status === "fruit"
         ? { title: "実が収穫されました", body: `誰かが${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
         : { title: "タネに誰かが来ました", body: `誰かが${place}に来て、水をやってくれました` };
@@ -173,7 +180,10 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   return result;
 }
 
-/** 自分のタネに遠くから水をやる。タネごとに1つの時間帯(朝・昼・夜)に1回で、効き目は現地の10分の1。実っている間はできない */
+/**
+ * 自分のタネに遠くから水をやる。タネごとに1つの時間帯(朝・昼・夜)に1回で、効き目は現地の10分の1。実っている間はできない。
+ * これで実ったら、生産者の取り分の1個が届く
+ */
 async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
   const now = new Date();
   const today = slotKey(now, DAY_MS);
@@ -183,6 +193,10 @@ async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
   if ((base.fruits ?? 0) > 0) throw new Error("実っているので、水はいりません。現地で実をもらってください");
   if (base.lastRemoteWaterOn === today) throw new Error("遠くからの水やりは、1つのタネに朝・昼・夜それぞれ1回です");
   unwrap(await c.models.GameTaneBase.update({ areaKey, lastRemoteWaterOn: today }));
-  await addWater(areaKey, WATER_REMOTE, WATER_TO_RIPE, fruitsWhenRipe(base.rank));
+  const watered = await addWater(areaKey, WATER_REMOTE, WATER_TO_RIPE, fruitsWhenRipe(base.rank));
+  if (watered.ripened) {
+    const item = TANE_ITEM_BY_ID.get(base.seedItemId);
+    if (item) await takeFruit({ ...base, ownerId: userId, ripenedAt: new Date().toISOString() }, userId, item.itemId);
+  }
   return unwrap(await c.models.GameTaneBase.get({ areaKey }));
 }
