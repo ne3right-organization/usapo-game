@@ -66,11 +66,11 @@ async function loadRgba(file: string): Promise<Rgba> {
 function removeWhiteBackground(img: Rgba): void {
   const { data, width, height } = img;
   const alphaAt = (x: number, y: number) => data[(y * width + x) * 4 + 3];
-  let transparentEdge = 0;
-  let edge = 0;
-  for (let x = 0; x < width; x++) for (const y of [0, height - 1]) (edge++, alphaAt(x, y) < 128 && transparentEdge++);
-  for (let y = 0; y < height; y++) for (const x of [0, width - 1]) (edge++, alphaAt(x, y) < 128 && transparentEdge++);
-  if (transparentEdge > edge / 2) return;
+  const edgePoints: [number, number][] = [];
+  for (let x = 0; x < width; x++) edgePoints.push([x, 0], [x, height - 1]);
+  for (let y = 0; y < height; y++) edgePoints.push([0, y], [width - 1, y]);
+  const transparentEdge = edgePoints.filter(([x, y]) => alphaAt(x, y) < 128).length;
+  if (transparentEdge > edgePoints.length / 2) return;
 
   const isBackground = (p: number) => {
     const r = data[p * 4];
@@ -86,8 +86,14 @@ function removeWhiteBackground(img: Rgba): void {
       stack.push(p);
     }
   };
-  for (let x = 0; x < width; x++) (push(x), push((height - 1) * width + x));
-  for (let y = 0; y < height; y++) (push(y * width), push(y * width + width - 1));
+  for (let x = 0; x < width; x++) {
+    push(x);
+    push((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y++) {
+    push(y * width);
+    push(y * width + width - 1);
+  }
   while (stack.length) {
     const p = stack.pop()!;
     data[p * 4 + 3] = 0;
