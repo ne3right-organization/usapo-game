@@ -179,8 +179,7 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
     <div className="text-sm text-[#78716c] leading-relaxed">
       <p className="mb-1">いまはまけるタネを持っていません。タネはこうすると増えます。</p>
       <ul className="list-disc pl-5 text-xs space-y-0.5">
-        <li>ほかの人のタネに初めてチェックインする（1つのタネで1回だけ、1個）</li>
-        <li>タネに落ちているタネを拾う</li>
+        <li>ほかの人のタネに落ちているタネを拾う（初めてチェックインすると、そこに1個落ちる）</li>
         <li>レベルを上げる（ほかの人のタネにチェックインし、いまのタネを3つともまくと、新しいタネが3つもらえる）</li>
       </ul>
       {onMap && <p className="text-xs mt-1">地図の<span className="font-bold text-amber-600">橙色の丸</span>のアイコンが、ほかの人のタネです。</p>}

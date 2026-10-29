@@ -112,7 +112,7 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
 export interface SeedGain {
   itemId: string;
   count: number;
-  reason: "checkin" | "level";
+  reason: "level";
 }
 
 /** タネ(もの)を増やす(無ければ作る) */

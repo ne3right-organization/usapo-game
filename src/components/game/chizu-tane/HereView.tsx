@@ -190,7 +190,6 @@ function Here({ userId }: { userId: string }) {
     setNotice(null);
     try {
       const res = await checkIn(loc, district);
-      const checkinSeeds = res.seedsGained.filter((g) => g.reason === "checkin");
       const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
       const item = res.itemId ? TANE_ITEM_BY_ID.get(res.itemId) : undefined;
       const parts: string[] = [];
@@ -207,8 +206,8 @@ function Here({ userId }: { userId: string }) {
           `このタネには今日はもう来ました。また明日来てください${overrideAllowed ? `（開発環境では「1日」が${Math.round(taneDayMs() / 60_000)}分なので、その区切りが変わればまた来られます）` : ""}`
         );
       }
-      if (res.firstVisit && checkinSeeds.length > 0) {
-        parts.push(`初めて来たので、${describeSeeds(checkinSeeds)}をもらいました。ここにもタネが1個落ちました。`);
+      if (res.firstVisit) {
+        parts.push(`初めて来たので、ここに${item?.name ?? ""}のタネが落ちました。欲しければ下から拾ってください。`);
       }
       if (res.leveledUp && res.level) parts.push(`レベルが上がって Lv.${res.level} になりました！ ${describeSeeds(levelSeeds)}をもらいました。`);
       setNotice({
@@ -363,7 +362,7 @@ function Here({ userId }: { userId: string }) {
                     <WaterHint base={baseHere} remote={baseHere.ownerId === userId} />
                   </div>
                   {/* 1人1日1回(dev は「1日」が短い)。チェックインは水やりと同じで、実っていれば実を1個もらう(誰でも)。
-                      ほかの人のタネに初めて来たときは、タネも1個もらえる。まいた直後から水をやれる */}
+                      ほかの人のタネに初めて来たときは、そこにタネが1個落ちる(拾うかは選べる)。まいた直後から水をやれる */}
                   <button
                     type="button"
                     onClick={handleCheckIn}

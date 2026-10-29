@@ -273,14 +273,14 @@ export interface CheckInResult {
   quantity: number | null;
   /** このチェックインでもらった実の数(1か0) */
   gainedItems: number | null;
-  /** ほかの人のタネに初めて来た(タネを1個もらえた) */
+  /** ほかの人のタネに初めて来た(拠点にタネが1個落ちた) */
   firstVisit: boolean;
   /** チェックインのあとのたまった水と、残っている実の数 */
   water: number;
   fruits: number;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { itemId: string; count: number; reason: "checkin" | "level" }[];
+  seedsGained: { itemId: string; count: number; reason: "level" }[];
   /** チェックインのあと、この拠点に落ちているタネの数 */
   droppedSeeds: number;
   /** チェックインのあとの育ちの段階(growth.ts) */

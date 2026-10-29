@@ -3,7 +3,6 @@ import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-checkin";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
 import {
-  addSeeds,
   addWater,
   assertNotTooFast,
   dropSeed,
@@ -49,7 +48,7 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
  * 現地のチェックイン。持ち主でもほかの人でも同じで、1人1日1回(dev は「1日」が短い)。まいた直後からできる。
  * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個なら芽に戻り、ランクが1つ上がる
  * - 実っていなければ、水をやる(現地は10)。たまったら実って、実が10個できる
- * - ほかの人のタネに初めてチェックインしたときだけ、まかれていたタネを1個もらえ、拠点にもタネが1個落ちる(3個まで。誰でも拾える)。
+ * - ほかの人のタネに初めてチェックインしたときだけ、拠点にタネが1個落ちる(3個まで。直接はもらわず、拾うかどうかは選べる)。
  *   たずねた拠点の数が増えるので、レベルが上がることもある(自分のタネは訪問の記録に残さず、レベルにも数えない)
  */
 async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise<CheckInResult> {
@@ -124,12 +123,10 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     return result;
   }
 
-  // ほかの人のタネに初めて来たときだけ、タネを1個もらえ、拠点にもタネが1個落ちる
+  // ほかの人のタネに初めて来たときだけ、拠点にタネが1個落ちる(直接はもらわない。要らなければ拾わずに置いていける)
   const seedsGained: SeedGain[] = [];
   if (!visit) {
     result.firstVisit = true;
-    seedsGained.push({ itemId: base.seedItemId, count: SEEDS_PER_CHECKIN, reason: "checkin" });
-    await addSeeds(c, userId, base.seedItemId, SEEDS_PER_CHECKIN);
     // 落とすのは DynamoDB の条件付きの書き込み(3個未満のときだけ増やす)。同時にチェックインしても数がずれない
     for (let i = 0; i < SEEDS_PER_CHECKIN; i++) await dropSeed(base.areaKey, DROPPED_SEEDS_MAX);
     result.droppedSeeds = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey }))?.droppedSeeds ?? 0;

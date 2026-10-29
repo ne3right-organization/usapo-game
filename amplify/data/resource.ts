@@ -437,7 +437,7 @@ const schema = a
       itemId: a.string(), // そのタネのもの(梨の木など)
       quantity: a.integer(), // 実をもらったとき: もらったあとに持っている数
       gainedItems: a.integer(), // このチェックインでもらった実の数(1か0)
-      firstVisit: a.boolean(), // ほかの人のタネに初めてチェックインした(タネを1個もらえた)
+      firstVisit: a.boolean(), // ほかの人のタネに初めてチェックインした(拠点にタネが1個落ちた)
       water: a.integer(), // チェックインのあとのたまった水
       fruits: a.integer(), // チェックインのあとに残っている実の数
       level: a.integer(), // もらえたときのレベル
