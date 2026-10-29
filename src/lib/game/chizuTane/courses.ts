@@ -186,14 +186,17 @@ export const TANE_ITEMS: TaneItem[] = [
 
 export const TANE_ITEM_BY_ID = new Map(TANE_ITEMS.map((i) => [i.itemId, i]));
 
-/** 初期試作で使う範囲(docs/地図タネ_初期試作設計書.md の 4章)。レベルは絵を用意した Lv.3 まで */
-export const PROTOTYPE_MAX_LEVEL = 3;
+/**
+ * 上がれるレベルの上限(名前は試作で Lv.3 までだったころのまま)。2026-10-29 に Lv.10 まで開放した。
+ * 絵が無いアイテムは絵文字で出す
+ */
+export const PROTOTYPE_MAX_LEVEL = 10;
 
 /**
  * レベル n になるのに要る「たずねたほかの人の拠点の数」(TANE_LEVEL_THRESHOLDS[n - 1])。同じ拠点は何度たずねても1つと数える。
- * 試作では試しやすいように少なくしている(1か所で Lv.2、3か所で Lv.3)。数は詳細を詰めるときに見直す
+ * 2026-10-29 に、簡単すぎたので厳しくした(それまでは 1か所で Lv.2、3か所で Lv.3)。条件の一覧は管理画面 /admin/chizu-tane/levels
  */
-export const TANE_LEVEL_THRESHOLDS = [0, 1, 3, 6, 10, 15, 25, 40, 60, 100];
+export const TANE_LEVEL_THRESHOLDS = [0, 5, 12, 25, 40, 60, 90, 130, 180, 250];
 
 const maxLevel = () => Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL);
 

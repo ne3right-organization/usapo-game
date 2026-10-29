@@ -21,7 +21,7 @@ export default function ChizuTaneItemsPage() {
         定義: <code>src/lib/game/chizuTane/courses.ts</code>。アイテム {TANE_ITEMS.length}件（絵あり {withImage}件、ほかは絵文字で仮置き）。
         絵は <code>public/chizu-tane/items/</code>（作り方は docs/地図タネ_絵の作り方.md）
       </p>
-      <p className="text-xs text-[#78716c] mb-6">いまの試作で手に入るのは Lv.{PROTOTYPE_MAX_LEVEL} までの種類です（それより上は名前と絵文字を仮に決めただけで、まだ手に入りません）。アイテムが未定義の種類は「—」</p>
+      <p className="text-xs text-[#78716c] mb-6">レベルは Lv.{PROTOTYPE_MAX_LEVEL} まで上がり、その種類のものが手に入ります（絵が無いものは絵文字で出します）。アイテムが未定義の種類は「—」</p>
 
       {TANE_COURSES.map((course) => (
         <section key={course.id} className="mb-8">
