@@ -1,7 +1,7 @@
 "use client";
 
 // 全ゲーム共通の「遊んだ履歴」。もとは地図パズル専用(/game/map-puzzle/history)だったものをサイトのトップから
-// 開けるように移し、地図ポットン・図鑑クイズも見られるようにした。?game= で最初に開くタブを指定できる
+// 開けるように移し、地図ポットンも見られるようにした。?game= で最初に開くタブを指定できる
 
 import { Suspense, useCallback, useState } from "react";
 import Link from "next/link";
@@ -9,8 +9,6 @@ import { useSearchParams } from "next/navigation";
 import HistoryShell from "@/components/game/history/HistoryShell";
 import { fetchChallengeHistory, type ChallengeRecord } from "@/lib/game/mapPuzzleData";
 import { fetchMapPackHistory, type MapPackHistoryRecord } from "@/lib/game/mapPackData";
-import { fetchZukanCollections, type ZukanCollectionEntry } from "@/lib/game/zukanQuizClient";
-import { ZUKAN_DIFFICULTY_META } from "@/lib/game/zukanQuizDifficulty";
 import { mapPackPlayHref, mapPuzzlePlayHref } from "@/lib/game/playLinks";
 import {
   DIFFICULTY_BADGE_CLASS,
@@ -19,12 +17,10 @@ import {
   formatDuration,
   formatRelativeTime,
 } from "@/lib/game/format";
-import { currentUser } from "@/lib/auth";
 
 const TABS = [
   { id: "map-puzzle", label: "🗺️ 地図パズル" },
   { id: "map-pack", label: "📦 地図ポットン" },
-  { id: "zukan-quiz", label: "📖 図鑑クイズ" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -96,33 +92,6 @@ function MapPackItem({ item }: { item: MapPackHistoryRecord }) {
   );
 }
 
-function ZukanItem({ item }: { item: ZukanCollectionEntry }) {
-  return (
-    <Link href={`/game/zukan-quiz/collection/${item.prefCode}/${item.cityCode}`} className={`${card} block`}>
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-[#3c2a14] truncate">
-            {item.prefName} {item.cityName}
-          </div>
-          <div className="text-xs text-[#78716c]">
-            図鑑に登録｜最高 {ZUKAN_DIFFICULTY_META[item.bestDifficulty].label}｜正解 {item.correctCount}回
-          </div>
-        </div>
-        <span className="text-xs text-[#a8937a] shrink-0 ml-3">{formatRelativeTime(item.lastAcquiredAt)}</span>
-      </div>
-    </Link>
-  );
-}
-
-// 図鑑クイズは1問ごとの履歴を残していないので、図鑑に登録した市区町村を新しい順に並べる。
-// 件数はそれほど多くないので一括で読む。未ログインなら他のタブと同じくログインを案内する
-async function loadZukan(cursor?: string | null) {
-  if (cursor) return { items: [] as ZukanCollectionEntry[], nextCursor: null };
-  const user = await currentUser();
-  if (!user) throw new Error("認証が必要です。ログインしてください");
-  return { items: await fetchZukanCollections(), nextCursor: null };
-}
-
 function HistoryContent() {
   const searchParams = useSearchParams();
   const initial = searchParams.get("game");
@@ -160,14 +129,6 @@ function HistoryContent() {
           load={loadPack}
           render={(item: MapPackHistoryRecord) => <MapPackItem key={item.id} item={item} />}
           empty="まだ地図ポットンの履歴がありません"
-        />
-      )}
-      {tab === "zukan-quiz" && (
-        <HistoryShell
-          key="zukan-quiz"
-          load={loadZukan}
-          render={(item: ZukanCollectionEntry) => <ZukanItem key={`${item.prefCode}-${item.cityCode}`} item={item} />}
-          empty="まだ図鑑に登録した市区町村がありません"
         />
       )}
     </>

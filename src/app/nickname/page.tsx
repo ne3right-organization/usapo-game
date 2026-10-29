@@ -61,7 +61,7 @@ export default function NicknamePage() {
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-4 leading-relaxed">
           ⚠️
-          ニックネームを登録すると、ランキングにニックネームが表示され、あなたのプロフィール(合計スコア・ベストスコア一覧)や図鑑が誰でも見られるようになります。全ゲーム共通の設定です。
+          ニックネームを登録すると、ランキングにニックネームが表示され、あなたのプロフィール(合計スコア・ベストスコア一覧)が誰でも見られるようになります。全ゲーム共通の設定です。
         </div>
 
         <input

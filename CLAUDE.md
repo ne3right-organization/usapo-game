@@ -1,6 +1,6 @@
 # このプロジェクトについて
 
-usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構成から切り離して独立させたプロジェクト。うさぽの境界データ（geojson）を使った地図ゲーム（地図パズル・地図ポットン・市区町村図鑑クイズ）。
+usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構成から切り離して独立させたプロジェクト。うさぽの境界データ（geojson）を使った地図ゲーム（地図パズル・地図ポットン・うさぽ農園）。市区町村図鑑クイズは 2026-10-29 に削除した
 
 小規模なボランティアプロジェクトとして開発する。
 
@@ -25,8 +25,7 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 | ホスティング | Amplify Hosting（Next.js 16 の SSR） | `amplify.yml`。Next.js 16 と `proxy.ts` 無しの構成で動作確認済み |
 | 認証 | Cognito（Google ログインのみ） | `amplify/auth/resource.ts`。ブラウザ側の `signInWithRedirect` |
 | データ | Amplify Data（AppSync + DynamoDB） | `amplify/data/resource.ts`。信用が要る書き込みは Lambda のカスタムミューテーション |
-| geojson・トリビア配信 | S3 + CloudFront（本体側のインフラ） | `NEXT_PUBLIC_CLOUDFRONT_URL`。全環境 prd の CloudFront を使う |
-| 国勢調査統計 | `stat.usapo.net` | 図鑑クイズの人口・世帯数 |
+| geojson 配信 | S3 + CloudFront（本体側のインフラ） | `NEXT_PUBLIC_CLOUDFRONT_URL`。全環境 prd の CloudFront を使う |
 
 費用は小規模なのでほぼ無料枠内。Cognito は Google（標準のソーシャルログイン）なので MAU 1万の枠に入る（本体の LINE ログインは OIDC 扱いで 50 MAU の別枠なので混同しないこと）。無料枠は Organization 全体で1つ分。
 
@@ -67,10 +66,10 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 
 ### データ層の作り
 
-- 画面からは `src/lib/game/*Data.ts`・`zukanQuizClient.ts`・`followData.ts`・`completionData.ts`・`recentClears.ts` の関数を呼ぶだけ。中身は Amplify Data のクライアント（`src/lib/amplify/data.ts`）
-- **「クライアントの自己申告を信用しない」書き込みは Lambda のカスタムミューテーション**（`amplify/functions/`）。得点計算・ベスト記録・合計・図鑑登録・フォロー可否の確認など。モデル自体はクライアントから読み取り専用にしている
+- 画面からは `src/lib/game/*Data.ts`・`followData.ts`・`completionData.ts`・`recentClears.ts` の関数を呼ぶだけ。中身は Amplify Data のクライアント（`src/lib/amplify/data.ts`）
+- **「クライアントの自己申告を信用しない」書き込みは Lambda のカスタムミューテーション**（`amplify/functions/`）。得点計算・ベスト記録・合計・フォロー可否の確認・うさぽ農園のタネや実など。モデル自体はクライアントから読み取り専用にしている
 - 得点の式はクライアント（`MapPuzzleGame.tsx` / `MapPackGame.tsx`）と Lambda（`submit-map-puzzle-challenge` / `submit-map-pack-challenge`）の両方にある。変えるときは両方そろえる
-- 未ログインでも使う API（図鑑クイズの出題・回答、最近のクリア）は Identity Pool のゲスト（`guestOrUserAuthMode()`）で呼ぶ
+- 未ログインでも使う API（最近のクリア）は Identity Pool のゲスト（`guestOrUserAuthMode()`）で呼ぶ
 - ランキング・履歴のページ送りの cursor は Amplify Data の `nextToken`
 - ランキングにはログインして遊んだ人を全員出し、ニックネームが無ければ「未設定」と表示する。他人のプロフィール・フォローはニックネームを設定した人だけ（認可で読めなくするところまではしていない）
 
@@ -107,58 +106,21 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 - [ ] Supabase 用だった Google OAuth クライアントを削除
 - [ ] インフラ用リポジトリの `FrontendDomains` に、実際には許可している `devgame.usapo.net` を書き足す（ファイルと実際の設定がずれている）
 
-## 市区町村図鑑クイズ（2026-07-24 実装、MVP範囲）
+## 市区町村図鑑クイズ（2026-07-24〜2026-10-29、削除済み）
 
-設計書: `docs/市区町村図鑑クイズ_設計ドキュメント.md`（ただし「7. データモデル」はDynamoDB想定のたたき台で、実装とは違う。今のモデルは `amplify/data/resource.ts`）。`/game/zukan-quiz` 配下。4択クイズ・1セッション5問・正解した市区町村を図鑑に登録する。
+人気が無かったので、2026-10-29 に画面・Lambda・モデル（`GameZukan*`）をすべて消した（設計書 `docs/市区町村図鑑クイズ_設計ドキュメント.md` も含めて git の履歴にある）。`GameRecentClear` には `game = zukan-quiz` の古い行が残っていることがある。
 
-- **データソース**: ポリゴンは CloudFront 配信の geojson（`/geojson/municipality/2020/{prefCode}.geojson`）。人口・世帯数は `stat.usapo.net`（国勢調査統計API、`GET /statistics/census/2020/population/{prefCode}/{cityCode}.json`、`areas[]` の `hyosyo===1` が市区計）
-  - stat.usapo.net に面積データが無いため、人口密度などのヒントはスコープ外
-- **正答を隠す設計**: 出題は Lambda `start-zukan-quiz` が行い、正答は `GameZukanQuizSession`（クライアントからは触れない。30分の TTL）に保存する。クライアントへ返すシルエットはプロパティを剥がした座標のみ。回答は Lambda `claim-zukan-quiz-answer` が出題を消して（＝1回きり）判定し、正答率（`GameZukanMunicipalityStat`）を数え、ログイン中に正解なら図鑑（`GameZukanCollection`）に登録する
-  - 出題の組み立ては `src/lib/game/zukanQuizGenerator.ts`。Next.js（図鑑クイズのトップ、`server-only` の `zukanQuizData.ts` 経由）と Lambda の両方から使う。外部データは Next.js では Data Cache、Lambda では同じコンテナの中のメモリにキャッシュする（geojson・統計は1週間、トリビアは5分。404 も「データが無い」として持つ）
-  - Supabase 時代は Route Handler `/api/zukan-quiz` とRPC `claim_zukan_quiz_answer` だった
-- **ダミー選択肢の基準**: 同一都道府県内から人口が対象の概ね1/3〜3倍の自治体を優先し、3件に満たなければ1/10〜10倍→無制限と広げ、それでも足りなければ別の都道府県から補充する（地理的近さは「同一都道府県」で代用）
-
-### トリビアヒント・正答率（2026-07-26 追加）
-
-「シルエットだけだと絶対無理」というフィードバックで、正答前のヒントにトリビアを出すようにした。
-
-- **出題対象はトリビア登録済みの自治体に限定**（ユーザー確認済み）。トリビアは本体側（team-kokuusa-platform-frontend）の管理画面で編集し、CloudFront の `/municipality-trivia/{prefCode}.json` で配信される（2026-07-27〜。設計は本体側の `docs/municipality-trivia-management-design.md`）。47都道府県分を並行 fetch し、未公開の都道府県は 404 になるだけ
-- トリビア項目は8種類: `industry` / `specialty` / `historicalEvent` / `touristSpot` / `notablePerson` / `festival` / `natureFeature` / `localCuisine`。出典URLは無い
-- セッション内で同じ自治体を再出題しないよう、クライアントが出題済みの `"prefCode:cityCode"` を毎回送る
-- 見せるヒントは難易度別の件数だけランダムに選ぶ（出題時にサーバー側で選ぶ）。人口・世帯数は出題時から見せる
-- 正答率はログイン有無を問わず全回答を数える
-
-### 難易度3段階・カードグリッド・トリビア提案（2026-07-28〜29 追加）
-
-- **難易度**（`beginner`/`intermediate`/`advanced`、表示は かんたん/ふつう/むずかしい）: ①ヒント件数（5/3/0件）②ダミー選択肢の人口の近さ（`POPULATION_BAND_RATIOS_BY_DIFFICULTY`）。難易度と実際に見せたヒント項目は出題時にサーバー側で保存し、回答の判定でそこから読む（自己申告で高難易度を詐称できないように）
-- 図鑑カードは自治体1枚＋**最高難易度クリアのラベル**（`bestDifficulty`）。カード詳細には直近に正解したときのヒント（`hintFields`、上書き）を出す
-- 図鑑はシルエット付きのカードグリッド（`ZukanCardGrid`）、詳細は `ZukanCardDetail`。他の人の図鑑は `/game/zukan-quiz/profile/[userId]`
-- **カードの「コメント」は実質「ヒントの提案」**（UI文言も「ヒントの提案」）。採用は自動ではなく、本体側のトリビア管理画面での人力キュレーション前提。そのカードを持っている人だけ投稿でき（Lambda `zukan-comment` で確認）、1ユーザー1カード1件。モデレーション機能は未実装
-- 都道府県別コンプリート率表示は、47都道府県ぶんの geojson を毎回読んで遅かったので廃止した（2026-07-29）
-
-### シルエットに陰影起伏図（2026-08-01）
-
-クイズ本体のシルエットの内側だけに国土地理院の陰影起伏図（hillshademap）を重ねている（`src/lib/game/hillshadeRaster.ts`、`MunicipalitySilhouette` の `showTerrain`）。図鑑のカード一覧・詳細には付けていない。
-
-- 輪郭の外は見せない（周辺の地形まで見せると位置が割れてしまうため）
-- ズームレベルは目標ピクセルサイズから log2 で逆算する（高ズームから探すと常に最大ズームになりタイルが爆発した）
-- GSI タイルは CORS 対応（`Origin` ヘッダを送ったときだけ `Access-Control-Allow-Origin` が付く）。取得に失敗したら単色のシルエットに戻す
-- 出典表示「地形: 国土地理院」を出している
-
-### むずかしいの難易度設計（2026-08-01〜02）
-
-- ヒントなし。トリビア登録の有無を問わず全自治体から出題する。都道府県を1つランダムに選び、その中の全自治体を候補にする
-  - **47都道府県分の geojson をまとめて取る実装は、2MB 超の geojson がキャッシュに乗らず負荷が高すぎてクラッシュした**。この規模で「全都道府県ぶんまとめて fetch」を書きたくなったら、1都道府県ずつ遅延取得できないか先に考えること
-- ダミー選択肢を全国から選ぶ方式は、「他の3件と毛色が違う1件が正答」と一目で分かる問題があり撤回した。他の難易度と同じ「同一都道府県優先」
+- 当時の教訓で今も効くもの: **47都道府県分の geojson をまとめて取る実装は、2MB 超の geojson がキャッシュに乗らず負荷が高すぎてクラッシュした**。この規模で「全都道府県ぶんまとめて fetch」を書きたくなったら、1都道府県ずつ遅延取得できないか先に考えること
+- トリビア（本体側の管理画面で編集し CloudFront の `/municipality-trivia/{prefCode}.json` で配信）と `stat.usapo.net`（国勢調査の人口・世帯数）は図鑑クイズだけが使っていた。本体側の配信はそのまま
 
 ## サイト共通の機能（2026-10-20〜）
 
 - **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）
-- **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack|zukan-quiz`）。図鑑クイズは1問ごとの履歴を残していないので図鑑登録を出す
+- **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack`）
 - **ニックネーム設定**（`/nickname`）: 全ゲーム共通。Lambda `set-nickname` がベスト記録・合計のニックネームも書き直す
 - **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=`
-- **最近クリアされたエリア**（各ゲームのトップ）: `GameRecentClear`（3ゲーム共通、誰がクリアしたかは持たない、未ログインでも読める）。記録を送る Lambda が更新する
-- **コンプリート状況**（`/profile`・`/profile/[userId]`、`src/components/profile/`・`src/lib/game/completionData.ts`）: ゲーム×レベルごとにクリアしたエリアを地図で塗る。市区町村は**全国ぶんの geojson を一度に読まない**（全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県だけ読む）。地図ポットンは `firstClearedAt` で完成済みかを見る。図鑑クイズは上の難易度で登録したものを下の難易度でもクリア扱い
+- **最近クリアされたエリア**（各ゲームのトップ）: `GameRecentClear`（地図パズル・地図ポットン共通、誰がクリアしたかは持たない、未ログインでも読める）。記録を送る Lambda が更新する
+- **コンプリート状況**（`/profile`・`/profile/[userId]`、`src/components/profile/`・`src/lib/game/completionData.ts`）: ゲーム×レベルごとにクリアしたエリアを地図で塗る。市区町村は**全国ぶんの geojson を一度に読まない**（全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県だけ読む）。地図ポットンは `firstClearedAt` で完成済みかを見る
 - **フォロー**（`GameFollow`）: フォロー関係はフォローした本人とされた本人にしか見えない（2つの所有者ルール）。フォローは Lambda `set-following` が「お互いにニックネーム設定済み」を確認してから行う。クリア時の通知は見送った
 - **PWA**: `src/app/manifest.ts`・アイコン・`public/sw.js`。サービスワーカーは**オフライン時に `/offline` を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないように）。登録は本番ビルドのみ
 - **Xシェア**（`src/lib/game/share.ts`）

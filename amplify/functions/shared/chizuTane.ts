@@ -25,7 +25,7 @@ const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 // 本番(main)以外では速さを確かめない(開発用の位置指定で一瞬で移れるように)。resource.ts で入れる
 const SKIP_SPEED_CHECK = process.env.CHIZU_TANE_SKIP_SPEED_CHECK === "1";
 
-// 町丁の geojson は同じコンテナの中のメモリに持っておく(図鑑クイズと同じ)。2020年の境界なので古くならない
+// 町丁の geojson は同じコンテナの中のメモリに持っておく。2020年の境界なので古くならない
 const townCache = new Map<string, Promise<TownDistrictFeature[] | null>>();
 
 function fetchTownDistricts(prefCode: string, cityCode: string): Promise<TownDistrictFeature[] | null> {

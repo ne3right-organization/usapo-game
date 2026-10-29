@@ -27,7 +27,6 @@ const municipalitiesUrl = (prefCode: string) => `${CLOUDFRONT_URL}/geojson/munic
 const GAME_META: Record<CompletionGame, { label: string; color: string; tab: string }> = {
   "map-puzzle": { label: "🗺️ 地図パズル", color: "#0f766e", tab: "bg-teal-700" },
   "map-pack": { label: "📦 地図ポットン", color: "#7e22ce", tab: "bg-purple-700" },
-  "zukan-quiz": { label: "📖 図鑑クイズ", color: "#ea580c", tab: "bg-orange-600" },
 };
 
 function prefFeatureKey(feature: unknown): MapFeatureKey | null {
@@ -43,7 +42,7 @@ function cityFeatureKey(feature: unknown): MapFeatureKey | null {
   return { code: String(props.cityCode), name: String(props.cityName) };
 }
 
-/** 都道府県ごとのクリア数の濃淡(上級・図鑑クイズの全国の地図) */
+/** 都道府県ごとのクリア数の濃淡(上級の全国の地図) */
 function countOpacity(count: number): number {
   if (count >= 20) return 0.9;
   if (count >= 10) return 0.75;
@@ -335,7 +334,7 @@ function PrefectureView({ game, level, cleared, color }: { game: CompletionGame;
   );
 }
 
-/** 上級(地図パズル・地図ポットン)・図鑑クイズ: 市区町村が1エリア */
+/** 上級(地図パズル・地図ポットン): 市区町村が1エリア */
 function MunicipalityView({ game, level, cleared, color }: { game: CompletionGame; level: Difficulty; cleared: ClearedArea[]; color: string }) {
   const byPref = useMemo(() => {
     const m = new Map<string, Map<string, ClearedArea>>();
@@ -365,8 +364,7 @@ function MunicipalityView({ game, level, cleared, color }: { game: CompletionGam
   );
   const handleCitiesLoaded = useCallback((keys: MapFeatureKey[]) => setCityTotal(keys.length), []);
 
-  const isZukan = game === "zukan-quiz";
-  const unit = isZukan ? "市区町村を図鑑に登録" : "市区町村をクリア";
+  const unit = "市区町村をクリア";
 
   if (!pref) {
     const selectedCount = selected ? (byPref.get(selected.code)?.size ?? 0) : 0;
@@ -380,9 +378,6 @@ function MunicipalityView({ game, level, cleared, color }: { game: CompletionGam
             {" "}
             {unit}（{byPref.size}都道府県）
           </span>
-          {isZukan && level !== "advanced" && (
-            <p className="text-[11px] text-[#a8937a] mt-1">上の難易度で登録した市区町村も含みます</p>
-          )}
         </Summary>
         <CompletionMap
           geojsonUrl={PREFECTURES_URL}
@@ -463,7 +458,7 @@ function MunicipalityView({ game, level, cleared, color }: { game: CompletionGam
             <div className="flex-1 min-w-0">
               <div className="font-semibold truncate">{selected.name}</div>
               <div className="text-xs text-[#a8937a]">
-                {selectedArea ? `✓ ${isZukan ? "図鑑に登録済み" : "クリア済み"}${selectedArea.bestScore != null ? `・${scoreText(selectedArea)}` : ""}` : isZukan ? "未登録" : "未クリア"}
+                {selectedArea ? `✓ クリア済み${selectedArea.bestScore != null ? `・${scoreText(selectedArea)}` : ""}` : "未クリア"}
               </div>
             </div>
             <PlayButton
@@ -473,11 +468,10 @@ function MunicipalityView({ game, level, cleared, color }: { game: CompletionGam
                 cityCode: selected.code,
                 cityName: selected.name,
               })}
-              label={isZukan ? "▶ クイズで探す" : selectedArea ? "▶ もう一度" : "▶ 遊ぶ"}
+              label={selectedArea ? "▶ もう一度" : "▶ 遊ぶ"}
               color={color}
             />
           </div>
-          {isZukan && <p className="text-[11px] text-[#a8937a] mt-1.5">図鑑クイズの出題はランダムです</p>}
         </Summary>
       ) : (
         <p className="text-xs text-[#a8937a] text-center">市区町村をタップすると、そこから遊べます</p>

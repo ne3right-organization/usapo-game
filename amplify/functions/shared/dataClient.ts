@@ -40,7 +40,7 @@ export function areaKeysOf(area: { difficulty: string; prefCode: string; cityCod
 export async function touchRecentClear(
   c: DataClient,
   clear: {
-    game: "map-puzzle" | "map-pack" | "zukan-quiz";
+    game: "map-puzzle" | "map-pack";
     areaKey: string;
     difficulty?: string | null;
     prefCode: string;

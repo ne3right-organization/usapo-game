@@ -8,14 +8,11 @@ import { chizuTanePlace } from "./functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "./functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "./functions/chizu-tane-seeds/resource";
 import { chizuTaneStats } from "./functions/chizu-tane-stats/resource";
-import { claimZukanQuizAnswer } from "./functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setFollowing } from "./functions/set-following/resource";
 import { setNickname } from "./functions/set-nickname/resource";
 import { submitMapPackChallenge } from "./functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "./functions/submit-map-puzzle-challenge/resource";
-import { startZukanQuiz } from "./functions/start-zukan-quiz/resource";
-import { zukanComment } from "./functions/zukan-comment/resource";
 
 const backend = defineBackend({
   auth,
@@ -24,9 +21,6 @@ const backend = defineBackend({
   setNickname,
   submitMapPuzzleChallenge,
   submitMapPackChallenge,
-  startZukanQuiz,
-  claimZukanQuizAnswer,
-  zukanComment,
   setFollowing,
   chizuTanePlayer,
   chizuTanePlace,
@@ -51,12 +45,6 @@ for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
   fn.addEnvironment("CHIZU_TANE_ITEM_TABLE", taneItemTable.tableName);
   fn.addEnvironment("CHIZU_TANE_HARVEST_TABLE", taneHarvestTable.tableName);
 }
-
-// 回答されなかった図鑑クイズの出題は、期限(expiresAt)が過ぎたら DynamoDB が消す
-backend.data.resources.cfnResources.amplifyDynamoDbTables["GameZukanQuizSession"].timeToLiveAttribute = {
-  attributeName: "expiresAt",
-  enabled: true,
-};
 
 // 費用を Cost Explorer で見分けられるよう、バックエンドの全リソースに付ける
 // (使うには Payer の請求コンソールでコスト配分タグとして有効にする)

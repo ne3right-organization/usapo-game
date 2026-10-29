@@ -11,7 +11,7 @@ export type { Schema };
 export const data = generateClient<Schema>();
 
 /**
- * 未ログインでも呼べる API(図鑑クイズ・最近のクリア)用の認証方式。
+ * 未ログインでも呼べる API(最近のクリア)用の認証方式。
  * ログインしていれば Cognito のユーザー、していなければ Identity Pool のゲストとして呼ぶ
  */
 export async function guestOrUserAuthMode(): Promise<"userPool" | "identityPool"> {
