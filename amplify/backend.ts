@@ -7,6 +7,7 @@ import { chizuTaneCheckin } from "./functions/chizu-tane-checkin/resource";
 import { chizuTanePlace } from "./functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "./functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "./functions/chizu-tane-seeds/resource";
+import { chizuTaneStats } from "./functions/chizu-tane-stats/resource";
 import { claimZukanQuizAnswer } from "./functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setFollowing } from "./functions/set-following/resource";
@@ -31,6 +32,7 @@ const backend = defineBackend({
   chizuTanePlace,
   chizuTaneCheckin,
   chizuTaneSeeds,
+  chizuTaneStats,
 });
 
 // 地図タネの落ちているタネ・実は早い者勝ちなので、拾う・落とす・実をもらう Lambda は拠点のテーブルを DynamoDB で直接(条件付きで)書き換える

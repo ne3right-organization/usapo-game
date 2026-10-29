@@ -3,6 +3,7 @@ import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "../functions/chizu-tane-seeds/resource";
+import { chizuTaneStats } from "../functions/chizu-tane-stats/resource";
 import { claimZukanQuizAnswer } from "../functions/claim-zukan-quiz-answer/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
 import { setFollowing } from "../functions/set-following/resource";
@@ -448,6 +449,12 @@ const schema = a
       rank: a.integer(), // チェックインのあとのランク
     }),
 
+    // コースごとの遊んでいる人数(コース選びの画面に出す)
+    TaneCourseCount: a.customType({
+      course: a.string().required(),
+      players: a.integer().required(),
+    }),
+
     TaneGardenState: a.customType({
       width: a.integer().required(),
       height: a.integer().required(),
@@ -565,6 +572,13 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlayer)),
 
+    // 地図タネ: コースごとの遊んでいる人数
+    taneCourseCounts: a
+      .query()
+      .returns(a.ref("TaneCourseCount").array())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneStats)),
+
     // 地図タネ: いまいる地区にタネをまく。位置と、ブラウザで調べた市区町村(探す範囲を絞るためだけに使う)と、
     // まくタネ(もの。持っているタネが1つ減る)を送る
     placeTaneBase: a
@@ -656,6 +670,7 @@ const schema = a
     allow.resource(chizuTanePlace),
     allow.resource(chizuTaneCheckin),
     allow.resource(chizuTaneSeeds),
+    allow.resource(chizuTaneStats),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

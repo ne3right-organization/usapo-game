@@ -51,6 +51,13 @@ export async function startTane(course: TaneCourse): Promise<TanePlayer> {
   return player;
 }
 
+/** コースごとの遊んでいる人数(始めた人の数)。読めなかったら空 */
+export async function fetchCourseCounts(): Promise<Map<string, number>> {
+  await requireUserId();
+  const rows = unwrap(await data.queries.taneCourseCounts()) ?? [];
+  return new Map(rows.filter((r) => r != null).map((r) => [r.course, r.players]));
+}
+
 /** 自分がまいたタネ(新しい順) */
 export async function fetchMyBases(): Promise<TaneBase[]> {
   const ownerId = await requireUserId();

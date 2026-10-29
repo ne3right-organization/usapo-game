@@ -13,6 +13,7 @@ import {
   type TaneCourse,
 } from "@/lib/game/chizuTane/courses";
 import {
+  fetchCourseCounts,
   fetchMyBases,
   fetchMySeeds,
   fetchVisitedCount,
@@ -73,6 +74,17 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // コースごとの遊んでいる人数(出せなくても選べるので、失敗しても何も出さないだけ)
+  const [counts, setCounts] = useState<Map<string, number> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCourseCounts()
+      .then((m) => !cancelled && setCounts(m))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const handleStart = async () => {
     if (!selected || saving) return;
     setSaving(true);
@@ -108,6 +120,7 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
                 <div className="flex-1 min-w-0">
                   <span className="font-bold text-[#3c2a14] text-sm">{c.label}コース</span>
                   <p className="text-xs text-[#78716c] mt-0.5">{c.description}</p>
+                  {counts && <span className="ml-2 text-[11px] text-emerald-700">👥 {counts.get(c.id) ?? 0}人が遊んでいます</span>}
                   <p className="text-xs text-[#a8937a] mt-0.5">
                     最初のタネ: {firstSeeds.map((i) => `${i.emoji}${i.name}`).join("・")}
                   </p>
