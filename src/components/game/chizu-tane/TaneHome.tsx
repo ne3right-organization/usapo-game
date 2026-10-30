@@ -8,7 +8,8 @@ import {
   TANE_BASE_TYPE_BY_ID,
   TANE_COURSES,
   TANE_COURSE_BY_ID,
-  PROTOTYPE_MAX_LEVEL,
+  taneMaxLevel,
+  MAX_LEVEL_PRODUCTION,
   levelFor,
   seedsForLevel,
   type TaneCourse,
@@ -60,7 +61,7 @@ export default function TaneHome() {
       {/* お知らせ(本番はリリースなどの案内、開発環境は本番との違い) */}
       {isDev ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-6 leading-relaxed">
-          🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。現在プレイできるレベルは{PROTOTYPE_MAX_LEVEL}までです
+          🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。現在プレイできるレベルは{taneMaxLevel()}までです（本番は{MAX_LEVEL_PRODUCTION}まで）
         </div>
       ) : (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-6 leading-relaxed">
@@ -326,7 +327,7 @@ function Home({ course }: { course: TaneCourse }) {
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
           <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1週間以内）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
-          <li>ほかの人のタネをたずねた数（自分のタネは数えません）と、今のレベルのタネを3つともまいたことで、レベルが上がります（Lv.10まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
+          <li>ほかの人のタネをたずねた数（自分のタネは数えません）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
         </ol>
       </div>
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PROTOTYPE_MAX_LEVEL, TANE_COURSES, TANE_ITEMS, baseTypesOf } from "@/lib/game/chizuTane/courses";
+import { MAX_LEVEL_DEV, MAX_LEVEL_PRODUCTION, TANE_COURSES, TANE_ITEMS, baseTypesOf } from "@/lib/game/chizuTane/courses";
 import { ItemIcon, SeedIcon } from "@/components/game/chizu-tane/TaneParts";
 
 // 管理: アイテム定義(src/lib/game/chizuTane/courses.ts)と、その絵の一覧。
@@ -21,7 +21,7 @@ export default function ChizuTaneItemsPage() {
         定義: <code>src/lib/game/chizuTane/courses.ts</code>。アイテム {TANE_ITEMS.length}件（絵あり {withImage}件、ほかは絵文字で仮置き）。
         絵は <code>public/chizu-tane/items/</code>（作り方は docs/地図タネ_絵の作り方.md）
       </p>
-      <p className="text-xs text-[#78716c] mb-6">レベルは Lv.{PROTOTYPE_MAX_LEVEL} まで上がり、その種類のものが手に入ります（絵が無いものは絵文字で出します）。アイテムが未定義の種類は「—」</p>
+      <p className="text-xs text-[#78716c] mb-6">レベルは本番で Lv.{MAX_LEVEL_PRODUCTION}、テスト用（devgame・手元）で Lv.{MAX_LEVEL_DEV} まで上がり、その種類のものが手に入ります（絵が無いものは絵文字で出します。薄い行は本番ではまだ手に入りません）。アイテムが未定義の種類は「—」</p>
 
       {TANE_COURSES.map((course) => (
         <section key={course.id} className="mb-8">
@@ -45,7 +45,7 @@ export default function ChizuTaneItemsPage() {
               <tbody>
                 {baseTypesOf(course.id).map((type) => {
                   const items = TANE_ITEMS.filter((i) => i.baseTypeId === type.id);
-                  const inPrototype = type.unlockLevel <= PROTOTYPE_MAX_LEVEL;
+                  const inPrototype = type.unlockLevel <= MAX_LEVEL_PRODUCTION;
                   const typeCell = (rows: number) => (
                     <>
                       <td rowSpan={rows} className="px-2 py-1.5 align-top text-xs">

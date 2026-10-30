@@ -7,6 +7,8 @@ export const chizuTanePlace = defineFunction({
   timeoutSeconds: 15,
   memoryMB: 512,
   environment: {
+    // 上がれるレベルの上限(src/lib/game/chizuTane/courses.ts の taneMaxLevel)。本番は3、それ以外は10
+    CHIZU_TANE_MAX_LEVEL: process.env.AWS_BRANCH === "main" ? "3" : "10",
     // 全環境で prd の CloudFront を使う(CLAUDE.md 参照)
     NEXT_PUBLIC_CLOUDFRONT_URL: "https://dbr7d89af0fox.cloudfront.net",
     // 本番以外は移動の速さを確かめない(開発用の位置指定で一瞬で移れるように)

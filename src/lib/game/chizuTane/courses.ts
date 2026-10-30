@@ -127,7 +127,7 @@ const items = (baseTypeId: string, list: [name: string, emoji: string][]): TaneI
     return { itemId, baseTypeId, rank: i + 1, name, emoji, imageUrl: ITEM_IMAGE_URLS[itemId] };
   });
 
-// 各種類に3点(1〜3)。建物コースは「小物 → 小物 → その建物」の並び(3つ目がガーデンに建物として並ぶ)。試作で手に入るのは Lv.1〜3 の種類の45点(PROTOTYPE_MAX_LEVEL)。
+// 各種類に3点(1〜3)。建物コースは「小物 → 小物 → その建物」の並び(3つ目がガーデンに建物として並ぶ)。本番で手に入るのは Lv.1〜3 の種類の45点(MAX_LEVEL_PRODUCTION)。
 // Lv.4〜10 の種類の分は、全体を眺めるために名前と絵文字だけ仮に決めたもの(2026-10-29。まだ手に入らない)
 export const TANE_ITEMS: TaneItem[] = [
   // ─── Lv.1〜3(試作で使う) ───
@@ -187,10 +187,24 @@ export const TANE_ITEMS: TaneItem[] = [
 export const TANE_ITEM_BY_ID = new Map(TANE_ITEMS.map((i) => [i.itemId, i]));
 
 /**
- * 上がれるレベルの上限(名前は試作で Lv.3 までだったころのまま)。2026-10-29 に Lv.10 まで開放した。
- * 絵が無いアイテムは絵文字で出す
+ * 上がれるレベルの上限。本番(game.usapo.net・main の Lambda)は絵を用意する Lv.3 まで、テスト用(devgame.usapo.net・手元・
+ * main 以外の Lambda)は全体を試せるよう Lv.10 まで(2026-10-30 に分けた)。絵が無いアイテムは絵文字で出す
  */
-export const PROTOTYPE_MAX_LEVEL = 10;
+export const MAX_LEVEL_PRODUCTION = 3;
+export const MAX_LEVEL_DEV = 10;
+
+/**
+ * いまの環境の上限レベル。ブラウザではホスト名で(devgame.usapo.net と localhost はテスト用)、Lambda では環境変数
+ * CHIZU_TANE_MAX_LEVEL(各関数の resource.ts で AWS_BRANCH を見て入れる)で決める。分からなければ本番の値
+ */
+export function taneMaxLevel(): number {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    return host === "localhost" || host === "devgame.usapo.net" ? MAX_LEVEL_DEV : MAX_LEVEL_PRODUCTION;
+  }
+  const fromEnv = Number(process.env.CHIZU_TANE_MAX_LEVEL);
+  return Number.isInteger(fromEnv) && fromEnv > 0 ? fromEnv : MAX_LEVEL_PRODUCTION;
+}
 
 /**
  * レベル n になるのに要る「たずねたほかの人の拠点の数」(TANE_LEVEL_THRESHOLDS[n - 1])。同じ拠点は何度たずねても1つと数える。
@@ -198,7 +212,7 @@ export const PROTOTYPE_MAX_LEVEL = 10;
  */
 export const TANE_LEVEL_THRESHOLDS = [0, 5, 12, 25, 40, 60, 90, 130, 180, 250];
 
-const maxLevel = () => Math.min(TANE_LEVEL_THRESHOLDS.length, PROTOTYPE_MAX_LEVEL);
+const maxLevel = () => Math.min(TANE_LEVEL_THRESHOLDS.length, taneMaxLevel());
 
 /**
  * レベル。Lv.n → n+1 に上がるには、(1) ほかの人の拠点を TANE_LEVEL_THRESHOLDS[n] か所たずねていて、
@@ -257,9 +271,9 @@ export function firstBaseType(course: TaneCourse): TaneBaseType {
 }
 
 
-/** 初期試作で手に入るもの(集めたものの一覧に出す範囲)。Lv.1〜3 の種類のもの */
+/** いまの環境で手に入るもの(集めたものの一覧に出す範囲)。上限レベル(taneMaxLevel)までの種類のもの */
 export function prototypeItems(): TaneItem[] {
-  return TANE_ITEMS.filter((i) => (TANE_BASE_TYPE_BY_ID.get(i.baseTypeId)?.unlockLevel ?? Infinity) <= PROTOTYPE_MAX_LEVEL);
+  return TANE_ITEMS.filter((i) => (TANE_BASE_TYPE_BY_ID.get(i.baseTypeId)?.unlockLevel ?? Infinity) <= taneMaxLevel());
 }
 
 /** 実の産地(収穫の記録や地区に入っている地名) */

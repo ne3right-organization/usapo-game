@@ -185,7 +185,7 @@ export function NextLevelHint({
   plantedItemIds: ReadonlySet<string>;
 }) {
   const next = nextLevelNeeds(course, visitedCount, plantedItemIds);
-  if (!next) return <p className="text-xs text-[#a8937a]">いまの試作で上がれる一番上のレベルです</p>;
+  if (!next) return <p className="text-xs text-[#a8937a]">いま上がれる一番上のレベルです</p>;
   const seeds = seedsForLevel(course, next.nextLevel);
   const type = seeds[0] ? TANE_BASE_TYPE_BY_ID.get(seeds[0].baseTypeId) : undefined;
   const current = seedsForLevel(course, next.nextLevel - 1);

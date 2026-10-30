@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PROTOTYPE_MAX_LEVEL, TANE_COURSES, TANE_LEVEL_THRESHOLDS, baseTypesOf, seedsForLevel } from "@/lib/game/chizuTane/courses";
+import { MAX_LEVEL_DEV, MAX_LEVEL_PRODUCTION, TANE_COURSES, TANE_LEVEL_THRESHOLDS, baseTypesOf, seedsForLevel } from "@/lib/game/chizuTane/courses";
 import { GARDEN_DESIGNS, houseTierFor } from "@/lib/game/chizuTane/garden";
 import { FRUITS_WHEN_RIPE, WATER_ONSITE, WATER_REMOTE, WATER_TO_RIPE } from "@/lib/game/chizuTane/growth";
 
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default function AdminLevelsPage() {
-  const levels = Array.from({ length: Math.min(PROTOTYPE_MAX_LEVEL, TANE_LEVEL_THRESHOLDS.length) }, (_, i) => i + 1);
+  const levels = Array.from({ length: Math.min(MAX_LEVEL_DEV, TANE_LEVEL_THRESHOLDS.length) }, (_, i) => i + 1);
   return (
     <main className="max-w-5xl mx-auto px-4 py-6 text-[#3c2a14]">
       <Link href="/admin" className="text-xs text-emerald-700">
@@ -26,7 +26,7 @@ export default function AdminLevelsPage() {
 
       <h2 className="font-bold mb-1">ユーザーのレベル</h2>
       <p className="text-xs text-[#78716c] mb-2">
-        次のレベルに上がる条件: ほかの人のタネを決まった数だけ訪ねている（同じタネは何度訪ねても1つ）＋ いまのレベルのタネを3つともまいた。上がると、そのレベルの種類のタネを3つもらえる。上限は Lv.{PROTOTYPE_MAX_LEVEL}
+        次のレベルに上がる条件: ほかの人のタネを決まった数だけ訪ねている（同じタネは何度訪ねても1つ）＋ いまのレベルのタネを3つともまいた。上がると、そのレベルの種類のタネを3つもらえる。上限は本番で Lv.{MAX_LEVEL_PRODUCTION}、テスト用（devgame・手元）で Lv.{MAX_LEVEL_DEV}
       </p>
       <div className="overflow-x-auto mb-8">
         <table className="w-full text-sm bg-white rounded-xl overflow-hidden">
