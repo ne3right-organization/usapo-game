@@ -7,6 +7,7 @@ import { chizuTaneCheckin } from "./functions/chizu-tane-checkin/resource";
 import { chizuTanePlace } from "./functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "./functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "./functions/chizu-tane-seeds/resource";
+import { chizuTaneShelf } from "./functions/chizu-tane-shelf/resource";
 import { chizuTaneStats } from "./functions/chizu-tane-stats/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setFollowing } from "./functions/set-following/resource";
@@ -26,6 +27,7 @@ const backend = defineBackend({
   chizuTanePlace,
   chizuTaneCheckin,
   chizuTaneSeeds,
+  chizuTaneShelf,
   chizuTaneStats,
 });
 
@@ -49,6 +51,11 @@ for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
 // タネをまく・まき直すのも「空き地か、空き地に戻った畑のときだけ」「タネ待ちのときだけ」の条件付きで拠点のテーブルに書く
 taneBaseTable.grantReadWriteData(backend.chizuTanePlace.resources.lambda);
 backend.chizuTanePlace.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
+
+// おすそ分けの棚の数も早い者勝ちなので、棚のテーブルを条件付きで書き換える(amplify/functions/chizu-tane-shelf/handler.ts)
+const taneShelfTable = backend.data.resources.tables["GameTaneShelf"];
+taneShelfTable.grantReadWriteData(backend.chizuTaneShelf.resources.lambda);
+backend.chizuTaneShelf.addEnvironment("CHIZU_TANE_SHELF_TABLE", taneShelfTable.tableName);
 
 // 届いた通知は最新の1日分だけ残す。期限(expiresAt)が過ぎたら DynamoDB が消す
 backend.data.resources.cfnResources.amplifyDynamoDbTables["GameNotification"].timeToLiveAttribute = {

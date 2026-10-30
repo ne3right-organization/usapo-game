@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   TANE_BASE_TYPE_BY_ID,
   TANE_ITEM_BY_ID,
+  HELPS_PER_VISIT,
   nextLevelNeeds,
   seedsForLevel,
   type TaneCourse,
@@ -241,7 +242,7 @@ export function NextLevelHint({
       </p>
       <p>
         {next.visitsRemaining > 0 ? "□" : "☑"} ほかの人のタネに、あと{next.visitsRemaining}か所チェックインする
-        <span className="text-[#a8937a]">（自分のタネは数えません）</span>
+        <span className="text-[#a8937a]">（自分のタネは数えません。フォロー中の人の畑への遠くからの水やり{HELPS_PER_VISIT}回で1か所）</span>
       </p>
       <p>
         {next.unplanted.length > 0 ? "□" : "☑"} いまのタネを3つともまく（{current.length - next.unplanted.length}/{current.length}

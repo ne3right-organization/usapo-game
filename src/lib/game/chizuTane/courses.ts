@@ -218,6 +218,17 @@ export const TANE_LEVEL_THRESHOLDS = [0, 5, 12, 25, 40, 60, 90, 130, 180, 250];
 const maxLevel = () => Math.min(TANE_LEVEL_THRESHOLDS.length, taneMaxLevel());
 
 /**
+ * フォローしている人の畑に遠くから水をやる(手伝い)と、この回数でたずねたタネ1か所と数える(2026-10-31)。
+ * 近くにほかの人がいなくても、友達と始めればレベルが上がっていくように
+ */
+export const HELPS_PER_VISIT = 10;
+
+/** レベルの条件に使う「たずねたタネの数」。たずねたほかの人のタネの数に、手伝いの水やりを HELPS_PER_VISIT 回で1か所として足す */
+export function levelVisitCount(visited: number, helpCount: number): number {
+  return visited + Math.floor(Math.max(0, helpCount) / HELPS_PER_VISIT);
+}
+
+/**
  * レベル。Lv.n → n+1 に上がるには、(1) ほかの人の拠点を TANE_LEVEL_THRESHOLDS[n] か所たずねていて、
  * (2) 自分のコースの Lv.n の種類のタネを3つとも、一度はまいていること(まかずにタネがたまっていくのを防ぐ)
  * @param plantedItemIds 自分の拠点にまいたことのあるタネ(もの)

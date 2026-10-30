@@ -9,7 +9,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
-import { levelFor, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import { levelFor, levelVisitCount, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem, type TaneLocalItem } from "../../../src/lib/game/chizuTane/localItems";
 import {
   findTownDistrict,
@@ -99,8 +99,12 @@ export async function rememberPosition(c: DataClient, userId: string, district: 
   );
 }
 
-/** たずねた(もらったことのある)ほかの人の拠点の数。レベルの計算に使う(自分の拠点は訪問の記録に残さないので入らない) */
+/**
+ * レベルの計算に使う、たずねたタネの数。たずねた(もらったことのある)ほかの人の拠点の数(自分の拠点は訪問の記録に残さないので入らない)に、
+ * フォローしている人の畑への手伝いの水やりを HELPS_PER_VISIT 回で1か所として足す
+ */
 export async function countVisitedBases(c: DataClient, userId: string): Promise<number> {
+  const helpCount = unwrap(await c.models.GameTanePlayer.get({ userId }))?.helpCount ?? 0;
   let count = 0;
   let nextToken: string | null | undefined;
   do {
@@ -108,7 +112,7 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
     count += unwrap(page).length;
     nextToken = page.nextToken;
   } while (nextToken);
-  return count;
+  return levelVisitCount(count, helpCount);
 }
 
 export interface SeedGain {

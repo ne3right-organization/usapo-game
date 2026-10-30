@@ -36,17 +36,23 @@ import {
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
 
 type CheckInResult = Schema["TaneCheckInResult"]["type"];
-type Args = Partial<LocateArgs> & { areaKey?: string };
+type HelpField = Schema["TaneHelpField"]["type"];
+type HelpResult = Schema["TaneHelpResult"]["type"];
+type Args = Partial<LocateArgs> & { areaKey?: string; ownerId?: string; fieldId?: string };
 
 /**
- * 地図タネの、現地のチェックイン(checkInTaneBase)と、遠くからの水やり(waterTaneBaseRemotely)。
- * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(areaKey があれば遠くからの水やり)
+ * 地図タネの、現地のチェックイン(checkInTaneBase)・遠くからの水やり(waterTaneBaseRemotely)・
+ * フォローしている人の畑の一覧(listTaneHelpFields)とその畑への手伝いの水やり(helpWaterTaneBase)。
+ * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(areaKey があれば遠くからの水やり、fieldId があれば手伝い、
+ * ownerId だけなら畑の一覧)
  */
 export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
   const c = await dataClient(env);
-  const { areaKey } = event.arguments;
+  const { areaKey, ownerId, fieldId } = event.arguments;
   if (typeof areaKey === "string") return waterRemotely(c, userId, areaKey);
+  if (typeof ownerId === "string" && typeof fieldId === "string") return helpWater(c, userId, ownerId, fieldId);
+  if (typeof ownerId === "string") return listHelpFields(c, userId, ownerId);
   return checkIn(c, userId, event.arguments as LocateArgs);
 };
 
@@ -259,4 +265,123 @@ async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
     if (item && local) await grantNextLocalSeed(c, userId, item.itemId, "ripened");
   }
   return unwrap(await c.models.GameTaneBase.get({ areaKey }));
+}
+
+// ─── 手伝いの水やり(フォローしている人の畑に遠くから水をやる。2026-10-31) ─────────────────
+// 見られるのは、持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ(ガーデンを見るのと同じ)。
+// 畑は、まいた日時(GameTaneOwnership.plantedAt)で指す。地区も出す(全国農地と見比べれば分かってしまうので隠さない。
+// 見せる相手は持ち主が選んでいて、「農園を見せる」の説明にも畑の場所が分かると書いている)
+
+type Ownership = NonNullable<Awaited<ReturnType<DataClient["models"]["GameTaneOwnership"]["get"]>>["data"]>;
+type Base = NonNullable<Awaited<ReturnType<DataClient["models"]["GameTaneBase"]["get"]>>["data"]>;
+
+async function requireHelpable(c: DataClient, helperId: string, ownerId: string): Promise<void> {
+  if (helperId === ownerId) throw new Error("自分の畑には、ホームから水をやってください");
+  const [share, follow] = await Promise.all([
+    c.models.GameTaneShare.get({ ownerId, viewerId: helperId }),
+    c.models.GameFollow.get({ followerId: helperId, followeeId: ownerId }),
+  ]);
+  if (!unwrap(share) || !unwrap(follow)) throw new Error("この人の畑には水をやれません");
+}
+
+/** 持ち主のいまの畑(手放した畑と、空き地に戻った畑は除く) */
+async function ownerFields(c: DataClient, ownerId: string, now: Date): Promise<{ own: Ownership; base: Base }[]> {
+  const owns: Ownership[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneOwnership.list({ ownerId, nextToken });
+    owns.push(...unwrap(page).filter((o) => !o.releasedAt));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  const rows = await Promise.all(owns.map(async (own) => ({ own, base: unwrap(await c.models.GameTaneBase.get({ areaKey: own.areaKey })) })));
+  return rows.filter((r): r is { own: Ownership; base: Base } => !!r.base && !isAbandoned(r.base, now, DAY_MS));
+}
+
+function helpFieldOf(own: Ownership, base: Base, wateredThisSlot: boolean): HelpField {
+  return {
+    fieldId: own.plantedAt,
+    prefName: base.prefName,
+    cityName: base.cityName,
+    townName: base.townName,
+    baseTypeId: base.baseTypeId,
+    seedItemId: base.seedItemId,
+    rank: base.rank,
+    water: base.water ?? 0,
+    fruits: base.fruits ?? 0,
+    waitingSince: base.waitingSince ?? null,
+    wateredThisSlot,
+  };
+}
+
+async function listHelpFields(c: DataClient, helperId: string, ownerId: string): Promise<HelpField[]> {
+  await requireHelpable(c, helperId, ownerId);
+  const now = new Date();
+  const today = slotKey(now, DAY_MS);
+  const fields = await ownerFields(c, ownerId, now);
+  const helps = await Promise.all(fields.map(({ base }) => c.models.GameTaneHelp.get({ helperId, areaKey: base.areaKey })));
+  return fields
+    .map(({ own, base }, i) => helpFieldOf(own, base, unwrap(helps[i])?.lastWaterOn === today))
+    .sort((a, b) => a.fieldId.localeCompare(b.fieldId));
+}
+
+/**
+ * フォローしている人の畑に遠くから水をやる。持ち主の遠くからの水やりと同じく、1人が1つの畑に朝・昼・夜に1回で、効き目は現地の10分の1。
+ * 実っている間とタネ待ちの間はできない。実ったら持ち主に生産者の取り分が1個届く(手伝った人は実をもらわない。実は現地で)。
+ * 手伝った回数は HELPS_PER_VISIT 回で、たずねたタネ1か所としてレベルに数える
+ */
+async function helpWater(c: DataClient, helperId: string, ownerId: string, fieldId: string): Promise<HelpResult> {
+  await requireHelpable(c, helperId, ownerId);
+  const player = await requirePlayer(c, helperId);
+  const now = new Date();
+  const today = slotKey(now, DAY_MS);
+  const found = (await ownerFields(c, ownerId, now)).find((f) => f.own.plantedAt === fieldId);
+  if (!found) throw new Error("この畑はもうありません。画面を読み直してください");
+  const { own, base } = found;
+  if ((base.fruits ?? 0) > 0) throw new Error("実っているので、水はいりません。現地で実をもらってください");
+  if (isWaitingReplant(base)) throw new Error("タネ待ちの畑には水をやれません");
+  const help = unwrap(await c.models.GameTaneHelp.get({ helperId, areaKey: base.areaKey }));
+  if (help?.lastWaterOn === today) throw new Error("遠くからの水やりは、1つの畑に朝・昼・夜それぞれ1回です");
+  unwrap(
+    help
+      ? await c.models.GameTaneHelp.update({ helperId, areaKey: base.areaKey, lastWaterOn: today })
+      : await c.models.GameTaneHelp.create({ helperId, areaKey: base.areaKey, lastWaterOn: today })
+  );
+  const helpCount = (player.helpCount ?? 0) + 1;
+  unwrap(await c.models.GameTanePlayer.update({ userId: helperId, helpCount }));
+
+  const watered = await addWater(base.areaKey, WATER_REMOTE, WATER_TO_RIPE, fruitsWhenRipe(base.rank));
+  const item = TANE_ITEM_BY_ID.get(base.seedItemId);
+  const local = isLocalBaseTypeId(base.baseTypeId);
+  let localSeed: TaneLocalItem | null = null;
+  if (watered.ripened && item) {
+    // 持ち主に生産者の取り分を1個届ける
+    await takeFruit({ ...base, ownerId, ripenedAt: new Date().toISOString() }, ownerId, item.itemId, local);
+    if (local) localSeed = await grantNextLocalSeed(c, ownerId, item.itemId, "ripened");
+  }
+
+  // 持ち主に知らせる(名前は、手伝った人が持ち主に「農園を見せる」にしているときだけ)
+  const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`;
+  const helperName = await visitorNameFor(c, helperId, ownerId);
+  const who = helperName ? `${helperName}さん` : "誰か";
+  await notifyUsers(c, [ownerId], {
+    ...(watered.ripened
+      ? {
+          title: "タネが実りました",
+          body: `${who}が遠くから水をやって、${place}が実りました！ 生産者の取り分として実が1個届きました${localSeed ? `。ご当地のタネ「${localSeed.name}」が届きました！` : ""}`,
+        }
+      : { title: "水やりを手伝ってもらいました", body: `${who}が${place}に遠くから水をやってくれました` }),
+    url: "/game/chizu-tane",
+    tag: `tane-${base.areaKey}`,
+  });
+
+  const granted = await grantLevelSeeds(c, player);
+  const next = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey })) ?? base;
+  return {
+    field: helpFieldOf(own, next, true),
+    ripened: watered.ripened,
+    helpCount,
+    level: granted.level,
+    leveledUp: granted.gains.length > 0,
+    seedsGained: JSON.stringify(granted.gains),
+  };
 }

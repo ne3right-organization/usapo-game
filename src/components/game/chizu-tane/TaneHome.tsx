@@ -11,6 +11,7 @@ import {
   taneMaxLevel,
   MAX_LEVEL_PRODUCTION,
   levelFor,
+  levelVisitCount,
   seedsForLevel,
   type TaneCourse,
 } from "@/lib/game/chizuTane/courses";
@@ -169,7 +170,9 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
 function Home({ course }: { course: TaneCourse }) {
   const [bases, setBases] = useState<TaneBase[] | null>(null);
   const [garden, setGarden] = useState<GardenState | null>(null);
-  const [visitedCount, setVisitedCount] = useState<number | null>(null);
+  const [visits, setVisits] = useState<{ visited: number; helps: number } | null>(null);
+  // レベルの条件に使う数(手伝いの水やりは HELPS_PER_VISIT 回で1か所)
+  const visitedCount = visits ? levelVisitCount(visits.visited, visits.helps) : null;
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [error, setError] = useState("");
   const courseDef = TANE_COURSE_BY_ID.get(course);
@@ -195,7 +198,7 @@ function Home({ course }: { course: TaneCourse }) {
       .then((b) => !cancelled && setBases(b))
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     fetchVisitedCount()
-      .then((n) => !cancelled && setVisitedCount(n))
+      .then((v) => !cancelled && setVisits(v))
       .catch(() => {});
     fetchMyPlantedItemIds()
       .then((ids) => !cancelled && setPlantedIds(ids))
@@ -217,7 +220,7 @@ function Home({ course }: { course: TaneCourse }) {
           <>
             <span className="mx-2">·</span>
             <span className="font-bold text-emerald-700">Lv.{levelFor(course, visitedCount, plantedIds)}</span>
-            （たずねたタネ {visitedCount}か所）
+            （たずねたタネ {visits?.visited}か所{visits && visits.helps > 0 && `・水やりの手伝い ${visits.helps}回`}）
           </>
         )}
       </p>
@@ -335,14 +338,14 @@ function Home({ course }: { course: TaneCourse }) {
           <li>「おでかけ」で現在地の地区を調べます。位置情報が、その地区（○○一丁目のような町の区切り）の中にあるかどうかで判定します</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）。タネをまいて開拓した地区の数で、ガーデンが増えます</li>
           <li>まいたタネは、水をやると タネ → 芽 → 若葉 → つぼみ → 花 → 実り と育ちます（時間がたつだけでは育ちません）</li>
-          <li>現地でチェックインすると水やりになります（実っていれば、水やりの代わりに実をもらいます。自分のタネでもほかの人のタネでも、1つのタネに朝・昼・夜それぞれ1回）。自分のタネには、このページから遠くから水をやることもできます（朝・昼・夜それぞれ1回、効き目は現地の10分の1）</li>
+          <li>現地でチェックインすると水やりになります（実っていれば、水やりの代わりに実をもらいます。自分のタネでもほかの人のタネでも、1つのタネに朝・昼・夜それぞれ1回）。自分のタネには、このページから遠くから水をやることもできます（朝・昼・夜それぞれ1回、効き目は現地の10分の1）。あなたに「農園を見せる」にしているフォロー中の人の畑にも、その人のガーデンの画面から遠くから水をやれます</li>
           <li>実ると実がなり（ランク1は10個。ランクが上がるほど多くなります）、あなたの手元に生産者の取り分として1個届きます（遠くから水をやって実らせても、ほかの人が実らせても）。残りは現地でチェックインした人が誰でも1個もらえます（早い者勝ち。現地で水をやって実らせた人は、そのまま1個もらえます）</li>
           <li>実が全部収穫されると、畑のランクが1つ上がり（次はもっと多く実ります）、「タネ待ち」になります。同じ種類の畑のタネを、このページから（遠くからでも）まき直すと、またタネから育ちます。1週間まかないと空き地に戻り、誰でもまけるようになります</li>
           <li>ほかの人のタネに初めてチェックインすると、そこにタネが1個落ちます（3個まで）。欲しければ拾い、要らなければ次の人のために置いていけます（誰でも早い者勝ち）</li>
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
           <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1週間以内）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
-          <li>ほかの人のタネをたずねた数（自分のタネは数えません）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
+          <li>ほかの人のタネをたずねた数（自分のタネは数えません。フォロー中の人の畑への遠くからの水やり10回も、1か所と数えます）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
         </ol>
       </div>
 
