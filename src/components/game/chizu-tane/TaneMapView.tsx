@@ -6,7 +6,7 @@ import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { fetchAllBases, fetchMyAreaKeys, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
-import { ErrorText, GrowthBadge, GrowthLegend, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
+import { ErrorText, GrowthBadge, GrowthLegend, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -116,6 +116,7 @@ function TaneMap() {
 
   const sel = selected ? bases?.find((b) => b.areaKey === selected) ?? null : null;
   const selType = sel ? TANE_BASE_TYPE_BY_ID.get(sel.baseTypeId) : undefined;
+  const selFruit = sel ? TANE_ITEM_BY_ID.get(sel.seedItemId) : undefined;
 
   if (error) return <ErrorText message={error} />;
   if (!bases) return <Loading />;
@@ -133,28 +134,37 @@ function TaneMap() {
       {unplaced > 0 && <p className="text-xs text-red-600 mb-3">場所が分からず地図に出せないタネが{unplaced}個あります</p>}
 
       {sel && (
-        <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4">
-          <p className="text-xs text-[#a8937a]">
-            {sel.prefName}
-            {sel.cityName}
-          </p>
-          <p className="text-base font-bold text-[#3c2a14]">
-            <span className="mr-1">{selType?.emoji}</span>
-            {sel.townName}の{selType?.name ?? "タネ"}
-            <span className="ml-1 text-xs font-normal text-[#a8937a]">（{TANE_ITEM_BY_ID.get(sel.seedItemId)?.name ?? ""}）</span>
-          </p>
-          <p className="mt-1">
-            <GrowthBadge base={sel} />
-            {own.has(sel.areaKey) && <span className="ml-2 text-xs text-[#a8937a]">あなたのタネ</span>}
-          </p>
-          {(sel.droppedSeeds ?? 0) > 0 && <p className="text-xs text-amber-700 mt-1">🌰 タネが{sel.droppedSeeds}個落ちています</p>}
-          {overrideAllowed && (
-            <Link
-              href={`/game/chizu-tane/here?lat=${sel.repLat}&lng=${sel.repLng}`}
-              className="inline-block mt-3 rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-purple-600"
-            >
-              ここへ行く（開発用）
-            </Link>
+        <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4 flex gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-[#a8937a]">
+              {sel.prefName}
+              {sel.cityName}
+            </p>
+            <p className="text-base font-bold text-[#3c2a14]">
+              <span className="mr-1">{selType?.emoji}</span>
+              {sel.townName}の{selType?.name ?? "タネ"}
+              <span className="ml-1 text-xs font-normal text-[#a8937a]">（{selFruit?.name ?? ""}）</span>
+            </p>
+            <p className="mt-1">
+              <GrowthBadge base={sel} />
+              {own.has(sel.areaKey) && <span className="ml-2 text-xs text-[#a8937a]">あなたのタネ</span>}
+            </p>
+            {(sel.droppedSeeds ?? 0) > 0 && <p className="text-xs text-amber-700 mt-1">🌰 タネが{sel.droppedSeeds}個落ちています</p>}
+            {overrideAllowed && (
+              <Link
+                href={`/game/chizu-tane/here?lat=${sel.repLat}&lng=${sel.repLng}`}
+                className="inline-block mt-3 rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-purple-600"
+              >
+                ここへ行く（開発用）
+              </Link>
+            )}
+          </div>
+          {/* ここでもらえる実(チェックインすると、この絵のものがもらえる) */}
+          {selFruit && (
+            <div className="shrink-0 flex flex-col items-center">
+              <ItemIcon item={selFruit} size={64} />
+              <span className="text-[10px] text-[#a8937a] mt-0.5">もらえる実</span>
+            </div>
           )}
         </div>
       )}

@@ -275,6 +275,7 @@ function Here() {
   };
 
   const typeHere = baseHere ? TANE_BASE_TYPE_BY_ID.get(baseHere.baseTypeId) : null;
+  const fruitHere = baseHere ? TANE_ITEM_BY_ID.get(baseHere.seedItemId) : undefined;
 
   return (
     <div>
@@ -397,7 +398,12 @@ function Here() {
                         : baseHere.waitingSince
                           ? "📍 チェックインする（タネ待ち）"
                           : (baseHere.fruits ?? 0) > 0
-                            ? `${TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.emoji ?? ""} チェックインして実をもらう（残り${baseHere.fruits}個）`
+                            ? (
+                              <span className="inline-flex items-center justify-center gap-1.5">
+                                {fruitHere && <ItemIcon item={fruitHere} size={24} />}
+                                チェックインして実をもらう（残り{baseHere.fruits}個）
+                              </span>
+                            )
                             : "💧 チェックインして水をやる"}
                     </button>
                   )}
