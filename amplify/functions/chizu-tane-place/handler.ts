@@ -14,6 +14,7 @@ import {
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
 import { DAY_MS_PRODUCTION } from "../../../src/lib/game/chizuTane/geo";
 import { REPLANT_LIMIT_SLOTS, isAbandoned } from "../../../src/lib/game/chizuTane/growth";
+import { TANE_LOCAL_ITEM_BY_ID, TANE_LOCAL_PREFS, isLocalBaseTypeId } from "../../../src/lib/game/chizuTane/localItems";
 
 // 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。タネ待ちの畑が空き地に戻るまでは REPLANT_LIMIT_SLOTS 区切り
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
@@ -51,7 +52,8 @@ function withPastSeed(own: { seedItemId: string; pastSeedItemIds?: (string | nul
 /**
  * いまいる地区にタネ(拠点)をまく。1地区に1つ、早い者勝ち。タネ待ちのまま1週間たって空き地に戻った畑にもまける。
  * 持っているタネ(もの)を1つ使い、そのものの種類の拠点を作る(梨の木のタネ → 果樹園)。種類やレベルの制限は無い。
- * ランク1から始まり、実って収穫するたびに上がる(src/lib/game/chizuTane/growth.ts)
+ * ランク1から始まり、実って収穫するたびに上がる(src/lib/game/chizuTane/growth.ts)。
+ * 1個目のご当地のタネは、その都道府県でしかまけない(旅の記念。docs/地図タネ_ご当地タネ設計書.md の 3章)
  */
 async function place(c: DataClient, userId: string, args: LocateArgs & { itemId: string }) {
   const now = new Date();
@@ -64,6 +66,11 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
   const item = TANE_ITEM_BY_ID.get(args.itemId);
   const baseType = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
   if (!item || !baseType) throw new Error("そのタネはまけません");
+  const local = TANE_LOCAL_ITEM_BY_ID.get(item.itemId);
+  if (local && local.rank === 1 && local.local !== district.prefCode) {
+    const prefName = TANE_LOCAL_PREFS.find((p) => p.prefCode === local.local)?.prefName ?? "その都道府県";
+    throw new Error(`「${item.name}」のタネは、${prefName}でしかまけません`);
+  }
   const seed = await requireHeldSeed(c, userId, item.itemId, item.name);
 
   // 空き地か、空き地に戻った畑のときだけ書ける(同時にまこうとしても、先に書いた方だけが通る)
@@ -127,6 +134,7 @@ async function replant(c: DataClient, userId: string, areaKey: string, itemId: s
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey }));
   if (!own || own.releasedAt || !base) throw new Error("自分の畑にだけ、タネをまき直せます");
   if (!base.waitingSince) throw new Error("この畑はタネ待ちではありません（実が全部収穫されると、まき直せます）");
+  if (isLocalBaseTypeId(base.baseTypeId)) throw new Error("ご当地の畑はまき直せません（1回かぎりの畑です）");
   if (isAbandoned(base, now, DAY_MS)) throw new Error("1週間たったので、この畑は空き地に戻りました");
   const item = TANE_ITEM_BY_ID.get(itemId);
   const typeName = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "この畑";

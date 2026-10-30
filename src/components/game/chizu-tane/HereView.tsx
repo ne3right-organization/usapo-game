@@ -1,13 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID, fruitName } from "@/lib/game/chizuTane/courses";
+import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID, fruitName, type TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
-import { waterUntilRipe } from "@/lib/game/chizuTane/growth";
+import { RIPE_STAGE, growthStage, waterUntilRipe } from "@/lib/game/chizuTane/growth";
+import {
+  HIDDEN_LOCAL_BASE,
+  LOCAL_SEED_MIN_LEVEL,
+  TANE_LOCAL_ITEM_BY_ID,
+  isHiddenLocalBase,
+  isLocalBaseTypeId,
+  localItemFor,
+} from "@/lib/game/chizuTane/localItems";
 import {
   checkIn,
+  claimLocalSeed,
   fetchBasesInCity,
   fetchMyAreaKeys,
+  fetchMyLocalGrantPrefs,
   fetchMySeeds,
   getCurrentLocation,
   isLocationOverrideAllowed,
@@ -19,6 +29,7 @@ import {
   type Location,
   type CheckInResult,
   type TaneBase,
+  type TanePlayer,
   type TaneSeedCount,
 } from "@/lib/game/chizuTaneData";
 import { ErrorText, GrowthBadge, GrowthLegend, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneHeading, TaneScreen, WaterHint } from "./TaneParts";
@@ -40,7 +51,7 @@ export default function HereView() {
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
-      {state.status === "ready" && <Here />}
+      {state.status === "ready" && <Here player={state.player} />}
     </TaneScreen>
   );
 }
@@ -57,7 +68,7 @@ function describeSeeds(gains: CheckInResult["seedsGained"]): string {
     .join("、");
 }
 
-function Here() {
+function Here({ player }: { player: TanePlayer }) {
   const [loc, setLoc] = useState<Location | null>(null);
   const [district, setDistrict] = useState<TownDistrict | null>(null);
   const [bases, setBases] = useState<TaneBase[]>([]);
@@ -79,19 +90,25 @@ function Here() {
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [chosenItemId, setChosenItemId] = useState<string | null>(null);
   const applySeeds = useCallback((list: TaneSeedCount[]) => {
-    // コースの表の順に並べる
+    // コースの表の順に並べる(ご当地のタネは最後)
     const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
-    const sorted = [...list].sort((a, b) => (order.get(a.itemId) ?? 0) - (order.get(b.itemId) ?? 0));
+    const sorted = [...list].sort((a, b) => (order.get(a.itemId) ?? Infinity) - (order.get(b.itemId) ?? Infinity));
     setSeeds(sorted);
     setChosenItemId((cur) => (cur && sorted.some((x) => x.itemId === cur) ? cur : sorted[0]?.itemId ?? null));
   }, []);
   const reloadSeeds = useCallback(async () => applySeeds(await fetchMySeeds()), [applySeeds]);
+  // ご当地のタネ(1個目)をもらった都道府県と、いまのレベル(Lv.3 からもらえる。チェックインでレベルが上がったら書き換える)
+  const [localPrefs, setLocalPrefs] = useState<ReadonlySet<string> | null>(null);
+  const [level, setLevel] = useState(player.grantedLevel ?? 1);
 
   useEffect(() => {
     let cancelled = false;
     fetchMySeeds()
       .then((list) => !cancelled && applySeeds(list))
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
+    fetchMyLocalGrantPrefs()
+      .then((prefs) => !cancelled && setLocalPrefs(prefs))
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -179,6 +196,39 @@ function Here() {
 
   const baseHere = district ? bases.find((b) => b.areaKey === district.areaKey) ?? null : null;
   const isMine = baseHere ? ownAreaKeys.has(baseHere.areaKey) : false;
+  // ほかの人のご当地の畑は、実るまでは現地でも何の畑かを出さない
+  const hiddenHere = baseHere ? isHiddenLocalBase(baseHere, isMine) && growthStage(baseHere) < RIPE_STAGE : false;
+
+  // この都道府県の1個目のご当地のタネ(自分のコースのもの。まだ決めていない都道府県では無い)
+  const localFirst = district ? localItemFor(district.prefCode, player.course as TaneCourse, 1) : undefined;
+  const canClaimLocal = !!localFirst && !!district && localPrefs !== null && !localPrefs.has(district.prefCode);
+
+  // 選んでいるタネがご当地のものなら: 1個目はその都道府県でしかまけない、2個目・3個目はどこでもまけるが、誰でも訪ねられることを伝える
+  const chosenLocal = chosenItemId ? TANE_LOCAL_ITEM_BY_ID.get(chosenItemId) : undefined;
+  const wrongPref = !!chosenLocal && chosenLocal.rank === 1 && !!district && chosenLocal.local !== district.prefCode;
+
+  const handleClaimLocal = async () => {
+    if (!loc || !district || busy || !localFirst) return;
+    setBusy(true);
+    setError("");
+    setNotice(null);
+    try {
+      const itemId = await claimLocalSeed(loc, district);
+      const item = TANE_ITEM_BY_ID.get(itemId);
+      setNotice({
+        kind: "ok",
+        text: `${district.prefName}のご当地のタネ「${item?.name ?? ""}」をもらいました！ このタネは${district.prefName}の中でだけまけます。まいた畑が実ると、次のご当地のタネが届きます`,
+        itemId,
+        seed: true,
+      });
+      setLocalPrefs((cur) => new Set([...(cur ?? []), district.prefCode]));
+      await reloadSeeds();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handlePlant = async () => {
     if (!loc || !district || busy || !chosenItemId) return;
@@ -207,12 +257,25 @@ function Here() {
     setNotice(null);
     try {
       const res = await checkIn(loc, district);
+      if (res.level) setLevel(res.level);
       const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
+      const localSeeds = res.seedsGained.filter((g) => g.reason === "local");
+      const local = isLocalBaseTypeId(res.baseTypeId);
       const item = res.itemId ? TANE_ITEM_BY_ID.get(res.itemId) : undefined;
       const parts: string[] = [];
       if (res.status === "fruit") {
         parts.push(`${item ? fruitName(district, item.name) : "実"}を1個もらいました！（${item?.name ?? "実"}は${res.quantity ?? 1}個目）`);
-        parts.push(res.fruits > 0 ? `ここの実は、あと${res.fruits}個です。` : `実がなくなったので、畑のランクが${res.rank ?? ""}に上がりました。持ち主がタネをまき直すのを待ちます。`);
+        parts.push(
+          res.fruits > 0
+            ? `ここの実は、あと${res.fruits}個です。`
+            : local
+              ? "実がなくなったので、このご当地の畑は役目を終えました。"
+              : `実がなくなったので、畑のランクが${res.rank ?? ""}に上がりました。持ち主がタネをまき直すのを待ちます。`
+        );
+      } else if (res.status === "have") {
+        parts.push(
+          `${item?.name ?? "この実"}はもう持っています。ご当地の実は1つの品につき1人1個なので、ほかの人のために残しておきました（ここの実は、あと${res.fruits}個です）。`
+        );
       } else if (res.status === "ripened") {
         parts.push(
           (res.gainedItems ?? 0) > 0
@@ -221,9 +284,11 @@ function Here() {
         );
       } else if (res.status === "waiting") {
         parts.push(
-          isMine
-            ? "この畑はタネ待ちです。同じ種類の畑のタネをまき直すと、また育ちます。"
-            : "この畑は実が全部収穫されて、持ち主がタネをまき直すのを待っています。"
+          local
+            ? "このご当地の畑は実が全部収穫されて、役目を終えました。"
+            : isMine
+              ? "この畑はタネ待ちです。同じ種類の畑のタネをまき直すと、また育ちます。"
+              : "この畑は実が全部収穫されて、持ち主がタネをまき直すのを待っています。"
         );
       } else if (res.status === "watered") {
         const need = waterUntilRipe({ water: res.water, fruits: res.fruits });
@@ -233,15 +298,19 @@ function Here() {
           `このタネには、この時間帯はもう来ました。朝（4〜12時）・昼（12〜20時）・夜（20〜翌4時）にそれぞれ1回来られます${overrideAllowed ? `（開発環境では${Math.round(taneDayMs() / 60_000)}分ごとに区切っているので、その区切りが変わればまた来られます）` : ""}`
         );
       }
-      if (res.firstVisit) {
+      // ご当地の畑にはタネが落ちない
+      if (res.firstVisit && !local) {
         parts.push(`初めて来たので、ここに${item?.name ?? ""}のタネが落ちました。欲しければ下から拾ってください。`);
       }
+      if (localSeeds.length > 0) parts.push(`ご当地のタネが届きました！ ${describeSeeds(localSeeds)}。どこでもまけます。`);
       if (res.leveledUp && res.level) parts.push(`レベルが上がって Lv.${res.level} になりました！ ${describeSeeds(levelSeeds)}をもらいました。`);
+      const gotFruit = res.status === "fruit" || (res.gainedItems ?? 0) > 0;
       setNotice({
         kind: res.status === "already" ? "info" : "ok",
         text: parts.join(" "),
-        itemId: res.status === "fruit" || (res.gainedItems ?? 0) > 0 || res.firstVisit ? res.itemId ?? undefined : undefined,
-        seed: res.status !== "fruit" && !((res.gainedItems ?? 0) > 0),
+        // 実ったあと(実をもらった・もう持っていた)か、タネが落ちたときだけ絵を出す(ご当地の畑は実るまで伏せる)
+        itemId: gotFruit || res.status === "have" || (res.firstVisit && !local) ? res.itemId ?? undefined : undefined,
+        seed: !gotFruit && res.status !== "have",
       });
       if (res.seedsGained.length > 0) await reloadSeeds();
       await reloadBases(district);
@@ -274,8 +343,8 @@ function Here() {
     }
   };
 
-  const typeHere = baseHere ? TANE_BASE_TYPE_BY_ID.get(baseHere.baseTypeId) : null;
-  const fruitHere = baseHere ? TANE_ITEM_BY_ID.get(baseHere.seedItemId) : undefined;
+  const typeHere = baseHere ? (hiddenHere ? HIDDEN_LOCAL_BASE : TANE_BASE_TYPE_BY_ID.get(baseHere.baseTypeId)) : null;
+  const fruitHere = baseHere && !hiddenHere ? TANE_ITEM_BY_ID.get(baseHere.seedItemId) : undefined;
 
   return (
     <div>
@@ -323,6 +392,7 @@ function Here() {
             selectedCode={district.areaKey}
             location={loc}
             bases={bases}
+            ownAreaKeys={ownAreaKeys}
             onPointSelect={overrideAllowed ? handleMapPoint : undefined}
           />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mt-2 mb-3">
@@ -338,6 +408,28 @@ function Here() {
           </div>
 
           <div ref={actionRef} className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4 scroll-mt-4">
+            {/* ご当地のタネ(1個目)。その都道府県で初めておでかけしたときに、Lv.3 以上なら1回だけもらえる */}
+            {canClaimLocal && localFirst && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 mb-3">
+                {level >= LOCAL_SEED_MIN_LEVEL ? (
+                  <>
+                    <p className="text-sm text-amber-900 mb-2">🗾 {district.prefName}に来ました！ ご当地のタネを1つもらえます（1つの都道府県で1回だけ）</p>
+                    <button
+                      type="button"
+                      onClick={handleClaimLocal}
+                      disabled={busy}
+                      className="w-full rounded-lg py-2 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
+                    >
+                      {busy ? "もらっています..." : `${district.prefName}のご当地のタネをもらう`}
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-xs text-amber-900">
+                    🗾 Lv.{LOCAL_SEED_MIN_LEVEL} になると、{district.prefName}に来たときに、ここでしか手に入らないご当地のタネがもらえます
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               {!baseHere && (
                 <>
@@ -352,10 +444,19 @@ function Here() {
                   {seeds && seeds.length > 0 && (
                     <SeedPicker seeds={seeds} chosenItemId={chosenItemId} onChoose={setChosenItemId} disabled={busy} />
                   )}
+                  {chosenLocal && (
+                    <p className={`text-xs mb-2 ${wrongPref ? "text-red-600" : "text-amber-800"}`}>
+                      {wrongPref
+                        ? `「${chosenLocal.name}」のタネは、もらった都道府県の中でだけまけます`
+                        : chosenLocal.rank === 1
+                          ? "ご当地の畑は1回かぎりで、まき直せません。実ると、次のご当地のタネが届きます"
+                          : "この畑は誰でも訪ねられます。家のすぐ近くは避けるのがおすすめです（ご当地の畑はまき直せない1回かぎりの畑です）"}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={handlePlant}
-                    disabled={busy || !chosenItemId}
+                    disabled={busy || !chosenItemId || wrongPref}
                     className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
                   >
                     {busy ? "まいています..." : "🌱 この地区にタネをまく"}
@@ -367,11 +468,12 @@ function Here() {
                   <p className="text-sm text-[#3c2a14] mb-2">
                     <span className="text-xl mr-1">{typeHere?.emoji}</span>
                     {district.townName}の{typeHere?.name ?? "タネ"}
-                    <span className="ml-1 text-xs text-[#a8937a]">（{TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.name ?? ""}）</span>
+                    {fruitHere && <span className="ml-1 text-xs text-[#a8937a]">（{fruitHere.name}）</span>}
                     {isMine && <span className="ml-2 text-xs text-[#a8937a]">（あなたのタネ）</span>}
                   </p>
+                  {hiddenHere && <p className="text-xs text-[#a8937a] mb-1">何の畑かは、実ってからチェックインすると分かります</p>}
                   <div className="mb-2">
-                    <GrowthBadge base={baseHere} />
+                    <GrowthBadge base={baseHere} hidden={hiddenHere} />
                     <WaterHint base={baseHere} remote={isMine} />
                   </div>
                   {/* 1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。チェックインは水やりと同じで、実っていれば実を1個もらう(誰でも)。

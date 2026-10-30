@@ -413,6 +413,21 @@ const schema = a
       .identifier(["userId", "itemId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
+    // ご当地のタネをもらった記録(ユーザー×都道府県。docs/地図タネ_ご当地タネ設計書.md の 3章)。1個目 → 2個目 → 3個目を、それぞれ1回だけ渡すため。
+    // 1個目はその都道府県で「おでかけ」したときに本人が受け取り(claimLocalTaneSeed)、2個目は1個目の畑が実ったとき、
+    // 3個目は2個目の畑の実が全部収穫されたときに、チェックインの Lambda が持ち主に渡す。course はもらったときのコース
+    GameTaneLocalGrant: a
+      .model({
+        userId: a.id().required(),
+        prefCode: a.string().required(),
+        course: a.string().required(),
+        firstAt: a.datetime().required(),
+        secondAt: a.datetime(),
+        thirdAt: a.datetime(),
+      })
+      .identifier(["userId", "prefCode"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
     // 箱庭(画面では「ガーデン」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
     // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む。
     // 本人しか読めない。ほかの人のガーデンは、持ち主が「農園を見せる」にしている相手にだけ Lambda が返す(viewTaneGarden)
@@ -429,7 +444,8 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / waiting(タネ待ちの畑) / already(この時間帯はもう来た)
+      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / have(ご当地の実で、もう持っているのでもらわなかった) /
+      // waiting(タネ待ちの畑) / already(この時間帯はもう来た)
       status: a.string().required(),
       townName: a.string().required(),
       baseTypeId: a.string().required(),
@@ -586,6 +602,19 @@ const schema = a
         count: a.integer().required(),
       })
       .returns(a.integer())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneSeeds)),
+
+    // 地図タネ: いまいる都道府県の1個目のご当地のタネをもらう(Lv.3 以上、1人1都道府県に1回、自分のコースのもの)。もらったタネの itemId を返す
+    claimLocalTaneSeed: a
+      .mutation()
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+      })
+      .returns(a.string())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneSeeds)),
 

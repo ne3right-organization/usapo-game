@@ -31,6 +31,7 @@ import {
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
 import { houseTierFor } from "@/lib/game/chizuTane/garden";
+import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem } from "@/lib/game/chizuTane/localItems";
 import SwipePages from "./SwipePages";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
@@ -177,8 +178,9 @@ function Home({ course }: { course: TaneCourse }) {
 
   const loadSeeds = () =>
     fetchMySeeds().then((list) => {
+      // コースの表の順(ご当地のタネは最後)
       const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
-      setSeeds([...list].sort((a, b) => (order.get(a.itemId) ?? 0) - (order.get(b.itemId) ?? 0)));
+      setSeeds([...list].sort((a, b) => (order.get(a.itemId) ?? Infinity) - (order.get(b.itemId) ?? Infinity)));
     });
 
   // タネ待ちの畑にまき直したあと: その畑と、持っているタネ・まいたことのあるタネを読み直す
@@ -307,7 +309,14 @@ function Home({ course }: { course: TaneCourse }) {
                   <div className="flex-1 min-w-0">
                     <WaterHint base={b} />
                   </div>
-                  <RemoteWaterButton base={b} onWatered={(next) => setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null)} />
+                  <RemoteWaterButton
+                    base={b}
+                    onWatered={(next) => {
+                      setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null);
+                      // ご当地の1個目の畑が実ると、次のご当地のタネが届いている
+                      if ((next.fruits ?? 0) > 0) loadSeeds().catch(() => {});
+                    }}
+                  />
                 </div>
                 {b.waitingSince && (
                   <div className="pl-9">
@@ -361,7 +370,13 @@ function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (ne
       const next = await waterRemotely(base.areaKey);
       onWatered(next);
       // 実ったら、生産者の取り分の1個が届いている(実ったあとはこのボタンが消えるので、ここで知らせる)
-      if ((next.fruits ?? 0) > 0) window.alert("実りました！ 生産者の取り分として、実が1個届きました");
+      if ((next.fruits ?? 0) > 0) {
+        const nextLocal = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
+        const localSeed = nextLocal?.rank === 1 ? nextLocalItem(nextLocal) : undefined;
+        window.alert(
+          `実りました！ 生産者の取り分として、実が1個届きました${localSeed ? `。ご当地のタネ「${localSeed.name}」も届きました（どこでもまけます）` : ""}`
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

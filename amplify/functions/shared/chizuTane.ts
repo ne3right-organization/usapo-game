@@ -10,6 +10,7 @@ import {
 import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
 import { levelFor, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem, type TaneLocalItem } from "../../../src/lib/game/chizuTane/localItems";
 import {
   findTownDistrict,
   isCityCode,
@@ -183,6 +184,28 @@ export async function grantLevelSeeds(
   return { level, gains };
 }
 
+/**
+ * ご当地の畑の次のタネを持ち主に1個渡す。1個目の畑が実ったとき(ripened)は2個目、2個目の畑の実が全部収穫されたとき(harvested)は3個目。
+ * もらった記録(GameTaneLocalGrant)を見て、1人1都道府県に1回だけ渡す。渡したもの(渡さなかったら null)を返す
+ */
+export async function grantNextLocalSeed(
+  c: DataClient,
+  ownerId: string,
+  seedItemId: string,
+  event: "ripened" | "harvested"
+): Promise<TaneLocalItem | null> {
+  const item = TANE_LOCAL_ITEM_BY_ID.get(seedItemId);
+  if (!item || item.rank !== (event === "ripened" ? 1 : 2)) return null;
+  const next = nextLocalItem(item);
+  if (!next) return null;
+  const grant = unwrap(await c.models.GameTaneLocalGrant.get({ userId: ownerId, prefCode: item.local }));
+  const field = next.rank === 2 ? "secondAt" : "thirdAt";
+  if (!grant || grant[field]) return null;
+  unwrap(await c.models.GameTaneLocalGrant.update({ userId: ownerId, prefCode: item.local, [field]: new Date().toISOString() }));
+  await addSeeds(c, ownerId, next.itemId, 1);
+  return next;
+}
+
 // ─── 落ちているタネ(DynamoDB を直接さわる) ───────────────────────────────
 // Amplify Data のクライアントでは「前の値を返す」「条件付きで書く」ができず、読んでから書くまでの間に割り込まれる。
 // 落ちているタネは早い者勝ちなので、ここだけ DynamoDB の1回の書き込みで行う(同じ1件への書き込みは1つずつ順に処理されるので、
@@ -335,9 +358,10 @@ export interface FruitSource {
 /**
  * 実を1個もらう。「拠点の実を1個減らす(1個以上あるときだけ)」「もらった人の実(GameTaneItem)を1個増やす」
  * 「収穫の記録(GameTaneHarvest)を1行足す」を1つのトランザクションで行う。
- * もらえたら、残りの実の数を返す(先にほかの人が取りきっていたら null)
+ * once(ご当地の実)なら、まだ持っていないときだけもらえる(1つの品につき1人1個)。
+ * もらえたら、残りの実の数を返す(先にほかの人が取りきっていた・もう持っていたら null)
  */
-export async function takeFruit(base: FruitSource, userId: string, itemId: string): Promise<number | null> {
+export async function takeFruit(base: FruitSource, userId: string, itemId: string, once = false): Promise<number | null> {
   const { areaKey } = base;
   const areaName = `${base.cityName} ${base.townName}`;
   const now = new Date().toISOString();
@@ -359,6 +383,7 @@ export async function takeFruit(base: FruitSource, userId: string, itemId: strin
             Update: {
               TableName: ITEM_TABLE,
               Key: { userId: { S: userId }, itemId: { S: itemId } },
+              ...(once ? { ConditionExpression: "attribute_not_exists(quantity)" } : {}),
               UpdateExpression:
                 "SET quantity = if_not_exists(quantity, :zero) + :one, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now, " +
                 "firstAcquiredAt = if_not_exists(firstAcquiredAt, :now), firstAreaName = if_not_exists(firstAreaName, :area)",

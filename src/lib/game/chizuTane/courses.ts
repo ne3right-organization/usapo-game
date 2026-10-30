@@ -6,6 +6,7 @@
 // itemImages.generated.ts に載り、imageUrl になる(無いあいだは emoji を出す。docs/地図タネ_絵の作り方.md)
 
 import { ITEM_IMAGE_URLS } from "./itemImages.generated";
+import { TANE_LOCAL_BASE_TYPES, TANE_LOCAL_ITEMS } from "./localItems";
 
 export type TaneCourse = "plant" | "animal" | "hobby" | "vehicle" | "building";
 
@@ -109,7 +110,8 @@ export const TANE_BASE_TYPES: TaneBaseType[] = [
   ]),
 ];
 
-export const TANE_BASE_TYPE_BY_ID = new Map(TANE_BASE_TYPES.map((t) => [t.id, t]));
+/** 拠点の種類を ID で引く。ご当地の畑(localItems.ts)も引ける */
+export const TANE_BASE_TYPE_BY_ID = new Map([...TANE_BASE_TYPES, ...TANE_LOCAL_BASE_TYPES].map((t) => [t.id, t]));
 
 /** 拠点でもらえるもの(そのまま箱庭に置ける形)。itemId は `${baseTypeId}_${rank}` */
 export interface TaneItem {
@@ -184,7 +186,8 @@ export const TANE_ITEMS: TaneItem[] = [
   ...items("castle", [["石垣", "🧱"], ["金のしゃちほこ", "🐉"], ["天守閣", "🏯"]]),
 ];
 
-export const TANE_ITEM_BY_ID = new Map(TANE_ITEMS.map((i) => [i.itemId, i]));
+/** もらえるものを ID で引く。ご当地のもの(localItems.ts)も引ける */
+export const TANE_ITEM_BY_ID = new Map<string, TaneItem>([...TANE_ITEMS, ...TANE_LOCAL_ITEMS].map((i) => [i.itemId, i]));
 
 /**
  * 上がれるレベルの上限。本番(game.usapo.net・main の Lambda)は絵を用意する Lv.3 まで、テスト用(devgame.usapo.net・手元・

@@ -7,6 +7,7 @@ import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { fetchAllBases, fetchMyAreaKeys, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
 import { ErrorText, GrowthBadge, GrowthLegend, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
+import { HIDDEN_LOCAL_BASE, isHiddenLocalBase } from "@/lib/game/chizuTane/localItems";
 import { taneMarkerIcon } from "./taneMarker";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -80,7 +81,7 @@ function TaneMap() {
       mapRef.current = { map, Lmod };
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.6 }).addTo(map);
       for (const b of bases) {
-        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b) })
+        Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b, isHiddenLocalBase(b, own.has(b.areaKey))) })
           .addTo(map)
           .on("click", () => setSelected(b.areaKey));
       }
@@ -115,8 +116,10 @@ function TaneMap() {
   };
 
   const sel = selected ? bases?.find((b) => b.areaKey === selected) ?? null : null;
-  const selType = sel ? TANE_BASE_TYPE_BY_ID.get(sel.baseTypeId) : undefined;
-  const selFruit = sel ? TANE_ITEM_BY_ID.get(sel.seedItemId) : undefined;
+  // ほかの人のご当地の畑は、何の畑か(どこのご当地のものか)を地図では出さない(現地で、実ってからチェックインすると分かる)
+  const selHidden = sel ? isHiddenLocalBase(sel, own.has(sel.areaKey)) : false;
+  const selType = sel ? (selHidden ? HIDDEN_LOCAL_BASE : TANE_BASE_TYPE_BY_ID.get(sel.baseTypeId)) : undefined;
+  const selFruit = sel && !selHidden ? TANE_ITEM_BY_ID.get(sel.seedItemId) : undefined;
 
   if (error) return <ErrorText message={error} />;
   if (!bases) return <Loading />;
@@ -143,10 +146,10 @@ function TaneMap() {
             <p className="text-base font-bold text-[#3c2a14]">
               <span className="mr-1">{selType?.emoji}</span>
               {sel.townName}の{selType?.name ?? "タネ"}
-              <span className="ml-1 text-xs font-normal text-[#a8937a]">（{selFruit?.name ?? ""}）</span>
+              {selFruit && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{selFruit.name}）</span>}
             </p>
             <p className="mt-1">
-              <GrowthBadge base={sel} />
+              <GrowthBadge base={sel} hidden={selHidden} />
               {own.has(sel.areaKey) && <span className="ml-2 text-xs text-[#a8937a]">あなたのタネ</span>}
             </p>
             {(sel.droppedSeeds ?? 0) > 0 && <p className="text-xs text-amber-700 mt-1">🌰 タネが{sel.droppedSeeds}個落ちています</p>}
@@ -160,6 +163,12 @@ function TaneMap() {
             )}
           </div>
           {/* ここでもらえる実(チェックインすると、この絵のものがもらえる) */}
+          {selHidden && (
+            <div className="shrink-0 w-24 flex flex-col items-center text-center">
+              <span className="text-5xl leading-none">❓</span>
+              <span className="text-[10px] text-[#a8937a] mt-1 leading-tight">実ってから現地でチェックインすると分かります</span>
+            </div>
+          )}
           {selFruit && (
             <div className="shrink-0 flex flex-col items-center">
               <ItemIcon item={selFruit} size={64} />

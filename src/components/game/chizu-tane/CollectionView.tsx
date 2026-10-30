@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_COURSES, TANE_ITEM_BY_ID, fruitName, prototypeItems, type TaneItem } from "@/lib/game/chizuTane/courses";
 import {
+  TANE_LOCAL_ITEMS,
+  TANE_LOCAL_ITEM_BY_ID,
+  TANE_LOCAL_PREFS,
+  TANE_LOCAL_RANK_ROLES,
+  type TaneLocalItem,
+} from "@/lib/game/chizuTane/localItems";
+import {
   fetchMyHarvests,
   fetchMyItems,
   fetchOwnerViews,
@@ -52,12 +59,23 @@ function Collection() {
   if (error) return <ErrorText message={error} />;
   if (!owned) return <Loading />;
 
-  // 試作で手に入るものに、それ以外で持っているもの(あとから範囲を広げたときの分)を足す
+  // 試作で手に入るものに、それ以外で持っているもの(あとから範囲を広げたときの分)を足す。ご当地のものは下に都道府県ごとにまとめる
   const shown = new Map<string, TaneItem>(prototypeItems().map((i) => [i.itemId, i]));
+  const localOwned: TaneLocalItem[] = [];
   for (const id of owned.keys()) {
+    const local = TANE_LOCAL_ITEM_BY_ID.get(id);
+    if (local) {
+      localOwned.push(local);
+      continue;
+    }
     const item = TANE_ITEM_BY_ID.get(id);
     if (item) shown.set(id, item);
   }
+  // 持っているご当地のものを、都道府県コード・コース・何個目の順に
+  const localByPref = TANE_LOCAL_PREFS.map((p) => ({
+    ...p,
+    items: TANE_LOCAL_ITEMS.filter((i) => i.local === p.prefCode && localOwned.includes(i)),
+  })).filter((p) => p.items.length > 0);
   const ownedCount = [...shown.keys()].filter((id) => owned.has(id)).length;
   const placeCount = (itemId: string) => new Set(harvests.filter((h) => h.itemId === itemId).map((h) => h.areaKey)).size;
 
@@ -110,6 +128,33 @@ function Collection() {
           </section>
         );
       })}
+      {/* ご当地のもの(旅先で手に入れたもの)。持っているものだけ、都道府県ごとに出す */}
+      {localByPref.length > 0 && (
+        <section className="mb-5">
+          <h2 className="text-xs font-bold text-[#a8937a] mb-2">🗾 ご当地</h2>
+          {localByPref.map((p) => (
+            <div key={p.prefCode} className="mb-3">
+              <p className="text-[11px] font-semibold text-[#78716c] mb-1">{p.prefName}</p>
+              <div className="grid grid-cols-3 gap-2">
+                {p.items.map((item) => (
+                  <button
+                    key={item.itemId}
+                    type="button"
+                    onClick={() => setOpenItem(item)}
+                    className="bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] active:scale-95 transition"
+                  >
+                    <div className="h-12 flex items-center justify-center">
+                      <ItemIcon item={item} size={44} />
+                    </div>
+                    <p className="text-xs font-bold text-[#3c2a14] mt-1">{item.name}</p>
+                    <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{TANE_LOCAL_RANK_ROLES[item.rank - 1]}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
       {openItem && (
         <HarvestSheet item={openItem} harvests={harvests.filter((h) => h.itemId === openItem.itemId)} onClose={() => setOpenItem(null)} />
       )}

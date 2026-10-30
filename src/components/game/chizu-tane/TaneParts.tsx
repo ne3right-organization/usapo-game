@@ -266,7 +266,8 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
 }
 
 /** まいたタネの育ち具合:「🌸 花 ●●●●●○ · ランク2」。実ったら残っている実の数 */
-export function GrowthBadge({ base }: { base: GrowingBase & { rank: number; seedItemId?: string } }) {
+/** 育ち具合。hidden(ほかの人のご当地の畑)なら、実っていても実の絵の代わりに「？」を出す */
+export function GrowthBadge({ base, hidden = false }: { base: GrowingBase & { rank: number; seedItemId?: string }; hidden?: boolean }) {
   if (isWaitingReplant(base)) {
     return (
       <span className="text-xs text-[#a16207]">
@@ -279,7 +280,14 @@ export function GrowthBadge({ base }: { base: GrowingBase & { rank: number; seed
   const s = GROWTH_STAGES[stage];
   return (
     <span className={`text-xs ${stage === RIPE_STAGE ? "font-bold text-amber-600" : "text-emerald-700"}`}>
-      <GrowthStageIcon stage={stage} seedItemId={base.seedItemId} size={18} /> {s.label}
+      {hidden && stage === RIPE_STAGE ? (
+        <span role="img" aria-label="なぞの実" style={{ fontSize: 15, lineHeight: 1 }}>
+          ❓
+        </span>
+      ) : (
+        <GrowthStageIcon stage={stage} seedItemId={base.seedItemId} size={18} />
+      )}{" "}
+      {s.label}
       <span className="ml-1 tracking-tighter text-[10px]" aria-hidden>
         {GROWTH_STAGES.map((_, i) => (i <= stage ? "●" : "○")).join("")}
       </span>

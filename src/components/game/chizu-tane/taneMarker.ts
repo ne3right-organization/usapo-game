@@ -4,13 +4,14 @@ import { GROWTH_STAGES, RIPE_STAGE, growthStage, isWaitingReplant, type GrowingB
 import { GROWTH_IMAGE_URLS } from "@/lib/game/chizuTane/growthImages.generated";
 
 // 地図に出すタネのアイコン(全国農地とおでかけで同じもの)。自分のタネか他人のタネかではなく、育ち具合で見せる:
-// タネ〜花はその段階の絵(無ければ絵文字)を緑の丸で、実っていれば実(梨の木など)の絵(無ければ絵文字)を金色の丸で囲み、少し大きくする。タネ待ちは何も無いことが分かるよう、茶色の枠の白い丸(空き地の絵があればその絵を入れる)
+// タネ〜花はその段階の絵(無ければ絵文字)を緑の丸で、実っていれば実(梨の木など)の絵(無ければ絵文字)を金色の丸で囲み、少し大きくする。タネ待ちは何も無いことが分かるよう、茶色の枠の白い丸(空き地の絵があればその絵を入れる)。
+// hidden(ほかの人のご当地の畑。localItems.ts の isHiddenLocalBase)は、実っていても実の絵の代わりに「？」を出す
 
 export const GROWING_COLOR = "#10b981";
 export const RIPE_COLOR = "#f59e0b";
 export const WAITING_COLOR = "#a16207";
 
-export function taneMarkerIcon(Lmod: typeof L, base: GrowingBase & { seedItemId: string }): L.DivIcon {
+export function taneMarkerIcon(Lmod: typeof L, base: GrowingBase & { seedItemId: string }, hidden = false): L.DivIcon {
   // 大きさは style で指定する(Leaflet の CSS がマーカーの中の img を width: auto にするので、width 属性だと元の 96px で出てしまう)
   const img = (url: string, px: number) =>
     `<img src="${url}" alt="" style="display:block;width:${px}px;height:${px}px;max-width:none" />`;
@@ -29,9 +30,11 @@ export function taneMarkerIcon(Lmod: typeof L, base: GrowingBase & { seedItemId:
   const fruit = ripe ? TANE_ITEM_BY_ID.get(base.seedItemId) : undefined;
   // 実ったら、もらえる実と同じ絵を出す(絵文字だと、もらった実の絵と見た目がちがいすぎるため)
   const content = ripe
-    ? fruit?.imageUrl
-      ? img(fruit.imageUrl, 26)
-      : (fruit?.emoji ?? "✨")
+    ? hidden
+      ? "❓"
+      : fruit?.imageUrl
+        ? img(fruit.imageUrl, 26)
+        : (fruit?.emoji ?? "✨")
     : GROWTH_IMAGE_URLS[String(stage)]
       ? img(GROWTH_IMAGE_URLS[String(stage)], 20)
       : GROWTH_STAGES[stage].emoji;

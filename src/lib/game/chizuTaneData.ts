@@ -230,6 +230,29 @@ export async function fetchMySeeds(): Promise<TaneSeedCount[]> {
   return seeds;
 }
 
+/** ご当地のタネをもらった都道府県(都道府県コード)。1個目をもらった県だけ行がある */
+export async function fetchMyLocalGrantPrefs(): Promise<Set<string>> {
+  const userId = await requireUserId();
+  const prefs = new Set<string>();
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneLocalGrant.list({ userId, nextToken });
+    for (const g of unwrap(page)) prefs.add(g.prefCode);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return prefs;
+}
+
+/** いまいる都道府県の1個目のご当地のタネをもらう(Lv.3 以上、1人1都道府県に1回)。もらったタネの itemId を返す */
+export async function claimLocalSeed(loc: Location, district: TownDistrict): Promise<string> {
+  await requireUserId();
+  const itemId = unwrap(
+    await data.mutations.claimLocalTaneSeed({ lng: loc.lng, lat: loc.lat, prefCode: district.prefCode, cityCode: district.cityCode })
+  );
+  if (!itemId) throw new Error("ご当地のタネをもらえませんでした");
+  return itemId;
+}
+
 /** たずねた(もらったことのある)ほかの人のタネの数。レベルの条件の1つ(courses.ts の levelFor) */
 export async function fetchVisitedCount(): Promise<number> {
   const userId = await requireUserId();
@@ -344,8 +367,11 @@ export async function replantBase(areaKey: string, itemId: string): Promise<Tane
 }
 
 export interface CheckInResult {
-  /** watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / waiting: タネ待ちの畑 / already: この時間帯はもう来た */
-  status: "watered" | "ripened" | "fruit" | "waiting" | "already";
+  /**
+   * watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / have: ご当地の実をもう持っているので、もらわなかった /
+   * waiting: タネ待ちの畑 / already: この時間帯はもう来た
+   */
+  status: "watered" | "ripened" | "fruit" | "have" | "waiting" | "already";
   townName: string;
   baseTypeId: string;
   itemId: string | null;
@@ -360,7 +386,8 @@ export interface CheckInResult {
   fruits: number;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { itemId: string; count: number; reason: "level" }[];
+  /** 増えたタネ。level: レベルが上がった / local: 自分のご当地の畑が実った・配り終えたので、次のご当地のタネが届いた */
+  seedsGained: { itemId: string; count: number; reason: "level" | "local" }[];
   /** チェックインのあと、この拠点に落ちているタネの数 */
   droppedSeeds: number;
   /** チェックインのあとの育ちの段階(growth.ts) */
