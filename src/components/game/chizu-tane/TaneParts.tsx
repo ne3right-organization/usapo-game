@@ -77,7 +77,7 @@ export function GrowthLegend() {
         実っている（実をもらえる）
       </span>
       <span className="flex items-center gap-1">
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#a16207] bg-[#f5efe6] text-[9px] leading-none">🟫</span>
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#a16207] bg-white" />
         タネ待ち
       </span>
     </>
@@ -232,7 +232,8 @@ export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) 
   if (isWaitingReplant(base)) {
     return (
       <span className="text-xs text-[#a16207]">
-        🟫 タネ待ち
+        <span className="inline-block w-3 h-3 rounded-full border-2 border-[#a16207] bg-white align-[-1px] mr-1" />
+        タネ待ち
         <span className="ml-1 text-[#a8937a] font-normal">· ランク{base.rank}</span>
       </span>
     );
