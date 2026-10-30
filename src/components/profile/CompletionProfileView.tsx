@@ -21,6 +21,7 @@ import { FollowButton, FollowSummary } from "@/components/profile/FollowControls
 import MapPuzzleScores from "@/components/profile/MapPuzzleScores";
 import { currentUser } from "@/lib/auth";
 import { UserIcon } from "@/components/game/chizu-tane/TaneParts";
+import TaneProfileLinks from "@/components/game/chizu-tane/TaneProfileLinks";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`;
@@ -174,6 +175,8 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
         </div>
         {view.isSelf && <FollowSummary />}
       </div>
+
+      <TaneProfileLinks userId={view.userId} isSelf={view.isSelf} nickname={view.nickname} />
 
       <div className="flex gap-2">
         {COMPLETION_GAMES.map((g) => (

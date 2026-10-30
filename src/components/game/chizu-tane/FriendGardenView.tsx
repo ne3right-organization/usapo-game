@@ -61,9 +61,16 @@ function FriendGarden({ userId, helpCount }: { userId: string; helpCount: number
     </Link>
   );
   if (error) {
+    // 見られないとき(農園を見せてもらっていない・フォローしていない)は、見られる条件を出す
     return (
-      <div>
-        <ErrorText message={error} />
+      <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex flex-col gap-2">
+        <p className="text-sm font-semibold text-[#3c2a14]">{error}</p>
+        <p className="text-xs text-[#78716c] leading-relaxed">
+          ほかの人のガーデンは、その人があなたに「農園を見せる」にしていて、あなたがその人をフォローしているときだけ見られます。
+        </p>
+        <Link href={`/profile/${userId}`} className="text-xs text-emerald-700 underline underline-offset-2">
+          この人のプロフィールへ
+        </Link>
         {back}
       </div>
     );
