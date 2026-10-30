@@ -34,7 +34,7 @@ import { houseTierFor } from "@/lib/game/chizuTane/garden";
 import SwipePages from "./SwipePages";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
-import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
+import { ErrorText, GrowthBadge, ItemIcon, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -137,8 +137,14 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
                   <span className="font-bold text-[#3c2a14] text-sm">{c.label}コース</span>
                   {counts && <span className="ml-2 text-[11px] text-emerald-700">👥 {counts.get(c.id) ?? 0}人が遊んでいます</span>}
                   <p className="text-xs text-[#78716c] mt-0.5">{c.description}</p>
-                  <p className="text-xs text-[#a8937a] mt-0.5">
-                    最初のタネ: {firstSeeds.map((i) => `${i.emoji}${i.name}`).join("・")}
+                  <p className="text-xs text-[#a8937a] mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    最初のタネ:
+                    {firstSeeds.map((i) => (
+                      <span key={i.itemId} className="inline-flex items-center gap-0.5">
+                        <ItemIcon item={i} size={20} />
+                        {i.name}
+                      </span>
+                    ))}
                   </p>
                 </div>
               </div>

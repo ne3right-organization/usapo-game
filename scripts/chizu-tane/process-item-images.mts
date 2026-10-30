@@ -6,10 +6,13 @@
 //
 // 入力(art/chizu-tane/。元の画像は大きいので git には入れない):
 //   sheets/{シートID}.png   作業表の1シート(3×3。Lv.10 のシートは 1×3)。シートID は plant-1 〜 building-4
-//   singles/{アイテムID}.png 1点だけ作り直したもの(例: orchard_1.png)
+//   sheets/growth.png       まいたタネの育つ途中の絵(2×3。タネ・芽・若葉 / つぼみ・花・タネ待ちの空き地)
+//   singles/{アイテムID}.png 1点だけ作り直したもの(例: orchard_1.png。育つ途中の絵は growth_0 〜 growth_4・growth_waiting)
 // 出力:
 //   public/chizu-tane/items/{アイテムID}.png  96×96、背景透過、下端の中央が地面に接する点
 //   src/lib/game/chizuTane/itemImages.generated.ts  絵のあるアイテムの一覧(courses.ts が imageUrl に使う)
+//   public/chizu-tane/growth/growth_{段階}.png と growthImages.generated.ts  育つ途中の絵(段階は growth.ts の GROWTH_STAGES の番号。
+//   実りは畑の実の絵を出すので無い。waiting は実が全部取られたあとのタネ待ち)
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,6 +31,17 @@ const SHEETS_DIR = join(ROOT, "art/chizu-tane/sheets");
 const SINGLES_DIR = join(ROOT, "art/chizu-tane/singles");
 const OUT_DIR = join(ROOT, "public/chizu-tane/items");
 const GENERATED = join(ROOT, "src/lib/game/chizuTane/itemImages.generated.ts");
+const GROWTH_OUT_DIR = join(ROOT, "public/chizu-tane/growth");
+const GROWTH_GENERATED = join(ROOT, "src/lib/game/chizuTane/growthImages.generated.ts");
+
+// 育つ途中の絵(growth.ts の GROWTH_STAGES のタネ〜花と、タネ待ちの空き地。実りはその畑の実の絵を出す)
+const GROWTH_SHEET_ID = "growth";
+const GROWTH_ROWS = [
+  ["growth_0", "growth_1", "growth_2"],
+  ["growth_3", "growth_4", "growth_waiting"],
+];
+const GROWTH_IDS = new Set(GROWTH_ROWS.flat());
+const outDirFor = (id: string) => (GROWTH_IDS.has(id) ? GROWTH_OUT_DIR : OUT_DIR);
 
 const SIZE = 96; // 表示は 48px 前後なので2倍
 const MAX_W = 88;
@@ -43,6 +57,7 @@ type Rgba = { data: Buffer; width: number; height: number };
 
 /** シートID(plant-1 など)から、行ごとのアイテムID(1行 = 1種類のタネ1〜3) */
 function sheetRows(sheetId: string): string[][] | null {
+  if (sheetId === GROWTH_SHEET_ID) return GROWTH_ROWS;
   const m = /^([a-z]+)-(\d+)$/.exec(sheetId);
   if (!m) return null;
   const course = TANE_COURSES.find((c) => c.id === m[1]);
@@ -173,9 +188,10 @@ function cutOut(img: Rgba, parts: Part[]): Rgba | null {
   return { data, width, height };
 }
 
-/** 96×96 に収め、下端の中央が地面に接する点になるよう、下に寄せて左右中央に置く */
-async function writeItem(itemId: string, piece: Rgba): Promise<void> {
-  const scale = Math.min(MAX_W / piece.width, MAX_H / piece.height);
+const fitScale = (piece: Rgba) => Math.min(MAX_W / piece.width, MAX_H / piece.height);
+
+/** 96×96 に収め、下端の中央が地面に接する点になるよう、下に寄せて左右中央に置く。scale を渡すとその倍率で(シートの中で大きさをそろえる) */
+async function writeItem(itemId: string, piece: Rgba, scale = fitScale(piece)): Promise<void> {
   const w = Math.max(1, Math.round(piece.width * scale));
   const h = Math.max(1, Math.round(piece.height * scale));
   const resized = await sharp(piece.data, { raw: { width: piece.width, height: piece.height, channels: 4 } })
@@ -185,25 +201,29 @@ async function writeItem(itemId: string, piece: Rgba): Promise<void> {
   await sharp({ create: { width: SIZE, height: SIZE, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: resized, left: Math.round((SIZE - w) / 2), top: SIZE - BOTTOM_MARGIN - h }])
     .png({ compressionLevel: 9 })
-    .toFile(join(OUT_DIR, `${itemId}.png`));
+    .toFile(join(outDirFor(itemId), `${itemId}.png`));
   console.log(`  ${itemId}.png`);
 }
 
 /** シート(行 × 3列)を切り分ける。かたまりは中心がどのマスにあるかで振り分けるので、マス目が少しずれていてもよい */
-async function processSheet(file: string, rows: string[][]): Promise<void> {
+async function processSheet(file: string, rows: string[][], sameScale = false): Promise<void> {
   const img = await loadRgba(file);
   removeWhiteBackground(img);
   const parts = findParts(img);
   const cellW = img.width / 3;
   const cellH = img.height / rows.length;
+  const pieces: [string, Rgba][] = [];
   for (let r = 0; r < rows.length; r++) {
     for (let c = 0; c < rows[r].length; c++) {
       const inCell = parts.filter((p) => Math.floor(p.cx / cellW) === c && Math.floor(p.cy / cellH) === r);
       const piece = cutOut(img, inCell);
-      if (piece) await writeItem(rows[r][c], piece);
+      if (piece) pieces.push([rows[r][c], piece]);
       else console.warn(`  ! ${rows[r][c]}: マスに絵が見つかりません`);
     }
   }
+  // 育つ途中の絵は、同じ土の山が育っていくように見せるため、いちばん大きい絵に合わせた同じ倍率で縮める
+  const shared = sameScale ? Math.min(...pieces.map(([, piece]) => fitScale(piece))) : undefined;
+  for (const [id, piece] of pieces) await writeItem(id, piece, shared);
 }
 
 async function processSingle(file: string, itemId: string): Promise<void> {
@@ -239,8 +259,28 @@ function writeGenerated(): void {
   console.log(`一覧を更新: 絵のあるアイテム ${urls.length} / ${TANE_ITEMS.length}`);
 }
 
+/** 育つ途中の絵の一覧を作り直す(growth_{段階}.png → 段階の番号か waiting) */
+function writeGrowthGenerated(): void {
+  const urls: [string, string][] = [];
+  for (const f of listImages(GROWTH_OUT_DIR).sort()) {
+    const id = basename(f, extname(f));
+    if (!GROWTH_IDS.has(id)) continue;
+    const hash = createHash("sha1").update(readFileSync(join(GROWTH_OUT_DIR, f))).digest("hex").slice(0, 8);
+    urls.push([id.slice("growth_".length), `/chizu-tane/growth/${f}?v=${hash}`]);
+  }
+  const body = urls.map(([stage, url]) => `  ${JSON.stringify(stage)}: ${JSON.stringify(url)},`).join("\n");
+  writeFileSync(
+    GROWTH_GENERATED,
+    `// scripts/chizu-tane/process-item-images.mts が作るファイル。手で直さない\n` +
+      `// 育つ途中の絵(growth.ts の GROWTH_STAGES の番号か waiting(タネ待ち) → 画像の URL)。無いときは絵文字などを出す\n` +
+      `export const GROWTH_IMAGE_URLS: Record<string, string> = {\n${body}${body ? "\n" : ""}};\n`
+  );
+  console.log(`一覧を更新: 絵のある育つ途中の段階 ${urls.length} / ${GROWTH_IDS.size}`);
+}
+
 async function main(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true });
+  mkdirSync(GROWTH_OUT_DIR, { recursive: true });
   const only = new Set(process.argv.slice(2));
   const pick = (name: string) => only.size === 0 || only.has(name);
 
@@ -249,16 +289,16 @@ async function main(): Promise<void> {
     if (!pick(sheetId)) continue;
     const rows = sheetRows(sheetId);
     if (!rows) {
-      console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4)`);
+      console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4、growth)`);
       continue;
     }
     console.log(`sheets/${f}（${rows.length}行 × 3）`);
-    await processSheet(join(SHEETS_DIR, f), rows);
+    await processSheet(join(SHEETS_DIR, f), rows, sheetId === GROWTH_SHEET_ID);
   }
   for (const f of listImages(SINGLES_DIR)) {
     const itemId = basename(f, extname(f));
     if (!pick(itemId)) continue;
-    if (!TANE_ITEM_BY_ID.has(itemId)) {
+    if (!TANE_ITEM_BY_ID.has(itemId) && !GROWTH_IDS.has(itemId)) {
       console.warn(`! singles/${f}: アイテムID が分かりません`);
       continue;
     }
@@ -266,6 +306,7 @@ async function main(): Promise<void> {
     await processSingle(join(SINGLES_DIR, f), itemId);
   }
   writeGenerated();
+  writeGrowthGenerated();
 }
 
 await main();

@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   TANE_BASE_TYPE_BY_ID,
+  TANE_ITEM_BY_ID,
   nextLevelNeeds,
   seedsForLevel,
   type TaneCourse,
   type TaneItem,
 } from "@/lib/game/chizuTane/courses";
 import { GROWTH_STAGES, RIPE_STAGE, growthStage, isWaitingReplant, waterUntilRipe, type GrowingBase } from "@/lib/game/chizuTane/growth";
+import { GROWTH_IMAGE_URLS } from "@/lib/game/chizuTane/growthImages.generated";
 
 // 地図タネの画面で共通に使う小さな部品
 
@@ -25,6 +27,36 @@ export function ItemIcon({ item, size = 40, silhouette = false }: { item: TaneIt
       {item.emoji}
     </span>
   );
+}
+
+/**
+ * まいたタネの育つ途中の絵(タネ〜花)。実りはその畑の実の絵を出すので、seedItemId があれば実の絵(ItemIcon)。
+ * 絵が無い段階は絵文字
+ */
+export function GrowthStageIcon({ stage, seedItemId, size = 20 }: { stage: number; seedItemId?: string; size?: number }) {
+  const s = GROWTH_STAGES[stage];
+  const fruit = stage === RIPE_STAGE && seedItemId ? TANE_ITEM_BY_ID.get(seedItemId) : undefined;
+  if (fruit) return <ItemIcon item={fruit} size={size} />;
+  const url = GROWTH_IMAGE_URLS[String(stage)];
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt={s.label} width={size} height={size} className="inline-block align-middle" />;
+  }
+  return (
+    <span role="img" aria-label={s.label} style={{ fontSize: size * 0.8, lineHeight: 1 }}>
+      {s.emoji}
+    </span>
+  );
+}
+
+/** タネ待ち(実が全部取られたあと)の印。絵(空き地)があれば絵、無ければ茶色の枠の白い丸 */
+function WaitingIcon({ size }: { size: number }) {
+  const url = GROWTH_IMAGE_URLS.waiting;
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" width={size} height={size} className="inline-block align-middle" aria-hidden />;
+  }
+  return <span className="inline-block w-3 h-3 rounded-full border-2 border-[#a16207] bg-white align-[-1px]" aria-hidden />;
 }
 
 /**
@@ -70,14 +102,20 @@ export function GrowthLegend() {
     <>
       <span className="flex items-center gap-1">
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-emerald-500 bg-white text-[9px] leading-none">🌱</span>
-        育っている（{GROWTH_STAGES.slice(0, RIPE_STAGE).map((s) => s.emoji).join("")}）
+        育っている（
+        {GROWTH_STAGES.slice(0, RIPE_STAGE).map((s, i) => (
+          <GrowthStageIcon key={s.label} stage={i} size={14} />
+        ))}
+        ）
       </span>
       <span className="flex items-center gap-1">
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-amber-500 bg-amber-50 text-[9px] leading-none">✨</span>
         実っている（実をもらえる）
       </span>
       <span className="flex items-center gap-1">
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#a16207] bg-white" />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#a16207] bg-white overflow-hidden">
+          {GROWTH_IMAGE_URLS.waiting && <WaitingIcon size={12} />}
+        </span>
         タネ待ち
       </span>
     </>
@@ -228,12 +266,11 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
 }
 
 /** まいたタネの育ち具合:「🌸 花 ●●●●●○ · ランク2」。実ったら残っている実の数 */
-export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) {
+export function GrowthBadge({ base }: { base: GrowingBase & { rank: number; seedItemId?: string } }) {
   if (isWaitingReplant(base)) {
     return (
       <span className="text-xs text-[#a16207]">
-        <span className="inline-block w-3 h-3 rounded-full border-2 border-[#a16207] bg-white align-[-1px] mr-1" />
-        タネ待ち
+        <WaitingIcon size={18} /> タネ待ち
         <span className="ml-1 text-[#a8937a] font-normal">· ランク{base.rank}</span>
       </span>
     );
@@ -242,7 +279,7 @@ export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) 
   const s = GROWTH_STAGES[stage];
   return (
     <span className={`text-xs ${stage === RIPE_STAGE ? "font-bold text-amber-600" : "text-emerald-700"}`}>
-      {s.emoji} {s.label}
+      <GrowthStageIcon stage={stage} seedItemId={base.seedItemId} size={18} /> {s.label}
       <span className="ml-1 tracking-tighter text-[10px]" aria-hidden>
         {GROWTH_STAGES.map((_, i) => (i <= stage ? "●" : "○")).join("")}
       </span>
