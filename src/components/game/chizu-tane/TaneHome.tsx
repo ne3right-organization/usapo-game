@@ -8,6 +8,7 @@ import {
   TANE_BASE_TYPE_BY_ID,
   TANE_COURSES,
   TANE_COURSE_BY_ID,
+  PROTOTYPE_MAX_LEVEL,
   levelFor,
   seedsForLevel,
   type TaneCourse,
@@ -56,9 +57,14 @@ export default function TaneHome() {
         </p>
       </div>
 
-      {isDev && (
+      {/* お知らせ(本番はリリースなどの案内、開発環境は本番との違い) */}
+      {isDev ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-6 leading-relaxed">
-          🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。
+          🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。現在プレイできるレベルは{PROTOTYPE_MAX_LEVEL}までです
+        </div>
+      ) : (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-6 leading-relaxed">
+          🎉 うさぽ農園Ver1.0をリリースしました！ポスティング・お出かけついでにタネをまいてみましょう
         </div>
       )}
 
