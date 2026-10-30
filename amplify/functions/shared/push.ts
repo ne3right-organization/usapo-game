@@ -56,9 +56,11 @@ async function sendToUser(c: DataClient, userId: string, message: PushMessage): 
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 24 * 3600 });
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;
-        // 購読が取り消された・期限が切れた
-        if (status === 404 || status === 410) await c.models.GamePushSubscription.delete({ userId, endpoint: s.endpoint });
-        else console.warn("通知を送れませんでした", status, err);
+        // 購読が取り消された・期限が切れた(なぜ届かなくなったか後で追えるよう、消したことをログに残す)
+        if (status === 404 || status === 410) {
+          console.warn("期限切れの購読を消します", status, new URL(s.endpoint).host, userId, (err as { body?: string }).body);
+          await c.models.GamePushSubscription.delete({ userId, endpoint: s.endpoint });
+        } else console.warn("通知を送れませんでした", status, err);
       }
     })
   );

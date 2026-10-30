@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { currentUser, signOutUser } from "@/lib/auth";
 import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
-import { disablePush } from "@/lib/push/client";
+import { disablePush, syncPushSubscription } from "@/lib/push/client";
 import { hasUnseenNotices } from "@/lib/notificationsData";
 
 // サイト共通ヘッダー(SiteHeader)の右に出す、ログインの状態。元実装(team-kokuusa-platform-frontend)の NicknameBadge 相当。
@@ -30,6 +30,8 @@ export default function AuthStatus() {
         setState({ status: "signed-out" });
         return;
       }
+      // 通知の届け先が消えていたら書き直す(アプリを開いて最初の1回だけ。失敗しても何もしない)
+      syncPushSubscription().catch(() => {});
       try {
         const profile = await fetchGameProfile();
         if (!cancelled) setState({ status: "signed-in", nickname: profile?.nickname ?? null });
