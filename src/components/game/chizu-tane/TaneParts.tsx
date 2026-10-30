@@ -60,6 +60,17 @@ function WaitingIcon({ size }: { size: number }) {
   return <span className="inline-block w-3 h-3 rounded-full border-2 border-[#a16207] bg-white align-[-1px]" aria-hidden />;
 }
 
+/** 人のアイコン。うさぽ農園で集めたものから選んだ実(iconItemId)の絵で、選んでいなければ 👤 */
+export function UserIcon({ iconItemId, size = 24 }: { iconItemId?: string | null; size?: number }) {
+  const item = iconItemId ? TANE_ITEM_BY_ID.get(iconItemId) : undefined;
+  if (item) return <ItemIcon item={item} size={size} />;
+  return (
+    <span role="img" aria-label="人" style={{ fontSize: size * 0.8, lineHeight: 1 }}>
+      👤
+    </span>
+  );
+}
+
 /**
  * タネの絵。実(もの)と見分けがつくよう、タネ袋の形にして、何のタネかを小さく出す(絵があれば絵、無ければ絵文字。実の絵はそのまま ItemIcon)
  */

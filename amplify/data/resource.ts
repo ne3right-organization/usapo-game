@@ -29,6 +29,9 @@ const schema = a
         // 地図パズルのベスト記録の合計とエリア数(submit-map-puzzle-challenge が更新する)
         totalScore: a.integer().required().default(0),
         areasPlayedCount: a.integer().required().default(0),
+        // アイコン(うさぽ農園で集めたもの1つの itemId。2026-10-31)。フォローの一覧などで、ニックネームの横に出す。
+        // 書くのは chizu-tane-player の setTaneIcon(集めたことのあるものかを確かめる)
+        iconItemId: a.string(),
       })
       .identifier(["userId"])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
@@ -726,6 +729,14 @@ const schema = a
       .returns(a.ref("TaneShelfView"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneShelf)),
+
+    // 地図タネ: 集めたものから1つ選んでアイコンにする(itemId を省くとアイコンを外す)。設定したアイコンの itemId を返す
+    setTaneIcon: a
+      .mutation()
+      .arguments({ itemId: a.string() })
+      .returns(a.string())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
 
     // ほかの人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ返す
     viewTaneGarden: a

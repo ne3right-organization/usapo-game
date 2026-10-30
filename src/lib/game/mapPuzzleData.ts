@@ -71,6 +71,8 @@ export interface GameProfilePublic {
   nickname: string | null;
   totalScore: number;
   areasPlayedCount: number;
+  /** アイコン(うさぽ農園で集めたものの itemId) */
+  iconItemId?: string | null;
 }
 
 export interface BestRecord extends AreaInfo {
@@ -287,6 +289,7 @@ export async function fetchGameProfile(userId?: string): Promise<GameProfilePubl
     nickname: item.nickname ?? null,
     totalScore: item.totalScore,
     areasPlayedCount: item.areasPlayedCount,
+    iconItemId: item.iconItemId ?? null,
   };
 }
 

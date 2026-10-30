@@ -24,7 +24,7 @@ import { HIDDEN_LOCAL_BASE, isHiddenLocalBase } from "@/lib/game/chizuTane/local
 import GardenSvg from "./GardenSvg";
 import { FriendShelf } from "./ShelfParts";
 import SwipePages from "./SwipePages";
-import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen, WaterHint } from "./TaneParts";
+import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen, UserIcon, WaterHint } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // フォローしている人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしているときだけ見られる(確かめるのは Lambda)
@@ -243,7 +243,10 @@ export function FollowingGardens() {
                 href={`/game/chizu-tane/garden/${u.userId}`}
                 className="flex items-center justify-between bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-4 py-3 text-sm text-[#3c2a14]"
               >
-                <span className="truncate">🏡 {u.nickname}さんのガーデン</span>
+                <span className="flex items-center gap-2 min-w-0">
+                  <UserIcon iconItemId={u.iconItemId} size={24} />
+                  <span className="truncate">{u.nickname}さんのガーデン</span>
+                </span>
                 <span className="text-[#c8b8a0]">›</span>
               </Link>
             </li>
@@ -304,7 +307,9 @@ export function MyFollowers() {
           keyOf={(u) => u.userId}
           render={(u) => (
             <Link href={`/profile/${u.userId}`} className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-2 py-3 text-center">
-              <span className="block text-2xl mb-1">👤</span>
+              <span className="flex justify-center h-8 items-center mb-1">
+                <UserIcon iconItemId={u.iconItemId} size={30} />
+              </span>
               <span className="block text-xs font-semibold text-[#3c2a14] truncate">{u.nickname ?? "未設定"}</span>
               <span className={`block text-[10px] mt-0.5 ${view.shared.has(u.userId) ? "text-emerald-700" : "text-[#a8937a]"}`}>
                 {view.shared.has(u.userId) ? "🌱 農園を見せている" : "🔒 見せていない"}

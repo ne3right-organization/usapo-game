@@ -270,6 +270,20 @@ export async function fetchVisitedCount(): Promise<{ visited: number; helps: num
   return { visited: count, helps: player?.helpCount ?? 0 };
 }
 
+// ─── アイコン(集めたものから1つ) ───────────────────────────────────────────
+
+/** 自分のアイコン(集めたものの itemId。無ければ null) */
+export async function fetchMyIconItemId(): Promise<string | null> {
+  const userId = await requireUserId();
+  return unwrap(await data.models.GameProfile.get({ userId }))?.iconItemId ?? null;
+}
+
+/** 集めたものから1つ選んでアイコンにする(null で外す)。フォローの一覧などでニックネームの横に出る */
+export async function setTaneIcon(itemId: string | null): Promise<string | null> {
+  await requireUserId();
+  return unwrap(await data.mutations.setTaneIcon({ itemId })) ?? null;
+}
+
 // ─── おすそ分けの棚 ────────────────────────────────────────────────────────
 
 export interface TaneShelfItem {

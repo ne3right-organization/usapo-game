@@ -1,7 +1,7 @@
 import type { AppSyncIdentityCognito, AppSyncResolverHandler } from "aws-lambda";
 import { env } from "$amplify/env/chizu-tane-player";
-import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { isTaneCourse, levelFor, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import { dataClient, ensureProfile, unwrap, type DataClient } from "../shared/dataClient";
+import { TANE_ITEM_BY_ID, isTaneCourse, levelFor, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { addSeeds, countPlanted, countVisitedBases, plantedItemIds } from "../shared/chizuTane";
 import {
   GARDEN_HEIGHT,
@@ -15,13 +15,13 @@ import {
   type GardenObject,
 } from "../../../src/lib/game/chizuTane/garden";
 
-type Args = { course?: string; objects?: unknown; ownerId?: string; gardenId?: string | null };
+type Args = { course?: string; objects?: unknown; ownerId?: string; gardenId?: string | null; itemId?: string | null };
 
 /**
  * 地図タネの、始める(startTane)・箱庭を開く(openTaneGarden)・箱庭を保存する(saveTaneGarden)。
- * ほかの人のガーデンを見る(viewTaneGarden)も受ける。
+ * ほかの人のガーデンを見る(viewTaneGarden)・アイコンを決める(setTaneIcon)も受ける。
  * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(course があれば始める、ownerId があればほかの人のガーデンを見る、
- * objects があれば保存(gardenId のガーデン)、どれも無ければ開く)
+ * itemId の項目があればアイコン、objects があれば保存(gardenId のガーデン)、どれも無ければ開く)
  */
 export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
@@ -30,6 +30,7 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
 
   if (course !== undefined && course !== null) return start(c, userId, course);
   if (typeof ownerId === "string") return viewGarden(c, userId, ownerId);
+  if ("itemId" in event.arguments) return setIcon(c, userId, event.arguments.itemId ?? null);
 
   const player = unwrap(await c.models.GameTanePlayer.get({ userId }));
   if (!player) throw new Error("先にコースを選んでください");
@@ -98,6 +99,17 @@ async function listOwned(c: DataClient, userId: string): Promise<Map<string, num
     nextToken = page.nextToken;
   } while (nextToken);
   return owned;
+}
+
+/** 集めたもの(実)から1つ選んでアイコンにする。集めたことのあるもの(実の行がある)だけ。null ならアイコンを外す */
+async function setIcon(c: DataClient, userId: string, itemId: string | null): Promise<string | null> {
+  if (itemId !== null) {
+    if (!TANE_ITEM_BY_ID.has(itemId)) throw new Error("そのものはアイコンにできません");
+    if (!unwrap(await c.models.GameTaneItem.get({ userId, itemId }))) throw new Error("集めたものの中から選んでください");
+  }
+  await ensureProfile(c, userId);
+  unwrap(await c.models.GameProfile.update({ userId, iconItemId: itemId }));
+  return itemId;
 }
 
 /** a.json の値は二重に文字列化されて返ることがあるので、文字列である限り戻し続ける */

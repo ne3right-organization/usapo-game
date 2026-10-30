@@ -12,8 +12,10 @@ import {
 } from "@/lib/game/chizuTane/localItems";
 import {
   fetchMyHarvests,
+  fetchMyIconItemId,
   fetchMyItems,
   fetchOwnerViews,
+  setTaneIcon,
   type TaneHarvest,
   type TaneOwnedItem,
   type TaneOwnerView,
@@ -40,15 +42,18 @@ function Collection() {
   const [owned, setOwned] = useState<Map<string, TaneOwnedItem> | null>(null);
   const [harvests, setHarvests] = useState<TaneHarvest[]>([]);
   const [openItem, setOpenItem] = useState<TaneItem | null>(null);
+  // 自分のアイコン(集めたものから1つ。フォローの一覧などでニックネームの横に出る)
+  const [iconItemId, setIconItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchMyItems(), fetchMyHarvests()])
-      .then(([items, hs]) => {
+    Promise.all([fetchMyItems(), fetchMyHarvests(), fetchMyIconItemId()])
+      .then(([items, hs, icon]) => {
         if (cancelled) return;
         setOwned(new Map(items.map((i) => [i.itemId, i])));
         setHarvests(hs);
+        setIconItemId(icon);
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     return () => {
@@ -156,7 +161,13 @@ function Collection() {
         </section>
       )}
       {openItem && (
-        <HarvestSheet item={openItem} harvests={harvests.filter((h) => h.itemId === openItem.itemId)} onClose={() => setOpenItem(null)} />
+        <HarvestSheet
+          item={openItem}
+          harvests={harvests.filter((h) => h.itemId === openItem.itemId)}
+          isIcon={iconItemId === openItem.itemId}
+          onIconChanged={setIconItemId}
+          onClose={() => setOpenItem(null)}
+        />
       )}
     </div>
   );
@@ -175,8 +186,34 @@ function formatDateTime(iso: string | null | undefined): string {
 }
 
 /** 1つの実の産地ごとの記録。同じ短い名前の産地が2つあれば(よその県の同じ名前の区・町)、都道府県から全部出す */
-function HarvestSheet({ item, harvests, onClose }: { item: TaneItem; harvests: TaneHarvest[]; onClose: () => void }) {
+function HarvestSheet({
+  item,
+  harvests,
+  isIcon,
+  onIconChanged,
+  onClose,
+}: {
+  item: TaneItem;
+  harvests: TaneHarvest[];
+  isIcon: boolean;
+  onIconChanged: (itemId: string | null) => void;
+  onClose: () => void;
+}) {
   const [owners, setOwners] = useState<Map<string, TaneOwnerView> | null>(null);
+  const [iconBusy, setIconBusy] = useState(false);
+  const [iconError, setIconError] = useState("");
+
+  const toggleIcon = async () => {
+    setIconBusy(true);
+    setIconError("");
+    try {
+      onIconChanged(await setTaneIcon(isIcon ? null : item.itemId));
+    } catch (err) {
+      setIconError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIconBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -212,6 +249,22 @@ function HarvestSheet({ item, harvests, onClose }: { item: TaneItem; harvests: T
             閉じる
           </button>
         </div>
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            type="button"
+            onClick={toggleIcon}
+            disabled={iconBusy}
+            className={`rounded-xl px-3 py-1.5 text-xs font-semibold border disabled:opacity-50 ${
+              isIcon ? "bg-white text-[#78716c] border-[#e7dccb]" : "bg-emerald-600 text-white border-emerald-600"
+            }`}
+          >
+            {isIcon ? "アイコンをやめる" : "これをアイコンにする"}
+          </button>
+          <p className="text-[11px] text-[#a8937a] leading-tight">
+            {isIcon ? "いまのアイコンです。" : ""}フォローの一覧などで、ニックネームの横に出ます
+          </p>
+        </div>
+        {iconError && <p className="text-xs text-red-600 mb-3">{iconError}</p>}
         {places.size === 0 && <p className="text-sm text-[#78716c]">収穫の記録はありません</p>}
         <ul className="space-y-3">
           {[...places.entries()].map(([areaKey, hs]) => {
