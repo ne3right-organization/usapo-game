@@ -20,25 +20,26 @@ export const handler: Schema["setNickname"]["functionHandler"] = async (event) =
   let nextToken: string | null | undefined;
   do {
     const page = await c.models.GameMapPuzzleBest.list({ userId, nextToken });
-    for (const best of unwrap(page)) {
-      unwrap(await c.models.GameMapPuzzleBest.update({ userId, areaKey: best.areaKey, nickname }));
-    }
+    // 1件ずつ待つと記録の多い人で時間切れになるので、1ページ分はまとめて書く
+    await Promise.all(
+      unwrap(page).map(async (best) => unwrap(await c.models.GameMapPuzzleBest.update({ userId, areaKey: best.areaKey, nickname })))
+    );
     nextToken = page.nextToken;
   } while (nextToken);
 
   do {
     const page = await c.models.GameMapPackBest.list({ userId, nextToken });
-    for (const best of unwrap(page)) {
-      unwrap(await c.models.GameMapPackBest.update({ userId, areaKey: best.areaKey, nickname }));
-    }
+    await Promise.all(
+      unwrap(page).map(async (best) => unwrap(await c.models.GameMapPackBest.update({ userId, areaKey: best.areaKey, nickname })))
+    );
     nextToken = page.nextToken;
   } while (nextToken);
 
   do {
     const page = await c.models.GameMapPackUserTotal.list({ userId, nextToken });
-    for (const total of unwrap(page)) {
-      unwrap(await c.models.GameMapPackUserTotal.update({ userId, level: total.level, nickname }));
-    }
+    await Promise.all(
+      unwrap(page).map(async (total) => unwrap(await c.models.GameMapPackUserTotal.update({ userId, level: total.level, nickname })))
+    );
     nextToken = page.nextToken;
   } while (nextToken);
 
