@@ -31,6 +31,7 @@ import GardenSvg from "./GardenSvg";
 import { houseTierFor } from "@/lib/game/chizuTane/garden";
 import SwipePages from "./SwipePages";
 import ReplantPicker from "./ReplantPicker";
+import InstallHint from "./InstallHint";
 import { ErrorText, GrowthBadge, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
@@ -318,10 +319,13 @@ function Home({ course }: { course: TaneCourse }) {
           <li>ほかの人のタネに初めてチェックインすると、そこにタネが1個落ちます（3個まで）。欲しければ拾い、要らなければ次の人のために置いていけます（誰でも早い者勝ち）</li>
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
+          <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1週間以内）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
           <li>ほかの人のタネをたずねた数（自分のタネは数えません）と、今のレベルのタネを3つともまいたことで、レベルが上がります（Lv.10まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
         </ol>
       </div>
 
+      {/* ホーム画面への追加と通知の案内(状態ごとに出し分ける。済んでいれば出さない) */}
+      <InstallHint />
     </div>
   );
 }
