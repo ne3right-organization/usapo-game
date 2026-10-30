@@ -1,14 +1,16 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
-import { claimZukanQuizAnswer } from "../functions/claim-zukan-quiz-answer/resource";
+import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
+import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
+import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
+import { chizuTaneSeeds } from "../functions/chizu-tane-seeds/resource";
+import { chizuTaneStats } from "../functions/chizu-tane-stats/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
 import { setFollowing } from "../functions/set-following/resource";
 import { setNickname } from "../functions/set-nickname/resource";
 import { submitMapPackChallenge } from "../functions/submit-map-pack-challenge/resource";
 import { submitMapPuzzleChallenge } from "../functions/submit-map-puzzle-challenge/resource";
-import { startZukanQuiz } from "../functions/start-zukan-quiz/resource";
-import { zukanComment } from "../functions/zukan-comment/resource";
 
-// Supabase(supabase/migrations)から移しているゲームのデータ。設計は docs/amplify_data_migration.md。
+// Supabase から移したゲームのデータ(Supabase 時代のスキーマは git 履歴の supabase/migrations)。設計は docs/amplify_data_migration.md。
 // ユーザーIDは Cognito の sub。得点・ベスト記録・合計など「クライアントの自己申告を信用しない」ものは
 // クライアントから書き込めないようにし、Lambda のカスタムミューテーションだけが書く
 
@@ -193,74 +195,35 @@ const schema = a
       ])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
 
-    // ─── 図鑑クイズ ─────────────────────────────────────────────────────────
-    // 出題1問ぶんの正答。クライアントからは読み書きできず、出題の Lambda が作り、回答の Lambda が
-    // 消して(=1回きり)判定する。回答されなかったものは expiresAt(TTL)で消える
-    GameZukanQuizSession: a
-      .model({
-      prefCode: a.string().required(),
-      prefName: a.string().required(),
-      cityCode: a.string().required(),
-      cityName: a.string().required(),
-      population: a.integer(),
-      households: a.integer(),
-      difficulty: a.string().required(),
-      hintFields: a.string().array().required(), // 出題時に実際に見せたヒントの項目
-      issuedAt: a.datetime().required(),
-      expiresAt: a.integer().required(), // TTL(UNIX秒)
-    })
-      // モデルには認可ルールが1つ必要なので、誰も入っていない admin グループだけにしておく(=クライアントからは触れない)
-      .authorization((allow) => [allow.group("admin")]),
-
-    // 図鑑のカード(ユーザー×市区町村)。areaKey = `${prefCode}#${cityCode}`
-    GameZukanCollection: a
+    // ─── PWA の通知 ─────────────────────────────────────────────────────────
+    // 通知の購読(ブラウザ・端末ごと)。endpoint は通知の届け先の URL。本人が画面から作る・消す(自分の分しか触れない)。
+    // update は許さない(userId をほかの人に書き換えて、その人宛ての通知を自分の端末で受け取れてしまうため)。
+    // 送るのは Lambda(amplify/functions/shared/push.ts)で、期限切れの購読はそこで消す
+    GamePushSubscription: a
       .model({
         userId: a.id().required(),
-        areaKey: a.string().required(),
-        prefCode: a.string().required(),
-        prefName: a.string().required(),
-        cityCode: a.string().required(),
-        cityName: a.string().required(),
-        population: a.integer(),
-        households: a.integer(),
-        correctCount: a.integer().required(),
-        bestDifficulty: a.string().required(), // 一番上の難易度で正解したもの
-        hintFields: a.string().array().required(), // 直近に正解したときに見せたヒント(上書き)
-        firstAcquiredAt: a.datetime().required(),
-        lastAcquiredAt: a.datetime().required(),
+        endpoint: a.string().required(),
+        p256dh: a.string().required(),
+        auth: a.string().required(),
       })
-      .identifier(["userId", "areaKey"])
-      .secondaryIndexes((index) => [
-        index("userId").sortKeys(["lastAcquiredAt"]).queryField("listZukanCollectionsByUser"),
-      ])
-      .authorization((allow) => [allow.authenticated().to(["read"])]),
+      .identifier(["userId", "endpoint"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["create", "read", "delete"])]),
 
-    // 市区町村ごとの全ユーザー横断の正答率(ゲストの回答も数える)。回答の Lambda だけが読み書きする
-    GameZukanMunicipalityStat: a
+    // 届いた通知(ユーザーごと)。通知の一覧(/notifications)に出す。端末で通知を受け取っていなくても残す。
+    // 書くのは通知を送る Lambda(amplify/functions/shared/push.ts)。最新の1日分だけ残し、古いものは expiresAt(TTL)で DynamoDB が消す
+    // (消えるまで少し時間がかかることがあるので、画面でも1日より古いものは出さない)。noticeId = `${送った日時}#${乱数}`
+    GameNotification: a
       .model({
-        areaKey: a.string().required(),
-        attemptCount: a.integer().required(),
-        correctCount: a.integer().required(),
-      })
-      .identifier(["areaKey"])
-      .authorization((allow) => [allow.group("admin")]), // クライアントからは触れない(GameZukanQuizSession と同じ)
-
-    // カードへの「ヒントの提案」(1ユーザー1カードにつき1件)。そのカードを持っている人だけ書ける
-    // (確認が要るので書き込みはカスタムミューテーション経由)
-    GameZukanComment: a
-      .model({
-        areaKey: a.string().required(),
         userId: a.id().required(),
-        nickname: a.string(),
+        noticeId: a.string().required(),
+        title: a.string().required(),
         body: a.string().required(),
-        postedAt: a.datetime().required(),
-        editedAt: a.datetime().required(),
+        url: a.string().required(),
+        notifiedAt: a.datetime().required(),
+        expiresAt: a.integer().required(), // TTL(UNIX秒)
       })
-      .identifier(["areaKey", "userId"])
-      .secondaryIndexes((index) => [
-        index("areaKey").sortKeys(["postedAt"]).queryField("listZukanCommentsByArea"),
-      ])
-      .authorization((allow) => [allow.authenticated().to(["read"])]),
+      .identifier(["userId", "noticeId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // ─── フォロー ───────────────────────────────────────────────────────────
     // フォロー関係はフォローした本人とされた本人にしか見えない。フォロー・解除は「お互いにニックネーム設定済み」の
@@ -281,14 +244,14 @@ const schema = a
         allow.ownerDefinedIn("followeeId").identityClaim("sub").to(["read"]),
       ]),
 
-    // ─── 最近のクリア(3ゲーム共通) ──────────────────────────────────────────
+    // ─── 最近のクリア(地図パズル・地図ポットン共通) ──────────────────────────
     // 各ゲームのトップに出す「最近クリアされたエリア」。誰がクリアしたかは持たない。未ログインでも読める。
-    // game = map-puzzle / map-pack / zukan-quiz、areaKey はゲームごとのエリアのキー
+    // game = map-puzzle / map-pack(図鑑クイズを消す前の zukan-quiz の行が残っていることがある)、areaKey はゲームごとのエリアのキー
     GameRecentClear: a
       .model({
         game: a.string().required(),
         areaKey: a.string().required(),
-        difficulty: a.string(), // 図鑑クイズは持たない
+        difficulty: a.string(), // 図鑑クイズ(削除済み)の古い行には無い
         prefCode: a.string().required(),
         prefName: a.string().required(),
         cityCode: a.string(),
@@ -301,27 +264,214 @@ const schema = a
       ])
       .authorization((allow) => [allow.guest().to(["read"]), allow.authenticated().to(["read"])]),
 
-    ZukanQuizQuestion: a.customType({
-      sessionId: a.id().required(),
-      difficulty: a.string().required(),
-      silhouette: a.json().required(),
-      choices: a.json().required(),
-      trivia: a.json().required(),
-      population: a.integer().required(),
-      households: a.integer().required(),
+    // ─── 地図タネ(初期試作) ─────────────────────────────────────────────────
+    // 設計書は docs/地図タネ_全体設計書.md と docs/地図タネ_初期試作設計書.md。画面での呼び名は 拠点＝タネ、箱庭＝ガーデン、町丁＝地区。
+    // コースの表とアイテムの定義はコードの中のマスターデータ(src/lib/game/chizuTane/courses.ts)。
+    // 1地区1つ・1日1回・所持数などを守るため、どのモデルもクライアントからは読むだけにし、書くのは chizu-tane-* の Lambda だけ
+
+    // プレイヤー。最後に位置を使った地区の代表点と日時は、移動の速さの確認に使う(実際の位置は保存しない)。
+    // grantedLevel は「タネを渡し終えたレベル」(レベルが上がったときに、そのレベルのタネを1回だけ渡すため)
+    GameTanePlayer: a
+      .model({
+        userId: a.id().required(),
+        course: a.string().required(),
+        grantedLevel: a.integer(),
+        lastAreaKey: a.string(),
+        lastLng: a.float(),
+        lastLat: a.float(),
+        lastMovedAt: a.datetime(),
+      })
+      .identifier(["userId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 拠点(画面では「タネ」)。1地区に1つで、主キーは町丁のコード(e-Stat 小地域の KEY_CODE)。cityKey = `${prefCode}${cityCode}`
+    // ログインしていれば誰でも読めるので、**持ち主の ID は持たない**(持たせると、プロフィールの URL などから分かる ID で
+    // その人のタネの場所を全部たどれてしまう。生活圏が分かる)。持ち主は本人しか読めない GameTaneOwnership に持つ
+    GameTaneBase: a
+      .model({
+        areaKey: a.string().required(),
+        cityKey: a.string().required(),
+        prefCode: a.string().required(),
+        prefName: a.string().required(),
+        cityCode: a.string().required(),
+        cityName: a.string().required(),
+        townName: a.string().required(),
+        baseTypeId: a.string().required(),
+        seedItemId: a.string().required(), // まいたタネのもの(梨の木など)。訪ねた人はこれをもらう
+        rank: a.integer().required(), // 実が全部取られてタネ待ちになるたびに1つ上がる(10まで)
+        plantedAt: a.datetime().required(),
+        // 地区の代表点(geojson の X_CODE / Y_CODE)。全国のタネ地図に出す。まいた人の実際の位置は保存しない
+        repLng: a.float(),
+        repLat: a.float(),
+        // 育ち方(src/lib/game/chizuTane/growth.ts)。water はたまった水(現地のチェックイン1回で10、遠くからの水やりで1)。
+        // たまると実って fruits(残っている実の数)がランク×10になり、実が全部取られると water を0に戻してタネ待ちになる
+        water: a.integer(),
+        fruits: a.integer(),
+        // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す
+        ripenedAt: a.datetime(),
+        // 持ち主が最後に遠くから水をやった時間帯(朝・昼・夜に1回。src/lib/game/chizuTane/geo.ts の slotKey。dev は5分ごと)
+        lastRemoteWaterOn: a.string(),
+        // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
+        droppedSeeds: a.integer(),
+        // 持ち主が最後に自分のタネにチェックインした時間帯(slotKey)。朝・昼・夜に1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
+        lastOwnerVisitOn: a.string(),
+        // 実が全部取られて、持ち主がタネをまき直すのを待ち始めた日時(まき直したら消す)。
+        // 1週間(growth.ts の REPLANT_LIMIT_SLOTS)まかなければ空き地に戻り、誰でもまける(行は新しくまいた人が上書きする)
+        waitingSince: a.datetime(),
+      })
+      .identifier(["areaKey"])
+      .secondaryIndexes((index) => [
+        index("cityKey").queryField("listTaneBasesByCity"),
+      ])
+      .authorization((allow) => [allow.authenticated().to(["read"])]),
+
+    // 拠点の持ち主(ユーザー×拠点)。本人しか読めない(自分のタネの一覧・自分のタネかどうか)。書くのはタネをまく Lambda。
+    // Lambda は areaKey から持ち主を引く(listTaneOwnershipByArea。画面から引いても、自分の分しか返らない)
+    GameTaneOwnership: a
+      .model({
+        ownerId: a.id().required(),
+        areaKey: a.string().required(),
+        seedItemId: a.string().required(), // いままいているタネのもの
+        // 前にこの畑にまいたタネ(まき直すたびに足す)。seedItemId と合わせて、レベルの条件「今のレベルのタネを3つともまいたか」に使う
+        pastSeedItemIds: a.string().array(),
+        plantedAt: a.datetime().required(),
+        // タネ待ちのまま空き地に戻り、ほかの人がまいて手放した日時。手放した行も、開拓した地区の数(ガーデン)や
+        // まいたことのあるタネ(レベル)には数え続けるので消さない。持ち主を引くときは、これの無い行を見る
+        releasedAt: a.datetime(),
+      })
+      .identifier(["ownerId", "areaKey"])
+      .secondaryIndexes((index) => [index("areaKey").queryField("listTaneOwnershipByArea")])
+      .authorization((allow) => [allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["read"])]),
+
+    // うさぽ農園を見せるフォロワー(持ち主×見せる相手)。行があり、かつ相手が持ち主をフォローしている間だけ、
+    // その持ち主のガーデンを見られ、実の詳細の「生産者」にニックネームが出る(はじめは誰にも見せない)。
+    // 見せる相手の側から「誰が見せてくれているか」を引けるよう、viewerId でも引ける
+    // 持ち主が画面から作る・消す。見せる相手も読める(自分に見せてくれているか)。update は許さない(持ち主を書き換えられないように)
+    GameTaneShare: a
+      .model({
+        ownerId: a.id().required(),
+        viewerId: a.id().required(),
+      })
+      .identifier(["ownerId", "viewerId"])
+      .secondaryIndexes((index) => [index("viewerId").queryField("listTaneSharesByViewer")])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["create", "read", "delete"]),
+        allow.ownerDefinedIn("viewerId").identityClaim("sub").to(["read"]),
+      ]),
+
+    // 訪問(ユーザー×拠点)。lastReceivedOn は最後に来た時間帯(slotKey)で、朝・昼・夜に1回の判定に使う。
+    // のちにレベル(たずねた拠点の数)を数えるのにも使える
+    GameTaneVisit: a
+      .model({
+        userId: a.id().required(),
+        areaKey: a.string().required(),
+        firstVisitedAt: a.datetime().required(),
+        lastReceivedOn: a.string(),
+        visitCount: a.integer().required(),
+      })
+      .identifier(["userId", "areaKey"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 持っているもの(実。ユーザー×アイテム)。収穫したときだけ増える(訪ねてもらえるのはタネだけ)。ガーデンに飾れる数はこれ。
+    // firstAreaName は初めて収穫した地区(「○○区 ○○町」)。産地ごとの記録は GameTaneHarvest
+    GameTaneItem: a
+      .model({
+        userId: a.id().required(),
+        itemId: a.string().required(),
+        quantity: a.integer().required(),
+        firstAcquiredAt: a.datetime().required(),
+        firstAreaName: a.string(),
+      })
+      .identifier(["userId", "itemId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 収穫の記録(実1個ごと。ユーザー×収穫した日時)。集めたもの画面で「戸塚区矢部町のりんご」のように産地ごとにまとめて出す。
+    // 地名・持ち主(タネをまいた人。画面では「生産者」)は収穫したときのものを写しておく(生産者は、フレンドのときだけ画面に出す)
+    GameTaneHarvest: a
+      .model({
+        userId: a.id().required(),
+        harvestedAt: a.datetime().required(),
+        itemId: a.string().required(),
+        areaKey: a.string().required(),
+        prefName: a.string().required(),
+        cityName: a.string().required(),
+        townName: a.string().required(),
+        ripenedAt: a.datetime(),
+        // 生産者(そのタネをまいた人)。ID だけではタネの場所はたどれない。ニックネームは、生産者が見せている相手にだけ出す
+        ownerId: a.id().required(),
+      })
+      .identifier(["userId", "harvestedAt"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 持っているタネ(ユーザー×もの。みかんの木のタネ、梨の木のタネ…)。まくと1つ減る
+    GameTaneHeldSeed: a
+      .model({
+        userId: a.id().required(),
+        itemId: a.string().required(),
+        quantity: a.integer().required(),
+      })
+      .identifier(["userId", "itemId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // 箱庭(画面では「ガーデン」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
+    // 10×10マスで1マス1個なら最大100個なので1行に収まり、保存も1回で済む。
+    // 本人しか読めない。ほかの人のガーデンは、持ち主が「農園を見せる」にしている相手にだけ Lambda が返す(viewTaneGarden)
+    GameTaneGarden: a
+      .model({
+        userId: a.id().required(),
+        width: a.integer().required(),
+        height: a.integer().required(),
+        objects: a.json().required(), // おうちの庭(はじめからあるガーデン)
+        // 開拓した地区の数で増えるほかのガーデンの配置({ flower: GardenObject[], ... }。src/lib/game/chizuTane/garden.ts の GardenLayouts)
+        layouts: a.json(),
+      })
+      .identifier(["userId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    TaneCheckInResult: a.customType({
+      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / waiting(タネ待ちの畑) / already(この時間帯はもう来た)
+      status: a.string().required(),
+      townName: a.string().required(),
+      baseTypeId: a.string().required(),
+      itemId: a.string(), // そのタネのもの(梨の木など)
+      quantity: a.integer(), // 実をもらったとき: もらったあとに持っている数
+      gainedItems: a.integer(), // このチェックインでもらった実の数(1か0)
+      firstVisit: a.boolean(), // ほかの人のタネに初めてチェックインした(拠点にタネが1個落ちた)
+      water: a.integer(), // チェックインのあとのたまった水
+      fruits: a.integer(), // チェックインのあとに残っている実の数
+      level: a.integer(), // もらえたときのレベル
+      leveledUp: a.boolean(), // このチェックインでレベルが上がったか
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: checkin / level)
+      droppedSeeds: a.integer(), // チェックインのあと、この拠点に落ちているタネの数
+      stage: a.integer(), // チェックインのあとの育ちの段階(growth.ts)
+      rank: a.integer(), // チェックインのあとのランク
     }),
 
-    ZukanQuizAnswerResult: a.customType({
-      isCorrect: a.boolean().required(),
-      prefCode: a.string().required(),
-      prefName: a.string().required(),
-      cityCode: a.string().required(),
-      cityName: a.string().required(),
-      population: a.integer(),
-      households: a.integer(),
-      attemptCount: a.integer().required(),
-      correctCount: a.integer().required(),
-      difficulty: a.string().required(),
+    // コースごとの遊んでいる人数(コース選びの画面に出す)
+    TaneCourseCount: a.customType({
+      course: a.string().required(),
+      players: a.integer().required(),
+    }),
+
+    // ほかの人のガーデン(見るだけ)。nickname は持ち主のニックネーム
+    TaneGardenView: a.customType({
+      nickname: a.string(),
+      width: a.integer().required(),
+      height: a.integer().required(),
+      objects: a.json().required(), // おうちの庭の GardenObject[]
+      layouts: a.json().required(), // ほかのガーデン(GardenLayouts)
+      level: a.integer().required(), // 持ち主のレベル(家と柵の見た目)
+      plantedCount: a.integer().required(), // 持ち主が開拓した地区の数(使えるガーデン)
+    }),
+
+    TaneGardenState: a.customType({
+      width: a.integer().required(),
+      height: a.integer().required(),
+      objects: a.json().required(), // おうちの庭の GardenObject[]
+      layouts: a.json().required(), // ほかのガーデン(GardenLayouts)
+      items: a.json().required(), // { itemId, quantity }[]
+      level: a.integer().required(), // レベル(家と柵の見た目)
+      plantedCount: a.integer().required(), // 開拓した地区の数(使えるガーデン)
     }),
 
     MapPackSubmitResult: a.customType({
@@ -366,42 +516,101 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(submitMapPackChallenge)),
 
-    // 図鑑クイズは未ログイン(ゲスト)でも遊べる。図鑑に登録されるのはログインしている時だけ
-    startZukanQuiz: a
+    // 地図タネ: コースを選んで始める(もう始めていればそのまま返す)
+    startTane: a
       .mutation()
-      .arguments({
-        difficulty: a.string().required(),
-        // 同じセッションで出題済みの市区町村("prefCode:cityCode")。再出題を避ける
-        excludeCityCodes: a.string().array(),
-      })
-      .returns(a.ref("ZukanQuizQuestion"))
-      .authorization((allow) => [allow.guest(), allow.authenticated()])
-      .handler(a.handler.function(startZukanQuiz)),
+      .arguments({ course: a.string().required() })
+      .returns(a.ref("GameTanePlayer"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
 
-    claimZukanQuizAnswer: a
+    // 地図タネ: コースごとの遊んでいる人数
+    taneCourseCounts: a
+      .query()
+      .returns(a.ref("TaneCourseCount").array())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneStats)),
+
+    // 地図タネ: いまいる地区にタネをまく。位置と、ブラウザで調べた市区町村(探す範囲を絞るためだけに使う)と、
+    // まくタネ(もの。持っているタネが1つ減る)を送る
+    placeTaneBase: a
       .mutation()
       .arguments({
-        sessionId: a.id().required(),
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+        itemId: a.string().required(),
+      })
+      .returns(a.ref("GameTaneBase"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlace)),
+
+    // 地図タネ: タネ待ちの自分の畑に、同じ種類の畑のタネをまき直す(遠くからでもよい)。持っているタネが1つ減る
+    replantTaneBase: a
+      .mutation()
+      .arguments({ areaKey: a.string().required(), itemId: a.string().required() })
+      .returns(a.ref("GameTaneBase"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlace)),
+
+    // 地図タネ: いまいる地区のタネにチェックインする
+    checkInTaneBase: a
+      .mutation()
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
         prefCode: a.string().required(),
         cityCode: a.string().required(),
       })
-      .returns(a.ref("ZukanQuizAnswerResult"))
-      .authorization((allow) => [allow.guest(), allow.authenticated()])
-      .handler(a.handler.function(claimZukanQuizAnswer)),
-
-    upsertZukanComment: a
-      .mutation()
-      .arguments({ prefCode: a.string().required(), cityCode: a.string().required(), body: a.string().required() })
-      .returns(a.ref("GameZukanComment"))
+      .returns(a.ref("TaneCheckInResult"))
       .authorization((allow) => [allow.authenticated()])
-      .handler(a.handler.function(zukanComment)),
+      .handler(a.handler.function(chizuTaneCheckin)),
 
-    deleteZukanComment: a
+    // 地図タネ: 自分のタネに遠くから水をやる(朝・昼・夜に1回ずつ、現地の10分の1)
+    waterTaneBaseRemotely: a
       .mutation()
-      .arguments({ prefCode: a.string().required(), cityCode: a.string().required() })
-      .returns(a.boolean())
+      .arguments({ areaKey: a.string().required() })
+      .returns(a.ref("GameTaneBase"))
       .authorization((allow) => [allow.authenticated()])
-      .handler(a.handler.function(zukanComment)),
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: いまいる地区のタネ(拠点)に落ちているタネを、選んだ数だけ拾う(誰でも早い者勝ち)。拾えた数を返す
+    pickUpTaneSeeds: a
+      .mutation()
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+        count: a.integer().required(),
+      })
+      .returns(a.integer())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneSeeds)),
+
+    // ほかの人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ返す
+    viewTaneGarden: a
+      .query()
+      .arguments({ ownerId: a.id().required() })
+      .returns(a.ref("TaneGardenView"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
+
+    openTaneGarden: a
+      .mutation()
+      .returns(a.ref("TaneGardenState"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
+
+    // 1つのガーデンの配置を丸ごと保存する(所持数はすべてのガーデンを合わせて・範囲・1マス1個・使えるガーデンかを Lambda で確かめる)。
+    // gardenId は garden.ts の GardenDesignId(省略するとおうちの庭)
+    saveTaneGarden: a
+      .mutation()
+      .arguments({ objects: a.json().required(), gardenId: a.string() })
+      .returns(a.ref("TaneGardenState"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
 
     setFollowing: a
       .mutation()
@@ -422,10 +631,12 @@ const schema = a
     allow.resource(setNickname),
     allow.resource(submitMapPuzzleChallenge),
     allow.resource(submitMapPackChallenge),
-    allow.resource(startZukanQuiz),
-    allow.resource(claimZukanQuizAnswer),
-    allow.resource(zukanComment),
     allow.resource(setFollowing),
+    allow.resource(chizuTanePlayer),
+    allow.resource(chizuTanePlace),
+    allow.resource(chizuTaneCheckin),
+    allow.resource(chizuTaneSeeds),
+    allow.resource(chizuTaneStats),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

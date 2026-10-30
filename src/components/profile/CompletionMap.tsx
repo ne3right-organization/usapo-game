@@ -27,6 +27,8 @@ export interface CompletionMapProps {
   onSelect?: (key: MapFeatureKey) => void;
   /** 読み込んだ地物(コードの重複は除く)。県内の市区町村数を数えるのに使う */
   onLoaded?: (keys: MapFeatureKey[]) => void;
+  /** 地図のどこかをタップしたときの緯度・経度(地物の上でも外でも)。地図タネの開発用の位置指定で使う */
+  onPointSelect?: (lat: number, lng: number) => void;
 }
 
 const UNCLEARED: FillStyle = { color: "#ffffff", opacity: 0.75 };
@@ -40,15 +42,16 @@ export default function CompletionMap({
   selectedCode = null,
   onSelect,
   onLoaded,
+  onPointSelect,
 }: CompletionMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const layersRef = useRef<Map<string, L.GeoJSON[]>>(new Map());
-  const callbacksRef = useRef({ featureKey, onSelect, onLoaded });
+  const callbacksRef = useRef({ featureKey, onSelect, onLoaded, onPointSelect });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    callbacksRef.current = { featureKey, onSelect, onLoaded };
+    callbacksRef.current = { featureKey, onSelect, onLoaded, onPointSelect };
   });
 
   useEffect(() => {
@@ -69,6 +72,8 @@ export default function CompletionMap({
       });
       mapInstance = map;
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.5 }).addTo(map);
+      // 地物の上のタップも地図まで伝わってくる(Leaflet の既定)
+      map.on("click", (e: L.LeafletMouseEvent) => callbacksRef.current.onPointSelect?.(e.latlng.lat, e.latlng.lng));
 
       let data: { features?: unknown[] };
       try {

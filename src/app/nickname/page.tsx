@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchGameProfile, updateNickname } from "@/lib/game/mapPuzzleData";
+import PushSettings from "@/components/PushSettings";
 
 export default function NicknamePage() {
   const router = useRouter();
@@ -55,13 +56,14 @@ export default function NicknamePage() {
   }
 
   return (
-    <main className="min-h-full bg-[#fdf8f0] px-4 pt-10">
+    <main className="min-h-full bg-[#fdf8f0] px-4 pt-6 pb-10">
+      <h1 className="max-w-sm mx-auto text-lg font-bold text-[#3c2a14] mb-4">⚙️ 設定</h1>
       <div className="max-w-sm mx-auto bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-6">
-        <h1 className="text-lg font-bold text-[#3c2a14] mb-4">ニックネーム設定</h1>
+        <h2 className="text-lg font-bold text-[#3c2a14] mb-4">ニックネーム</h2>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-4 leading-relaxed">
           ⚠️
-          ニックネームを登録すると、ランキングにニックネームが表示され、あなたのプロフィール(合計スコア・ベストスコア一覧)や図鑑が誰でも見られるようになります。全ゲーム共通の設定です。
+          ニックネームを登録すると、ランキングにニックネームが表示され、あなたのプロフィール(合計スコア・ベストスコア一覧)が誰でも見られるようになります。全ゲーム共通の設定です。
         </div>
 
         <input
@@ -87,6 +89,7 @@ export default function NicknamePage() {
           {saving ? "保存中..." : isDelete ? "削除する" : "保存する"}
         </button>
       </div>
+      <PushSettings />
     </main>
   );
 }

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
 
 export const metadata: Metadata = {
   title: "usapo-game",
@@ -19,15 +18,12 @@ export default function Home() {
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
             うさぽの境界データ（geojson）を使った<br />地図ゲームコーナーです
           </p>
-          <div className="mt-3">
-            <AuthStatus />
-          </div>
-          <div className="mt-2 flex items-center justify-center gap-4">
+          <div className="mt-3 flex items-center justify-center gap-4">
             <Link href="/history" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
               📜 遊んだ履歴
             </Link>
             <Link href="/profile" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
-              🏅 コンプリート状況
+              👤 プロフィール
             </Link>
           </div>
         </div>
@@ -57,24 +53,6 @@ export default function Home() {
           </Link>
 
           <Link
-            href="/game/zukan-quiz"
-            className="block bg-white rounded-2xl border-2 border-orange-100 hover:border-orange-300
-              shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(234,88,12,0.15)]
-              transition-all duration-150 p-5 active:scale-[0.98]"
-          >
-            <div className="flex items-center gap-4">
-              <div className="text-3xl shrink-0">📖</div>
-              <div className="flex-1 min-w-0">
-                <span className="font-bold text-[#3c2a14] text-sm block mb-1">市区町村図鑑クイズ</span>
-                <p className="text-sm text-[#78716c] leading-snug">
-                  シルエットと4択クイズで市区町村を当てて図鑑を集めるコレクションゲーム
-                </p>
-              </div>
-              <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
-            </div>
-          </Link>
-
-          <Link
             href="/game/map-pack"
             className="block bg-white rounded-2xl border-2 border-purple-100 hover:border-purple-300
               shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(126,34,206,0.12)]
@@ -85,10 +63,29 @@ export default function Home() {
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-[#3c2a14] text-sm block mb-1">
                   地図ポットン
-                  <span className="ml-2 text-[10px] font-bold text-purple-600 align-middle">プロトタイプ</span>
                 </span>
                 <p className="text-sm text-[#78716c] leading-snug">
                   都道府県・市区町村・町丁のピースを箱に落として、隣り合う地域同士をくっつけて地図を完成させるパズル
+                </p>
+              </div>
+              <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
+            </div>
+          </Link>
+
+          <Link
+            href="/game/chizu-tane"
+            className="block bg-white rounded-2xl border-2 border-emerald-100 hover:border-emerald-300
+              shadow-[0_2px_12px_rgba(120,90,40,0.08)] hover:shadow-[0_4px_20px_rgba(5,150,105,0.12)]
+              transition-all duration-150 p-5 active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="text-3xl shrink-0">🌱</div>
+              <div className="flex-1 min-w-0">
+                <span className="font-bold text-[#3c2a14] text-sm block mb-1">
+                  うさぽ農園
+                </span>
+                <p className="text-sm text-[#78716c] leading-snug">
+                  街の地区にタネをまき、ほかの人のタネを現地で訪ねて分けてもらい、育てて収穫する位置情報ゲーム（ログインが必要）
                 </p>
               </div>
               <div className="text-[#c8b8a0] text-xl shrink-0">›</div>
@@ -99,15 +96,9 @@ export default function Home() {
         {/* ログインについて */}
         <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-5">
           <h2 className="text-sm font-bold text-[#3c2a14] mb-2">ログインについて</h2>
-          <p className="text-sm text-[#78716c] leading-relaxed mb-3">
-            ログインしなくてもゲームは遊べます。ログインすると、プレイ履歴の記録・ニックネームの登録・ランキングへの参加ができるようになります。
+          <p className="text-sm text-[#78716c] leading-relaxed">
+            地図パズルと地図ポットンは、ログインしなくても遊べます。ログインすると、遊んだ記録が残り、ニックネームを付けてランキングに参加できます。うさぽ農園はログインが必要です。ログインは右上の「ログイン」からできます。
           </p>
-          <Link
-            href="/login"
-            className="inline-block text-sm text-teal-700 underline underline-offset-2 font-semibold"
-          >
-            ログインする →
-          </Link>
         </div>
 
         {/* ホーム画面に追加(PWA) */}

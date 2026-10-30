@@ -50,3 +50,9 @@ next-env.d.ts
 .amplify
 amplify_outputs*
 amplifyconfiguration*
+
+# うさぽ農園のアイテムの絵の元画像(大きいので入れない。art/chizu-tane/README.md)
+/art/chizu-tane/sheets/*
+/art/chizu-tane/singles/*
+!/art/chizu-tane/sheets/.gitkeep
+!/art/chizu-tane/singles/.gitkeep

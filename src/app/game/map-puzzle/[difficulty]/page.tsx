@@ -3,6 +3,7 @@
 import { Suspense, use, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { notFound, useRouter, useSearchParams } from "next/navigation";
+import MapGameTabs from "@/components/game/MapGameTabs";
 import { areaFromQuery } from "@/lib/game/playLinks";
 import type { Difficulty } from "@/components/game/map-puzzle/MapPuzzleGame";
 import { progressStorageKey } from "@/components/game/map-puzzle/MapPuzzleGame";
@@ -353,12 +354,16 @@ function MapPuzzlePlay({ difficulty }: { difficulty: Difficulty }) {
   // intermediate / advanced はエリア選択待ち
   if (!pendingArea && !gameConfig) {
     return (
-      <MapAreaSelector
-        difficulty={difficulty as "intermediate" | "advanced"}
-        title={meta.title}
-        onBack={() => router.push("/game/map-puzzle")}
-        onConfirm={(url, label, area: AreaInfo) => setPendingArea({ geojsonUrl: url, areaLabel: label, ...area })}
-      />
+      <>
+        <MapAreaSelector
+          difficulty={difficulty as "intermediate" | "advanced"}
+          description={
+            difficulty === "intermediate" ? "都道府県を選んで、市区町村を地図に配置しよう" : "市区町村を選んで、町丁を地図に配置しよう"
+          }
+          onConfirm={(url, label, area: AreaInfo) => setPendingArea({ geojsonUrl: url, areaLabel: label, ...area })}
+        />
+        <MapGameTabs onPlayPath />
+      </>
     );
   }
 

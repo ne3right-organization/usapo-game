@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import AuthStatus from "@/components/game/map-puzzle/AuthStatus";
 import MapPackSavedGames from "@/components/game/map-pack/MapPackSavedGames";
 import RecentClears from "@/components/game/RecentClears";
 
@@ -53,23 +52,10 @@ export default function MapPackPage() {
           <div className="text-5xl mb-3">📦</div>
           <h1 className="text-2xl font-bold text-[#3c2a14] tracking-wide">
             地図ポットン
-            <span className="ml-2 text-[10px] font-bold text-purple-600 align-middle">プロトタイプ</span>
           </h1>
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
             ピースを箱に落として、隣り合う地域同士を<br />くっつけて地図を完成させよう
           </p>
-          <div className="mt-3">
-            <AuthStatus />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-6">
-          <Link
-            href="/game/map-pack/ranking"
-            className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2"
-          >
-            🏆 ランキング
-          </Link>
         </div>
 
         <MapPackSavedGames />
@@ -109,11 +95,6 @@ export default function MapPackPage() {
           <a href="https://sns.dopagamelab.com/pref-pack/" target="_blank" rel="noopener noreferrer" className="underline">
             新・都道府県ゲーム
           </a>
-        </p>
-        <p className="text-center mt-4">
-          <Link href="/" className="text-sm text-[#78716c] underline underline-offset-2">
-            ← ゲームコーナーへ戻る
-          </Link>
         </p>
       </div>
     </main>

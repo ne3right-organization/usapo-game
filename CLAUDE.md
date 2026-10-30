@@ -1,199 +1,163 @@
 # このプロジェクトについて
 
-usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構成から切り離して独立させるプロジェクト。うさぽの境界データ（geojson）を使った地図ゲーム。
+usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構成から切り離して独立させたプロジェクト。うさぽの境界データ（geojson）を使った地図ゲーム（地図パズル・地図ポットン・うさぽ農園）。市区町村図鑑クイズは 2026-10-29 に削除した
 
 小規模なボランティアプロジェクトとして開発する。
 
 ## リポジトリ
 
 - `git@github.com:ne3right-organization/usapo-game.git`
-- 公開リポジトリ。認証情報や内部運用の詳細（利用者数、移行対象データの具体的な扱いなど）はこのファイルおよびリポジトリには書かない方針
+- 公開リポジトリ。認証情報や内部運用の詳細（利用者数、移行対象データの具体的な扱い、AWSのアカウント番号など）はこのファイルおよびリポジトリには書かない方針
+- ブランチ: `develop`（開発。push で dev 環境に自動デプロイ）→ `main`（本番。push で本番に自動デプロイ）。作業は `develop` にコミットし、リリースは `develop` を `main` に早送りマージする
 
-## 分離の経緯・理由
+## 経緯
 
-- 本体はAWS Amplify Gen2（Cognito認証・AppSync/DynamoDB）で構築されているが、ゲームコーナーは本体と密結合させる必要がない
-- 本体のリリースサイクル・障害対応とゲームコーナーの変更を切り離すことで、互いの影響範囲を小さくしたい
+- 本体は AWS Amplify Gen2（Cognito・AppSync/DynamoDB）で構築されている。ゲームコーナーは本体と密結合させる必要がなく、リリースサイクル・障害の影響範囲を分けたいので別にした
+- 2026-07〜10 は Vercel（ホスティング）+ Supabase（認証・DB）で運用していた（Vercel は学習目的での採用。どちらも 2026-10-28 に削除済み）。運用を AWS にまとめるため、**2026-10-27 に Amplify Gen2 へ移行した**（本番は `game.usapo.net`）
+  - 移行の設計とアクセスパターンの洗い出しは `docs/amplify_data_migration.md`
+  - 本体とは別の AWS アカウント（Organization のメンバーアカウント）に置いている。影響範囲と IAM 権限を本体と分けるため（タグでは費用を見分けられても影響範囲は分けられない）
+  - Supabase 時代のスキーマ（`supabase/migrations`）は git 履歴にある
 
-## 決定したアーキテクチャ
+## アーキテクチャ
 
-| レイヤ | 選定 | 理由 |
+| レイヤ | 選定 | 備考 |
 |---|---|---|
-| Next.jsホスティング | **Vercel** | Next.jsをそのまま活かせる。App Router/SSR/ISRの制約なし |
-| 認証 + DB | **Supabase**（1プロジェクトで両方） | 無料枠でDB 500MB・Auth 50,000 MAUまで無料。小規模利用なら大幅に余裕がある |
-| geojson配信 | **S3 + CloudFront**（AWSのまま） | コストはボランティア側の別プロジェクトが負担するため、このプロジェクトのコスト試算からは除外 |
+| ホスティング | Amplify Hosting（Next.js 16 の SSR） | `amplify.yml`。Next.js 16 と `proxy.ts` 無しの構成で動作確認済み |
+| 認証 | Cognito（Google ログインのみ） | `amplify/auth/resource.ts`。ブラウザ側の `signInWithRedirect` |
+| データ | Amplify Data（AppSync + DynamoDB） | `amplify/data/resource.ts`。信用が要る書き込みは Lambda のカスタムミューテーション |
+| geojson 配信 | S3 + CloudFront（本体側のインフラ） | `NEXT_PUBLIC_CLOUDFRONT_URL`。全環境 prd の CloudFront を使う |
 
-商用利用が絡む場合、VercelはHobby(無料)プランが規約上非商用限定なので、必要ならProプラン（$20/月）を検討する。
+費用は小規模なのでほぼ無料枠内。Cognito は Google（標準のソーシャルログイン）なので MAU 1万の枠に入る（本体の LINE ログインは OIDC 扱いで 50 MAU の別枠なので混同しないこと）。無料枠は Organization 全体で1つ分。
 
-### Supabase Free枠の注意点
+## システム構成（参照情報）
 
-1週間アクセスがないとプロジェクトが一時停止する。運用開始後は、Vercel CronまたはGitHub Actionsのscheduled workflowで定期的に軽いヘルスチェック（`select 1`など）を投げて一時停止を回避する。
+キー・シークレットの類はここには書かない（`.env.local` は gitignore 済み）。「どこで何が設定されているか」の参照のみ記録する。
 
-## システム構成（各サービスの参照情報）
+### Amplify
 
-キー・シークレットの類はここには書かない（`.env.local`はgitignore済みなので、個人の控えとして残す場合はそちら）。「どこで何が設定されているか」の参照のみ記録する。
+| 環境 | ブランチ | アプリID | ドメイン | AWSアカウント |
+|---|---|---|---|---|
+| dev | `develop` | `d2x3bvza761vf5` | `https://devgame.usapo.net` | 本体の dev と同居 |
+| 本番 | `main` | `d312w90schmrzl` | `https://game.usapo.net` | ゲーム専用のメンバーアカウント |
 
-### Vercel
-- プロジェクト: `usapo-game`（スコープ: `usapo-game`）
-- 本番URL: https://usapo-game.vercel.app
-- 環境変数（Production/Preview/Development の3系統）: `NEXT_PUBLIC_CLOUDFRONT_URL`（全環境prd CloudFrontに統一）/ `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- GitHub連携済み（`develop`ブランチへのpushでPreviewが自動デプロイされる）。Custom Environments（ブランチ単位の名前付き環境）はHobbyプランでは使えないため、Previewは「Production Branch以外の全ブランチ」に一律適用される仕様
-- **Production反映は現状CLIの手動`vercel deploy --prod`のみ**。`main`ブランチは初期コミットのままでほぼ更新しておらず、Production Branchの実体とは同期していない点に注意（本来はgit連携でmainへのマージ＝本番反映にするのが望ましいが、今のところ手動運用）
+- 環境変数は `NEXT_PUBLIC_CLOUDFRONT_URL` のみ（ビルド時に埋め込まれるので、変えたら再ビルド）
+- シークレット: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`（Cognito 用の Google OAuth クライアント）、`VAPID_PRIVATE_KEY`（PWA の通知の秘密鍵。対になる公開鍵は `src/lib/push/vapid.ts`。**無いブランチでは通知を送らないだけだが、シークレットを参照する Lambda が起動時に失敗しないよう、どの環境にも入れておく**）
+- サービスロールに `AmplifyBackendDeployFullAccess` が要る（無いとバックエンドのデプロイが失敗する）
+- **Gen2 ではバックエンド（ユーザープール・テーブル・Lambda）がブランチごとに別**。ブランチを変えるとデータもユーザーも引き継がれない。テーブル名は `<モデル名>-<AppSyncのAPI ID>-NONE`
+- バックエンドの全リソースに `project=usapo-game` タグ（`amplify/backend.ts`。Cost Explorer で使うには Payer でコスト配分タグとして有効化する）
 
-### Supabase
-- プロジェクト名: `usapo-game`、project ref: `pctmohjcdtizoyalacts`、リージョン: ap-northeast-1(東京)、Free plan
-- ダッシュボード: https://supabase.com/dashboard/project/pctmohjcdtizoyalacts
-- DBスキーマは`supabase/migrations/`配下で管理し`supabase db push`で反映（ローカルDockerが無い環境だったため`db reset`によるローカル検証は未実施、本番プロジェクトに直接push）
-- 認証: **Google OAuthのみ**（Authentication → Providers → Google に設定済み）。Client Secretは保存後Supabase側では再表示できないため、確認・再発行が必要な場合はGoogle Cloud Console側で行う
-  - 当初マジックリンク（メールリンク）を実装したが、(a) Free tier既定の共有SMTPは1時間2通という強いレート制限がある、(b) 同じくFree tier+デフォルトSMTPではメールテンプレートのカスタマイズ自体が不可、(c) リンク方式はGmail等の自動先読みや、送信時と別のブラウザ/デバイスで開いた場合に失敗する、という3点が重なり、Google OAuthのみに切り替えた
-  - 独自SMTP（Resendなど）を設定すればメールログイン（マジックリンク/OTP）も選択肢に戻る。ドメイン検証が絡むので本番ドメイン（`game.usapo.net`）設定と合わせて検討するのが自然
+### Cognito / Google ログイン
 
-### Google OAuth
-- Google Cloud Console側にOAuthクライアント（ウェブアプリケーション）を作成済み
-- 承認済みリダイレクトURI: `https://pctmohjcdtizoyalacts.supabase.co/auth/v1/callback`
-- Client ID/SecretはSupabaseダッシュボード側に設定済み（上記参照）
+- ログインは Google のみ。Gen2 の `defineAuth` は email の指定が必須なので入れているが、メール・パスワードの自己登録は止めている（`allowAdminCreateUserOnly`）
+- Cognito のドメインは `usapo-game-<ブランチ名>`（Gen2 は自動生成の名前になるので `backend.ts` で上書きしている）
+- **ドメインは managed login（バージョン2）**（2026-10-28〜。`backend.ts` で設定し、Cognito 標準のデザイン設定 `CfnManagedLoginBranding` を付けている）。ログインのたびに Google のアカウントを選ばせる `prompt: "SELECT_ACCOUNT"`（`src/lib/auth.ts`）は classic の hosted UI では使えないため。複数の Google アカウントを持っていても切り替えられる。managed login はユーザープールのプランが Essentials 以上で使える
+- Google OAuth クライアント（Cognito 用、ウェブアプリケーション）の承認済みリダイレクトURIに、各ブランチの `https://usapo-game-<ブランチ>.auth.ap-northeast-1.amazoncognito.com/oauth2/idpresponse` を登録している
+- Cognito の戻り先（ログイン後 `/login`、ログアウト後 `/`）は `amplify/auth/resource.ts` の `CUSTOM_DOMAINS`（ブランチ→独自ドメイン）・`*.amplifyapp.com`・`localhost:3000`。**独自ドメインを足したら `CUSTOM_DOMAINS` にも足す**（足さないと「redirect is coming from a different origin」で失敗する）
+- 初めてログインしたときに Post confirmation トリガー（`create-game-profile`）がプロフィール（ニックネーム空）を作る。各 Lambda も `ensureProfile` で保険をかけている
+- ユーザーIDは Cognito の `sub`
 
-### CloudFront / S3（geojson配信、AWS）
-- dev/prd 2つのAWSアカウントとも `team-kokuusa-platform-infra` リポジトリ（`C:\Users\user\develop\taihi\team-kokuusa-platform-infra`、CloudFormation）で管理
-- usapo-gameは全環境prd CloudFront（`dbr7d89af0fox.cloudfront.net`）に統一。CORS許可ドメインは同リポジトリの`infra-s3-stack.yaml`の`FrontendDomains`パラメータに追加済み（`usapo-game.vercel.app` / `game.usapo.net`(予定・未設定) / `*-usapo-game.vercel.app`(Preview用) / `dev.usapo.net`）
+### CloudFront / S3（geojson配信）
 
-### GitHub
-- リポジトリ: `git@github.com:ne3right-organization/usapo-game.git`（公開）
-- 作業は`develop`ブランチにコミット・push。`main`は現状ほぼ初期状態（上記Vercelの注意点も参照）
+- 本体側のインフラ用リポジトリ（`team-kokuusa-platform-infra`、CloudFormation）で管理。usapo-game は全環境 prd の CloudFront（`dbr7d89af0fox.cloudfront.net`）を使う
+- CORS 許可ドメインは同リポジトリ `infra-s3-stack.yaml` の `FrontendDomains`。`game.usapo.net` / `devgame.usapo.net` を許可済み（`*.amplifyapp.com` のドメインは許可していないので、amplifyapp.com の URL では地図が出ない）
+- `usapo.net` の DNS は Route 53（ゲーム用アカウントには無いので、レコードは手で足す）
 
-## 既存データの移行方針
+## 開発の注意点
 
-現行データは本体側のAppSync/DynamoDBに、Cognito認証のユーザーに紐づく形で存在する。認証基盤がSupabaseに変わるため、自動移行ではなく手動での移行を想定している。具体的な移行手順・対象者の情報は、このリポジトリの外（社内の運用ドキュメント）で管理する。
+### データ層の作り
 
-## 次にやること
+- 画面からは `src/lib/game/*Data.ts`・`followData.ts`・`completionData.ts`・`recentClears.ts` の関数を呼ぶだけ。中身は Amplify Data のクライアント（`src/lib/amplify/data.ts`）
+- **「クライアントの自己申告を信用しない」書き込みは Lambda のカスタムミューテーション**（`amplify/functions/`）。得点計算・ベスト記録・合計・フォロー可否の確認・うさぽ農園のタネや実など。モデル自体はクライアントから読み取り専用にしている
+- 得点の式はクライアント（`MapPuzzleGame.tsx` / `MapPackGame.tsx`）と Lambda（`submit-map-puzzle-challenge` / `submit-map-pack-challenge`）の両方にある。変えるときは両方そろえる
+- 未ログインでも使う API（最近のクリア）は Identity Pool のゲスト（`guestOrUserAuthMode()`）で呼ぶ
+- ランキング・履歴のページ送りの cursor は Amplify Data の `nextToken`
+- ランキングにはログインして遊んだ人を全員出し、ニックネームが無ければ「未設定」と表示する。他人のプロフィール・フォローはニックネームを設定した人だけ（認可で読めなくするところまではしていない）
 
-- [x] Next.jsプロジェクトの雛形作成
-- [x] Vercelプロジェクトの作成・連携（dev/preview/productionともprd CloudFrontに統一。dev CloudFrontは廃止方針）
-- [x] geojson（S3+CloudFront）への接続方法の実装（`fetch()`で読むだけ。地図パズルとして実装済み）
-- [x] **Supabaseプロジェクトの作成**（プロジェクト名`usapo-game`、リージョン ap-northeast-1(東京)、Free plan、project ref `pctmohjcdtizoyalacts`）
-  - `supabase db push`でマイグレーション適用済み: `game_profiles` / `game_map_puzzle_challenges` / `game_map_puzzle_progress` / `game_map_puzzle_best` の4テーブル + RLS + 集計トリガー
-  - **重要**: Supabaseダッシュボードの「Automatically expose new tables」をOFFにしていても、SQLマイグレーション経由で作ったテーブルには`anon`ロールにデフォルト権限が付与される挙動を確認した（ダッシュボードのトグルはStudio UI経由の作成にしか効かない模様）。`20260722000000_revoke_anon_grants.sql`で明示的に`revoke all ... from anon`して対処済み。**今後新しいテーブルを追加する際も、この挙動を前提に毎回明示的なGRANT/REVOKEをマイグレーションに書くこと**（トグル設定を信用しない）
-  - **追記(2026-10-19、地図パックのスキーマ適用時)**: この自動付与は**`authenticated`ロールにも及ぶ**ことを実機確認で発見。マイグレーションで`grant select, insert ... to authenticated`しか書いていないテーブルに、DELETE/INSERT/REFERENCES/SELECT/TRIGGER/TRUNCATE/UPDATEが全部付いていた（地図パズル・地図制覇ゲームの既存テーブルも同じ状態のまま。図鑑クイズのテーブルは`20260724000001`で絞り直し済み）。UPDATE/DELETEはRLSポリシーが無ければ拒否されるが、TRUNCATEはRLSの対象外。**新しいテーブルでは`revoke all ... from anon, authenticated`してから必要な権限だけgrantし直すこと**。確認は`npx supabase db query --linked "select table_name, grantee, privilege_type from information_schema.role_table_grants where ..."`でコマンドからできる（`SUPABASE_ACCESS_TOKEN`が必要）
-  - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`（Publishable key）をVercel(Production/Preview/Development)と`.env.local`に設定済み
-  - Dockerが動いていなかったため、ローカル`supabase db reset`での事前検証はできておらず本番プロジェクトに直接`db push`した。マイグレーションSQL自体は目視レビュー済み、pushも成功・grant/RLSの実機確認も完了
-  - ログイン方式はGoogle OAuthのみ（詳細は「システム構成」参照。当初マジックリンクを実装したがFree tierの制約により切り替えた）
-- [x] プレイ履歴・プロフィール・ランキング機能のデータ層・認証・チャレンジ送信を実装（元実装 team-kokuusa-platform-frontend の Cognito+AppSync 版を Supabase に置き換えて移植）:
-  - `src/lib/game/mapPuzzleData.ts`: データアクセス層（履歴送信・進行保存・プロフィール・ランキング）。supabase-js直叩き、RLSでアクセス制御
-  - `src/app/login/page.tsx` + `src/app/auth/callback/route.ts`: Google OAuthログイン（リダイレクトの実機確認済み。実際のGoogleアカウントでの完走はユーザー側で確認予定）
-  - `src/app/game/map-puzzle/nickname/page.tsx`: ニックネーム編集
-  - `MapPuzzleGame.tsx`にチャレンジ送信(`submitChallenge`)・途中保存(`saveProgress`)を再接続、`[difficulty]/page.tsx`にサーバー側途中保存の再開フローを再接続（未ログインでもエラーを握りつぶしてゲストplayできるようフォールバック済み。実機確認済み）
-- [x] 履歴・プロフィール・ランキング画面を実装:
-  - `/game/map-puzzle/history`（プレイ履歴一覧、カーソルページネーション）
-  - `/game/map-puzzle/profile`, `/game/map-puzzle/profile/[userId]`（共通コンポーネント`GameProfileView`。他人のプロフィールはnickname未登録だと非公開）
-  - `/game/map-puzzle/ranking`, `/game/map-puzzle/ranking/area`（共通コンポーネント`RankingList`。モード内・エリア別、どちらも要ログイン＝元実装のCognito版と同様の仕様）
-  - ルート`/`とゲームハブページに`AuthStatus`（ログイン状態表示）、履歴・プロフィール・ランキングへの導線を追加
-  - **注意点**: `fetchModeRanking`/`fetchAreaRanking`は明示的に`requireUserId()`を呼ぶようにしている。呼ばないと未ログイン時に生の`permission denied for table ...`というPostgresエラーがそのまま画面に出てしまう不具合があったため(anonロールの権限を剥奪済みなのが原因)。今後同様の「ログイン必須の一覧系」データ取得関数を追加する際は、実際にログアウト状態でも動作確認すること
-- [ ] 一時停止対策のcron設定
-- [ ] 既存ユーザーの移行実施
+### バックエンドを変えたら
 
-## 市区町村図鑑クイズ（2026-07-24 実装、MVP範囲）
+- **push する前に手元で組み立てを確かめる**（Amplify のビルドログには本当のエラーが出ず、「`$amplify/env/…` が見つからない」型エラーだけになることがある）:
+  ```
+  CDK_OUTDIR=<一時フォルダ> CDK_CONTEXT_JSON='{"amplify-backend-namespace":"local","amplify-backend-name":"synthcheck","amplify-backend-type":"sandbox"}' AWS_REGION=ap-northeast-1 npx tsx amplify/backend.ts
+  ```
+  `data/<関数名>-lambda` が全部 Bundling されれば OK。型チェックは `npx tsc --noEmit -p amplify/tsconfig.json`（`$amplify/env/…` のエラーはデプロイ時に生成される型なので手元では出て当然）
+- つまずいた点:
+  - enum（`a.ref("GameDifficulty")`）は主キー（identifier）に使えない → 文字列の項目を別に持つ（`GameMapPackUserTotal.level`）
+  - モデルには認可ルールが1つ必要。クライアントから触らせないモデルは `allow.group("admin")`（誰も入っていないグループ）にしている
+  - Gen2 の Lambda の event には `info`（`fieldName`）が来ない
+  - `a.json()` の値は AppSync で二重に文字列化されて返ることがある → 文字列である限り `JSON.parse` し続ける
+  - `npm ci` は `@aws-amplify/data-construct` が同梱する semver とロックファイルが合わず失敗する → `amplify.yml` は `npm install`
+  - Amplify Data のクライアントは条件付きの書き込み・「前の値を返す」ができない。早い者勝ちのような処理は、Lambda から DynamoDB を直接さわる（`backend.ts` で `backend.data.resources.tables[...]` の権限とテーブル名を関数に渡す。例: 地図タネの落ちているタネ）
+  - `createAuthRouteHandlers`（サーバー側ログイン）はトークンが httpOnly の Cookie に強制され、ブラウザから Amplify API を呼べなくなるので使っていない
 
-設計書: `docs/市区町村図鑑クイズ_設計ドキュメント.md`（ただし「7. データモデル」はDynamoDB想定のたたき台のため無視し、実際は以下の通りSupabase/Postgresで作り直した）。地図パズルと同一サイト内の新ミニゲームとして`/game/zukan-quiz`配下に実装。MVPは「ふつう」難易度のみ・4択クイズ・1セッション5問・正解した市区町村の図鑑登録から開始し、その後「難易度3段階・カードグリッド・トリビア提案」（下記）で拡張した。
+### 独自ドメイン（Amplify）
 
-- **データソース**: ポリゴンは既存と同じCloudFront配信geojson（`/geojson/municipality/2020/{prefCode}.geojson`。`prefCode/cityCode/cityName`のみでシルエット描画用に十分）。人口・世帯数は新規に`stat.usapo.net`（国勢調査統計API、`GET /statistics/census/2020/population/{prefCode}/{cityCode}.json`、`areas[]`の`hyosyo===1`要素が市区計）を利用。設計書にある「静岡県を除く」は現時点では実データ上は解消済み（両APIとも静岡県のデータが存在することを実機確認済み）
-  - stat.usapo.netには面積データが無く、CloudFrontのgeojsonにも市区町村レベルの面積プロパティが無いため、人口密度・世帯数増減率のヒントはMVPスコープ外（人口・世帯数のみ表示、ユーザー確認済み）
-- **正答を隠す設計**: 出題(ポリゴン取得・統計値取得・ダミー選択肢生成)は新規Route Handler `src/app/api/zukan-quiz/route.ts`が担当し、`src/lib/game/zukanQuizData.ts`（`server-only`パッケージでクライアントからの誤importを防止）が実処理を行う。クライアントへ返すシルエットは**プロパティを剥がした座標のみ**で、正答自体は`game_zukan_quiz_sessions`テーブル（INSERTのみ許可、SELECT/UPDATEはanon/authenticatedどちらにも許可しない）にサーバー側で保存する。回答判定は`claim_zukan_quiz_answer`関数(security definer)をクライアントから直接RPC呼び出しし、正誤判定と図鑑(`game_zukan_collections`)への登録までDB側で完結させる(地図パズルのスコア再計算トリガーと同じ「クライアントの自己申告を信用しない」設計)
-  - `game_zukan_collections`はauthenticatedにSELECTのみ許可し、INSERT/UPDATEは一切許可していない（許可すると、クイズを解かずに直接カードを自己付与できてしまうため）。書き込みは`claim_zukan_quiz_answer`経由のみ
-  - マイグレーション: `20260724000000_zukan_quiz_schema.sql` / `20260724000001_zukan_quiz_revoke_grants.sql`（実機確認したところ今回も新テーブルにanonへの暗黙GRANTが付いていたため明示的にREVOKEし直した。既存の教訓通りの再発） / `20260724000002_zukan_quiz_sessions_insert_policy.sql`（RLS有効化とINSERTポリシー自体を書き忘れていたのを実機確認で発見・修正） / `20260725000000_zukan_quiz_answer_variable_conflict_fix.sql`（ログイン中に正解した時だけ`column reference "pref_code" is ambiguous`エラーが発生する不具合を修正。原因は`RETURNS TABLE(pref_code text, ...)`の戻り値列名がPL/pgSQL変数としても存在し、`INSERT ... ON CONFLICT (pref_code, city_code)`の対象列リストが式として解釈されるため同名のテーブル列と衝突していたこと。`#variable_conflict use_column`で解決。**今後`RETURNS TABLE`を使う関数で、戻り値の列名がINSERT/UPDATE対象テーブルの列名と一致する場合は同じ問題が起きうるので注意**）
-- **ダミー選択肢生成ロジック（決定した基準）**: 同一都道府県内から人口が対象の概ね1/3〜3倍のレンジの自治体を優先候補にし、3件に満たなければレンジを1/10〜10倍→無制限の順に広げる。それでも足りなければ別の都道府県からも補充する。地理的近さは「同一都道府県」を代理指標として使い、重心間の距離計算などは行っていない
+- Amplify の「カスタムドメイン」で手動設定（DNS が別アカウントの Route 53 のため）。証明書の確認用 CNAME は先に足して問題ない
+- **CAA に注意**: CNAME で別サービス（例: Vercel）に向いている名前は、CNAME 先の CAA が使われて Amazon の証明書が出せない。CNAME のある名前には CAA を置けないので、A レコードにして CAA（`amazontrust.com` を含む）を置くか、Amplify 向けの CNAME に切り替えてから発行する
+- **ドメインを追加し直すたびにサブドメインの CNAME の値（`xxxx.cloudfront.net`）が変わる**。Route 53 の値は Amplify の画面の最新の値に合わせる（2026-10-27 のリリースでこれに引っかかった）
 
-### トリビアヒント・正答率（2026-07-26 追加、ユーザーからのフィードバック対応）
+## 既存データの移行（2026-10-27 完了）
 
-実際に遊んでみた結果「シルエットだけだと絶対無理」というフィードバックを受け、正答前のヒントとして「主な産業」「名物・特産品」を追加した。あわせて「正答率も要素として入れてほしい」という要望で、自治体ごとの全ユーザー横断の出題数・正解数も追加した。
+Supabase のデータを本番の Amplify に移した。Supabase のユーザーごとに Cognito のユーザーを先に作って Google を紐づけ（`AdminLinkProviderForUser`）、記録をその `sub` に付け替えて DynamoDB に入れた（AWS CloudShell で実行）。スクリプトと具体的な手順・対象者の情報はリポジトリの外（`.local/`、gitignore 済み）で管理する。
 
-- **出題対象をトリビア登録済み自治体に限定**（ユーザー確認済み）。データが無い自治体は出題プールに入らない
-  - 当初はSupabaseの`game_zukan_municipality_trivia`テーブルに直接データ投入する方式（産業・名物の2項目、出典URL付き、12自治体分をWikipedia→自治体公式サイトの順で調査）で試験導入したが、**2026-07-27にトリビアのデータソースを本体側(team-kokuusa-platform-frontend, AWS Amplify)の管理画面経由に切り替えた**。理由は「geojsonと同じくCloudFrontで配信し、本体側の管理画面から編集できる方が良い」というユーザー判断（詳細設計は本体側リポジトリの`docs/municipality-trivia-management-design.md`参照。このリポジトリには実装しない）
-  - 現在の出題ロジック(`src/lib/game/zukanQuizData.ts`の`fetchTriviaCandidates`)は、47都道府県分の`{NEXT_PUBLIC_CLOUDFRONT_URL}/municipality-trivia/{prefCode}.json`を並行fetchし(トリビア未公開の都道府県は404を返すだけで正常)、まとめて出題候補プールにする。Supabaseの`game_zukan_municipality_trivia`テーブルは`20260727000000_zukan_quiz_drop_municipality_trivia.sql`で削除済み
-  - トリビア項目は本体側の設計変更に伴い8種類に拡張された: `industry`(主な産業) / `specialty`(名物・特産品) / `historicalEvent`(歴史上有名な出来事) / `touristSpot`(観光スポット) / `notablePerson`(ゆかりの人物) / `festival`(祭り・イベント) / `natureFeature`(自然・地形の特徴) / `localCuisine`(郷土料理・ご当地グルメ)。**出典URLは廃止**（本体側で「運用コストに見合わない」と判断されたため）。1項目以上あれば出題対象になる
-  - トリビアJSONは本体側の管理画面から随時追加・編集される運用中のデータのため、統計API(1週間)より大幅に短い5分キャッシュ(`TRIVIA_REVALIDATE_SECONDS`)にしている
-  - ダミー選択肢生成ロジック自体は変更なし(トリビアの有無を問わず同一都道府県内から人口が近いものを選ぶ)
-  - セッション内で同じ自治体が再出題されないよう、クライアント(`ZukanQuizGame.tsx`)が出題済みの`"prefCode:cityCode"`一覧を`/api/zukan-quiz`に毎回送り、Route Handler側で候補から除外している(トリビア公開自治体数が少ないうちは対策しないと同一セッション内で重複が起きやすいため)
-  - **表示するヒントは8項目のうちランダムに最大3件のみ**（ユーザー指示、2026-07-27）。`zukanQuizData.ts`の`pickTriviaSubset`が出題生成時(サーバー側)に選び、選ばれなかった項目は`null`にしてクライアントへ渡す(全部見せると簡単すぎるため)
-  - **人口・世帯数は出題時(回答前)に表示するよう変更**（ユーザー指示、2026-07-27。当初は回答後の答え合わせとして表示していた）。`ZukanQuizQuestion`(question)に`population`/`households`を追加し、シルエット・ヒントと同じタイミングでクライアントに渡す。ダミー選択肢は元々「人口が近い自治体」を選ぶ設計のため、人口を先に見せても4択の正解が自明になりすぎない
-- **正答率の集計**: `game_zukan_municipality_stats`テーブル(`pref_code, city_code, attempt_count, correct_count`)に、ログイン有無を問わず全回答を集計する。`claim_zukan_quiz_answer`関数内で`INSERT ... ON CONFLICT ... RETURNING ... INTO`によりUPSERTと同時に最新の集計値を取得し、そのままRPCの戻り値に含めて返す(直接のGRANTは一切行わず、書き込み・参照は同関数のsecurity definer経由のみ)
-  - この変更で`claim_zukan_quiz_answer`の`RETURNS TABLE`列を追加する必要があったが、Postgresでは`create or replace function`だけでは戻り値の型(列構成)を変更できない(`cannot change return type of existing function`エラー)。`drop function`してから`create function`し直す必要がある点に注意
-- geojson・統計APIのfetchはNext.jsのData Cache（`next: { revalidate }`、1週間）でキャッシュし、外部APIへの負荷を抑えている（国勢調査2020年データはほぼ更新されないため長めに設定）。トリビアJSONのみ5分キャッシュ（上記参照）
-- 画面: `/game/zukan-quiz`（トップ）、`/game/zukan-quiz/play/[difficulty]`（クイズ本体、`ZukanQuizGame.tsx`）、`/game/zukan-quiz/collection`（図鑑一覧）
+## 次にやること（後片付け）
 
-### 難易度3段階・カードグリッド・トリビア提案（2026-07-28〜29 追加）
+- [x] Vercel・Supabase のプロジェクトを削除（2026-10-28）。リリース後に旧サイトで記録された1件（新規の利用者）は移さなかった
+- [ ] 本番アカウントの権限セットから移行用に足した Cognito の権限を外す
+- [ ] Supabase 用だった Google OAuth クライアントを削除
+- [ ] インフラ用リポジトリの `FrontendDomains` に、実際には許可している `devgame.usapo.net` を書き足す（ファイルと実際の設定がずれている）
 
-「図鑑ページがフラットなテキスト一覧で面白くない」というフィードバックを受け、難易度を3段階に分け、図鑑をシルエット付きカードグリッドに再設計し、カード詳細にトリビア提案(コメント)機能を追加した。
+## 市区町村図鑑クイズ（2026-07-24〜2026-10-29、削除済み）
 
-- **難易度3段階**（`beginner`/`intermediate`/`advanced`、表示ラベルは かんたん/ふつう/むずかしい。地図パズルと同じスラッグ命名に統一）: `/game/zukan-quiz/play/[difficulty]`。難易度による違いは①トリビアヒント表示件数（5/3/1件）②ダミー選択肢の人口の近さ（無制限/±3〜10倍/±1.5〜10倍、`zukanQuizData.ts`の`POPULATION_BAND_RATIOS_BY_DIFFICULTY`）③人口・世帯数の表示タイミング（むずかしいのみ回答後表示）。difficulty・実際に見せたヒント項目(`hint_fields`)は`game_zukan_quiz_sessions`にサーバー側(Route Handler)で保存し、`claim_zukan_quiz_answer`がそこから読んで反映する（クライアントの自己申告を信用しない既存方針を踏襲。difficultyをクライアントから直接受け取って図鑑に反映すると自己申告で高難易度ラベルを詐称できてしまうため）
-  - 図鑑カードは自治体1枚+**最高難易度クリアのラベル**（`game_zukan_collections.best_difficulty`、3難易度別の別カードにはしない。ユーザー確認済み）。難易度の大小比較は`zukan_quiz_difficulty_rank()`関数
-  - マイグレーション: `20260728000000_zukan_quiz_difficulty.sql`（列追加・`claim_zukan_quiz_answer`の`drop`+`create`し直し。理由は`20260725000000`と同じ「`RETURNS TABLE`の列追加はcreate or replaceできない」制約）
-- **図鑑をカードグリッド化**: `/game/zukan-quiz/collection`をテキスト行一覧からシルエット+難易度バッジのカードグリッド(`ZukanCardGrid`)に変更。カードをクリックすると詳細画面`/game/zukan-quiz/collection/[prefCode]/[cityCode]`（共有コンポーネント`ZukanCardDetail`）に遷移し、出題時に見せたヒント（`hint_fields`に記録された項目のみ、値はCloudFrontのトリビアJSONから都度取得）と後述のトリビア提案欄を表示する
-  - `hint_fields`は**追記ではなく上書き**（`claim_zukan_quiz_answer`内で毎回`excluded.hint_fields`を代入）。つまりカード詳細に出るのは直近に正解した時のヒントのみで、過去の出題履歴を保持しているわけではない。DB容量への影響は無視できるレベル（項目名の配列を1行分保持するだけで、トリビア本文自体は保存しない）
-- **他ユーザーの図鑑を公開プロフィールとして閲覧可能**に: `game_zukan_collections`のSELECT RLSを、既存の`game_profiles`/`game_map_puzzle_best`と同じ「nickname設定済みなら誰でも閲覧可」ルールに拡張（同じ`20260728000000`マイグレーション）。`/game/zukan-quiz/profile/[userId]`（読み取り専用グリッド、`ZukanPublicCollectionView`）から他人のカード詳細`/game/zukan-quiz/profile/[userId]/[prefCode]/[cityCode]`にも遷移できる
-- **カード詳細の「コメント」は実質「トリビア提案」**（2026-07-29、ユーザーが意図を明確化）: UI文言は「ヒントの提案」。ユーザーは「出題時のヒントにしてほしいトリビア」を投稿する想定で、雑談的なコメントではない。ただし**採用は自動ではない**——投稿はSupabase側に貯まるだけで、実際のヒントへの反映は本体側(team-kokuusa-platform-frontend)のトリビア管理画面での人力キュレーション前提（このリポジトリ側に自動反映の仕組みは無い）。テーブル・RPCの仕組み自体は汎用的な「コメント」のまま(`game_zukan_collection_comments`、変更したのはUI文言のみ):
-  - そのカードを**獲得済みのユーザーのみ投稿可**（RLSで強制。「クリア数に応じてコメントできればよい」というユーザー要望を「そのカードを持っているか」で実装）。1ユーザー1カードにつき1件（PK`(user_id, pref_code, city_code)`、編集・削除は本人のみ）。閲覧はログインユーザーなら誰でも可。モデレーション機能は未実装（荒らしが出たら別途対応する方針、ユーザー了承済み）
-  - マイグレーション: `20260728000001_zukan_quiz_comments.sql`
-- **都道府県別コンプリート率表示を廃止**（2026-07-29、ユーザー指摘で判明した性能問題への対応）: 表示のたびに`/api/zukan-quiz/prefectures`が47都道府県ぶんのgeojsonを全部fetchして市区町村数を数えており、これが図鑑ページの体感速度を悪化させていた。「今は要らない」というユーザー判断で機能ごと削除し、`/api/zukan-quiz/prefectures`ルートと`fetchPrefectureMunicipalityCounts`も削除した。図鑑ページの「全国コンプリート状況」は単純な獲得済みカード枚数のみの表示に簡略化（分母である全国総市区町村数は現状どこにも表示していない）
+人気が無かったので、2026-10-29 に画面・Lambda・モデル（`GameZukan*`）をすべて消した（設計書 `docs/市区町村図鑑クイズ_設計ドキュメント.md` も含めて git の履歴にある）。`GameRecentClear` には `game = zukan-quiz` の古い行が残っていることがある。
 
-### シルエットに陰影起伏図(地形テクスチャ)を追加（2026-08-01、ユーザーフィードバック対応）
+- 当時の教訓で今も効くもの: **47都道府県分の geojson をまとめて取る実装は、2MB 超の geojson がキャッシュに乗らず負荷が高すぎてクラッシュした**。この規模で「全都道府県ぶんまとめて fetch」を書きたくなったら、1都道府県ずつ遅延取得できないか先に考えること
+- トリビア（本体側の管理画面で編集し CloudFront の `/municipality-trivia/{prefCode}.json` で配信）と `stat.usapo.net`（国勢調査の人口・世帯数）は図鑑クイズだけが使っていた。本体側の配信はそのまま
 
-実際に遊んだユーザーから「シルエットだけだとさすがにわからない」というフィードバックを受け、クイズ本体(`/game/zukan-quiz/play/[difficulty]`)のシルエット内部に国土地理院の陰影起伏図(hillshademap)をテクスチャとして重ねた。図鑑のカードグリッド・カード詳細(`ZukanCardGrid`/`ZukanCardDetail`)には適用していない(そちらは出題ヒントではなく一覧性・軽量性を優先する画面のため、追加のタイル取得はスコープ外とした)。
+## サイト共通の機能（2026-10-20〜）
 
-- **見せ方はシルエット内部だけ**（ユーザー選択、他の選択肢だった「周辺エリアも含めて表示」は不採用）。輪郭の外は従来通り白背景のまま、地形の陰影は市区町村の形の内側にのみ描画する。周辺の海岸線・山脈の形まで見せると地理的な位置がピンポイントで割れてしまい、シルエットクイズとしての難易度バランスが崩れるという判断
-- 実装は`src/lib/game/hillshadeRaster.ts`(タイル取得・合成)と`src/components/game/zukan-quiz/MunicipalitySilhouette.tsx`(`showTerrain`propで有効化、`ZukanQuizGame.tsx`からのみtrueを渡す):
-  - 国土地理院タイル(`https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png`)をクライアント側から直接fetchし、bboxをカバーする範囲のタイルをcanvasに合成→bboxちょうどにクロップ→data URL化してSVGの`<image>`として配置し、シルエットと同じ`<path>`を使った`<clipPath>`で内側だけをクリップする
-  - ズームレベルは対数計算で選定(`pickZoom`)。「高ズームから順に条件を満たすか探す」実装だと常に最大ズーム(16)がヒットしてタイル枚数が爆発する不具合があったため、目標ピクセルサイズ(480px)からlog2で直接ズームを逆算する方式に修正済み(実機のPlaywright検証で発覚・修正)
-  - シルエット自体は実際の縮尺(大きさ)を伏せてbboxをVIEW_SIZE一杯に正規化する仕様(`buildProjection`)のため、地形テクスチャもシルエットの`path`と全く同じ`project()`関数(bbox四隅)で配置している。地理院タイルは正確にはWebメルカトル座標系で、シルエット側の投影(経度をcos(緯度)補正した単純な等距円筒図法)とは厳密には一致しないが、市区町村スケールでは無視できる誤差
-  - GSIタイルはCORS対応済み(`Access-Control-Allow-Origin: *`、ただしOriginヘッダを送るリクエストにのみ付与される。curlでの素の確認時に一度「ヘッダなし」と誤認したので注意)。取得失敗時は`fetchHillshadeRaster`が`null`を返し、従来通りの単色シルエット塗りにフォールバックする
-  - 出典表示必須のため、シルエットの下に「地形: 国土地理院」のクレジットリンクを表示(`ZukanQuizGame.tsx`)
+- **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）: 全ページ（トップも）に出す。左はサイトのトップへ、右はログイン・ログアウトとニックネーム（`src/components/AuthStatus.tsx`。ヘッダーはページを移っても作り直されないので、ページを移るたびにログインの状態を読み直す）
+- **地図ゲームの下のタブ**（`src/components/game/MapGameTabs.tsx`）: 地図パズルと地図ポットンを「地図ゲーム」としてまとめ、パズル・ポットン・ランキング・履歴・プロフィールを下のタブで切り替える（うさぽ農園のタブと同じ形）。各ゲームと `/history`・`/profile` の layout で出す。プレイ画面（`/game/{map-puzzle|map-pack}/{difficulty}`）では出さない。ランキング・履歴・プロフィールは、いま見ているゲームの画面を開く。エリア選択（`MapAreaSelector`）は画面全体を覆わず、ヘッダーとタブの間に出し、地図に地域の名前を出す
+- **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack`）
+- **ニックネーム設定**（`/nickname`）: 全ゲーム共通。Lambda `set-nickname` がベスト記録・合計のニックネームも書き直す
+- **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=`
+- **最近クリアされたエリア**（各ゲームのトップ）: `GameRecentClear`（地図パズル・地図ポットン共通、誰がクリアしたかは持たない、未ログインでも読める）。記録を送る Lambda が更新する
+- **プロフィール**（`/profile`・`/profile/[userId]`、`src/components/profile/`・`src/lib/game/completionData.ts`）: ニックネーム・フォローと、ゲーム×レベルごとにクリアしたエリアを地図で塗るコンプリート状況。地図パズルを選ぶと合計スコアとベストスコアの一覧も出す（2026-10-29 に地図パズルのマイプロフィール `/game/map-puzzle/profile` をここにまとめた。古い URL は転送する）。市区町村は**全国ぶんの geojson を一度に読まない**（全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県だけ読む）。地図ポットンは `firstClearedAt` で完成済みかを見る
+- **フォロー**（`GameFollow`）: フォロー関係はフォローした本人とされた本人にしか見えない（2つの所有者ルール）。フォローは Lambda `set-following` が「お互いにニックネーム設定済み」を確認してから行う。クリア時の通知は見送った
+- **PWA**: `src/app/manifest.ts`・アイコン・`public/sw.js`。サービスワーカーは**オフライン時に `/offline` を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないように）。登録は本番ビルドのみ
+- **PWA の通知**（Web Push）: 設定画面（`/nickname`、`src/components/PushSettings.tsx`）で端末ごとに受け取りを切り替える。購読は `GamePushSubscription`（本人が作る・消す。`userId` を書き換えられないよう update は許さない）。送るのは `amplify/functions/shared/push.ts`（`web-push`。送れなくても本来の処理は失敗させず、3秒で待つのをやめる。404・410 の購読は消す）。通知するのは、うさぽ農園の「自分のタネが実った・誰かが来た」（`chizu-tane-checkin`）、フォローされた（`set-following`）、フォローしている人のクリア（`submit-map-*`）。受けて出すのは `public/sw.js`。送るたびに通知の一覧（`GameNotification`、`/notifications`、ヘッダーの 🔔。端末で受け取っていなくても見られる）にも残し、最新の1日分だけ取っておく（`expiresAt` の TTL で DynamoDB が消す。消えるまで時間がかかるので画面でも1日より古いものは出さない。どこまで見たかは端末の localStorage）。iPhone はホーム画面に追加したアプリだけ（iOS 16.4〜）。サービスワーカーは本番ビルドだけなので、手元では試せない（dev で試す）。ログアウトするとその端末の購読を消す
+- **Xシェア**（`src/lib/game/share.ts`）
+- **管理ページ**（`/admin` 以下。`src/app/admin/`）: 開発・運営用。どこからもリンクせず noindex。トップ（`/admin`）にリンクを並べるので、ページを足したら `src/app/admin/page.tsx` の `ADMIN_LINKS` にも足す。いまは公開して困る情報を出していないのでログインの確認はしていない（利用者のデータを出すページを足すときは認可を考える）
 
-### むずかしいの難易度設計を変更（2026-08-01、ユーザー指示）
+## 地図ポットン（旧称: 地図パック。2026-10-19〜）
 
-「むずかしい」だけ他の2難易度と質の異なる難しさにする方針に変更した。かんたん・ふつうは変更なし。
+表示名は「地図ポットン」、レベル名は 都道府県ポットン（初級）/ 自治体ポットン（中級）/ ご近所ポットン（上級）。URL（`/game/map-pack`）・モデル名（`GameMapPack*`）・コード上の名前（`mapPack`）は「地図パック」時代のまま。
 
-- **ヒントなし**: `MAX_TRIVIA_HINTS_BY_DIFFICULTY.advanced`を1→0に変更。トリビアを一切見せない
-- **トリビア登録の有無を問わず全自治体から出題**: 従来は3難易度とも出題対象を`fetchTriviaCandidates()`(トリビアが1項目以上登録済みの自治体)に限定していたが、むずかしいはヒントを出さないので この制限を外した。`fetchMunicipalityCandidatesForPrefecture(prefCode)`(`zukanQuizData.ts`)で都道府県を1つランダムに選び、その中の全自治体(トリビア有無を問わない)を出題候補にする
-  - **重要な失敗と修正**: 最初は「都道府県を1つずつ選ぶ」ではなく「47都道府県分を`Promise.all`でまとめてfetchする」`fetchAllMunicipalityCandidates()`を実装したが、実機のPlaywright検証中にdev serverが「Jest worker encountered 2 child process exceptions」でクラッシュループに陥る不具合を引き起こした。原因は東京都(13)・熊本県(43)などgeojsonが2MBを超える都道府県はNext.jsのData Cacheに乗らず(`Failed to set Next.js data cache ... items over 2MB can not be cached`という警告が出る)、むずかしいの出題のたびに47都道府県ぶん、しかも一部は毎回キャッシュされずCloudFrontへ再取得することになり負荷が高すぎたため。`都道府県別コンプリート率表示を廃止`の教訓と同種の問題が別の場所で再発した形。**今後この規模で「全都道府県ぶんまとめてfetch」を書きたくなったら、まず1都道府県ずつ遅延取得する設計にできないか検討すること**
-- **人口・世帯数は3難易度共通で回答前から表示**: 従来はむずかしいのみ回答後表示だったが、常時表示に変更(`ZukanQuizGame.tsx`から`difficulty !== "advanced"`等の分岐を削除)
-- **選択肢(ダミー)は全国から出題→撤回(2026-08-02)**: 一時`pickDummyChoicesNationwide()`を新設し、対象自治体自身の都道府県を除外して全国からダミーを選ぶ方式を試した。同一都道府県を除外しない版では「4択が全部同じ都道府県」になり答えが一目でわかる問題があったため一度は「対象の都道府県だけ除外」に修正したが、それでも**ダミー3件が別の1つの他都道府県に偏り、「他の3件と明らかに毛色が違う1件」が正答だと一目でわかってしまう**という、ユーザーが実際に遊んでみて気づいたより本質的な問題が残っていた。ユーザー指示により全国出題は撤回し、`pickDummyChoicesNationwide()`は削除、ダミー選択は他の難易度と同じ「同一都道府県優先」ロジック(`pickDummyChoices`本体、`POPULATION_BAND_RATIOS_BY_DIFFICULTY.advanced`のレンジ`[1.5, 3, 10, Infinity]`)にそのまま合流させた。むずかしい固有の変更は「ヒントなし」「トリビア登録の有無を問わず全自治体が出題対象」の2点のみに縮小
-- 難易度カードの説明文(`ZUKAN_DIFFICULTY_META.advanced.description`)は「ヒントなし・人口が近い自治体から出題」(全国出題の撤回に合わせて文言も修正)
+地域のピースを箱に落とし、隣接するピース同士が触れると実際の位置関係のまま固まる、スイカゲーム型の落下パズル。全ピースが1つに固まったら完成。「新・都道府県ゲーム」（https://sns.dopagamelab.com/pref-pack/）に着想を得た（ゲーム本体のコードにはライセンス表記がないため**コードは流用せず仕組みだけ参考にした**。Matter.js / poly-decomp は MIT なので使用）。画面に着想元のクレジットを入れている。
 
-## サイト共通の機能（2026-10-20）
+- 設計メモ: `docs/map_pack_game_design.md`
+- 画面: `/game/map-pack`、`/game/map-pack/[difficulty]`（エリア選択は地図パズルの `MapAreaSelector` を流用）、`/game/map-pack/ranking`、`/game/map-pack/ranking/area`
+- 実装: `src/lib/game/mapPack/{regions,shapes}.ts`、`src/components/game/map-pack/MapPackGame.tsx`、`src/lib/game/mapPackData.ts`
+- 参考ゲームとの違い: あふれても終了しない、箱を揺らすボタンは無し（代わりにピースが時々ポンと跳ねる・「積み直す」ボタン）、町丁など3レベルで遊べる
+- 中断・再開は地図パズルと同じ2段構え（同じタブの sessionStorage への自動保存＋「中断」ボタンでサーバーの `GameMapPackProgress` に保存）。状態はクライアントが作る JSON をそのまま保存する（大きい町丁でも数十KBで、DynamoDB の 400KB に収まる）
+- **ランキングは地図パズルとは別集計**。難易度別ランキングは1人1行（`GameMapPackUserTotal`、記録のたびに Lambda が合計を書き直す）。あきらめた挑戦も記録する
+- **既知の課題**: ピース数が多いエリアは合体が起きにくく、クリアがかなり難しい（設計メモ参照）
 
-- **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）: トップ以外の全画面からトップに戻れる
-- **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack|zukan-quiz` で最初のタブを指定）: 地図パズル・地図ポットンの挑戦履歴と、図鑑クイズの図鑑登録（1問ごとの履歴は残していないため）をタブで見られる。旧`/game/map-puzzle/history`はここへ転送
-- **ニックネーム設定**（`/nickname`）: 全ゲーム共通の設定としてサイト直下に移した。旧`/game/map-puzzle/nickname`はここへ転送
-- **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: 地図パズル・地図ポットンとも `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=` でエリア選択を飛ばして始まる。ランキング・最近のクリア一覧・履歴・Xシェアのリンクに使う
-- **最近クリアされたエリア**（各ゲームのトップ、`src/components/game/RecentClears.tsx`）: 誰がクリアしたかは出さない集計RPC（`fetch_recent_map_puzzle_clears` / `fetch_recent_map_pack_clears`、マイグレーション`20261020000001_recent_clears.sql`）。図鑑クイズの`fetch_recent_zukan_registrations`と同じく、未ログイン(anon)にも意図的に実行を許可している
-- **コンプリート状況（プロフィール）**（2026-10-23、`/profile`=自分・`/profile/[userId]`=他人、`?game=&level=`でタブ指定。`src/components/profile/`・`src/lib/game/completionData.ts`）: ゲーム（地図パズル/地図ポットン/図鑑クイズ）×レベルごとに、クリアしたエリアを地図で塗って見せる。要ログイン、公開範囲は既存RLSのまま（ニックネーム未登録の人は他人からは非公開）。未クリアのエリアをタップするとそのエリアのプレイ画面に飛べる（図鑑クイズは出題がランダムなのでレベルの画面に飛ぶだけ）
-  - 初級は全国1エリア、中級は都道府県の地図、上級・図鑑クイズは市区町村が単位。市区町村は**全国ぶんのgeojsonを一度に読まない**（図鑑・むずかしいの教訓）。全国の地図では都道府県ごとのクリア数を濃淡で出し、県を選ぶとその県の市区町村geojsonだけを読む
-  - 地図ポットンはあきらめた挑戦もベスト記録に入るため、`game_map_pack_best.first_cleared_at`（マイグレーション`20261023000000_map_pack_best_first_cleared.sql`）で完成済みかを判定する
-  - 図鑑クイズは上の難易度で登録した市区町村を下の難易度でもクリア扱いにしている
-- **フォロー**（2026-10-23、`game_follows`、マイグレーション`20261023000001_follows.sql`）: 他の人のプロフィールに「フォローする」、自分のプロフィールにフォロワー数・フォロー数（一覧は`/profile/follows`）。フォロー関係は**フォローした本人とされた本人にしか見えない**（RLS）。フォローする側・される側ともニックネーム設定済みに限る（RLSのINSERTポリシーで強制）。クリア時の通知は、サーバー側の送信処理が要るため見送った（ユーザー判断）
-- **地図ポットンのランキング**: 点数の上に「◯エリア合計」、下の行に「🏅 最高◯点（エリア）」を出す。カードをタップするとその人のエリア一覧（`MapPackUserAreas`）が開き、コンプリート状況へのリンクもある
-- **PWA**（2026-10-23）: `src/app/manifest.ts`・アイコン（ユーザー提供の地図パズル柄の画像から、角丸の外の白がかからないよう各辺を元画像の約9%内側で正方形に切り抜いて`public/icons/icon-{192,512}.png`・`src/app/apple-icon.png`・`src/app/icon.png`(ファビコン)を作った）・`public/sw.js`。サービスワーカーは**オフライン時にページ遷移の代わりに`/offline`を出すだけで、ほかは一切キャッシュしない**（ランキング・記録・ログイン状態が古いまま見えないようにするため）。登録は本番ビルドのみ（`ServiceWorkerRegister`）
-- **Xシェア**（`src/lib/game/share.ts`）: 地図ポットンの結果画面と地図パズルのクリア画面に「𝕏 でシェア」。投稿には同じエリアのプレイ画面へのリンクを入れる
+## うさぽ農園（旧称: 地図タネ。2026-10-28〜、初期試作）
 
-## 地図ポットン（旧称: 地図パック。2026-10-19 プロトタイプ実装、`feature/map-pack`ブランチ）
+表示名は「うさぽ農園」（2026-10-29 に「地図タネ」から変えた）。URL（`/game/chizu-tane`）・モデル名（`GameTane*`）・コード上の名前（`chizuTane`）・設計書のファイル名は「地図タネ」のまま。
 
-表示名は「地図ポットン」、レベル名は 都道府県ポットン（初級）/ 自治体ポットン（中級）/ ご近所ポットン（上級）（2026-10-20 改名、ユーザー決定）。URL（`/game/map-pack`）・DBのテーブル名（`game_map_pack_*`）・コード上の名前（`mapPack`等）は「地図パック」時代のまま変えていない（テーブル名まで変えると本番DBのマイグレーションと既存記録の移し替えが必要になるため）。
+現実の地区（町丁）にタネ（拠点）をまき、ほかの人のタネを現地で訪ねてタネを分けてもらい、自分で育てて収穫した実（アイテム）を集める位置情報ゲーム。集めたものはガーデン（箱庭、自宅の庭のイメージ。おまけ）に飾れる。**メインは訪ねること**。
 
-地域（都道府県/市区町村/町丁）のピースを箱に落とし、地理的に隣接するピース同士が触れると実際の位置関係のまま1つに固まる、スイカゲーム型の落下パズル。全ピースが1つに固まったら完成。「新・都道府県ゲーム」(https://sns.dopagamelab.com/pref-pack/) に着想を得た（公開HTMLで仕組みは読んだが、ゲーム本体のコードにはライセンス表記がないため**コードは流用せず仕組みだけ参考にした**。同ゲームも使っている Matter.js / poly-decomp はMITなので使用）。画面に着想元のクレジットを入れている。
-
-- 設計メモ: `docs/map_pack_game_design.md`（決定事項・不採用にした案と理由・シミュレーション結果はこちら）
-- 画面: `/game/map-pack`（トップ）、`/game/map-pack/[difficulty]`（エリア選択は地図パズルの`MapAreaSelector`を流用）、`/game/map-pack/ranking`、`/game/map-pack/ranking/area`
-- 実装: `src/lib/game/mapPack/{regions,shapes}.ts`（地図データの前処理・凸分解）、`src/components/game/map-pack/MapPackGame.tsx`（物理演算・描画）、`src/lib/game/mapPackData.ts`（記録送信・ランキング）
-- 参考ゲームとの違い（パクリと受け取られないよう意識した点）: あふれても終了しない、箱を揺らすボタンは無し（代わりにピースが時々ポンと跳ねる・「積み直す」ボタン）、町丁など3レベルで遊べる。都道府県レベルは参考ゲームとほぼ同じになるので、公開順は町丁を先にする方針（2026-10-19 決定）
-- 中断・再開は地図パズルと同じ2段構え（同じタブの sessionStorage への自動保存＋「中断」ボタンでサーバーの`game_map_pack_progress`に保存）。状態はクライアントが作るJSONをそのまま保存する
-- **ランキングは地図パズルとは別集計**（`game_map_pack_challenges` / `game_map_pack_best`、マイグレーション`20261019000000_map_pack_schema.sql`）。`game_profiles.total_score`には含めない。得点はDB側のトリガーで計算し直す（クライアントの得点計算と同じ式なので、変えるときは両方そろえること）
-- **既知の課題**: ピース数が多いエリア（小田原市の町丁196、北海道の市区町村188など）は合体が起きにくく、クリアがかなり難しい（設計メモ参照）
-
-## 新規ゲーム構想「地図制覇ゲーム」のプロトタイプ（2026-07-21 移設）
-
-上記とは別に、新しいゲーム構想「地図制覇ゲーム」（カルドセプト風の陣取りゲーム、実データで町丁目を歩いて攻略する）のプロトタイピングも、ゲーム関連開発の集約方針によりこのリポジトリに移設した。
-
-- 設計書: `docs/map_conquest_game_design.md`
-- モック本体: `docs/map_conquest_game/`（`index.html` を開くと一覧、`README.md` に各モックの検証内容・暫定計算式・既知の限界、`test-story-ota.md` に大田区の実データを使ったテストウォークスルーがある）
-- 全12モックは自己完結HTML（ビルド不要）。usapo.net本体側と同じCloudFront（geojson配信）に直接fetchする方式で、上記「決定したアーキテクチャ」の geojson配信方針（S3+CloudFrontのままfetch()で読む）と整合している
-- **2026-07-16〜17にかけて、ユーザーの「残りをまとめて開発しておいて」という指示のもと5モックを自律的に追加しており、ユーザー本人のレビューが済んでいない部分がある**（詳細はREADME参照）
-- この構想はまだ「大枠を固める」段階で、UIはデスクトップ・マウス操作前提（本番はスマホ想定だが未着手）
-- 上記「決定したアーキテクチャ」（Next.js/Vercel/Supabase）は既存の町丁パズル移行の話であり、地図制覇ゲームを同じ技術スタックに乗せるかどうかはまだ未検討・未決定
+- 設計書: `docs/地図タネ_全体設計書.md`（ルール・決定事項・コースの表）、`docs/地図タネ_初期試作設計書.md`（いま作っている範囲）、`docs/地図タネ_ご当地タネ設計書.md`（都道府県ごとのご当地もの。まだ作っていない）。検討のときは「箱庭コレクションゲーム」「地図コロ」と呼んでいた（名前の経緯は全体設計書の0章）
+- 画面での呼び名: 拠点＝タネ（種類ごとに果樹園・サイクルポート…）、箱庭＝ガーデン、町丁＝実際の地名と「地区」。**画面で「町丁」とは言わない**
+- 画面: `/game/chizu-tane`（トップ。ガーデンの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/map`（全国農地。全国のタネの地図）、`/collection`、`/garden`。下に固定のタブで切り替える（`TaneParts.tsx` の `TaneScreen`）。ログイン必須
+- 実装: `src/lib/game/chizuTane/`（コースの表 `courses.ts`・地区の判定 `geo.ts`・箱庭の検証 `garden.ts`。画面と Lambda の両方から使う）、`src/lib/game/chizuTaneData.ts`、`src/components/game/chizu-tane/`
+- バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（落ちているタネを拾う）/ `chizu-tane-stats`（コースごとの人数）（共通処理は `amplify/functions/shared/chizuTane.ts`）
+- **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・拠点に落ちているタネを拾う。ほかの人のタネに初めてチェックインするとそこに1個落ちる）は全体設計書 6.4、数は `courses.ts`。持ち主の手元に直接増えたり、時間で増えたりはしない
+- **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
+- 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
+- **畑の場所は生活圏が分かるので守る**（2026-10-29）: 誰でも読める `GameTaneBase` には持ち主の ID を入れない（ID はプロフィールの URL などから分かり、そこからタネの場所を全部たどれてしまうため）。持ち主は本人しか読めない `GameTaneOwnership`。ガーデンと実の「生産者」、それに畑に来た人の名前（持ち主に届く通知。見せていなければ「誰か」）は、その人が「農園を見せる」にしたフォロワー（`GameTaneShare`、フォロワーの一覧で一人ずつ選ぶ。はじめは誰にも見せない）にだけ出す。フォローはパズルのランキングからもできるため
+- **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
+- **レベル・ガーデン・家**（2026-10-29）: レベルの上限は本番 Lv.3・テスト用（devgame・手元・main 以外の Lambda）Lv.10（`courses.ts` の `taneMaxLevel`。ブラウザはホスト名、Lambda は環境変数 `CHIZU_TANE_MAX_LEVEL` で決める。上がる条件は `courses.ts` の `TANE_LEVEL_THRESHOLDS`、きびしめ）。開拓した地区の数（タネをまいた地区。まき直しは数えない。手放した地区も数える）で別のデザインのガーデンが増え（おうちの庭・花の丘・海辺の庭・森の庭、`garden.ts` の `GARDEN_DESIGNS`。おうちの庭は `GameTaneGarden.objects`、ほかは `layouts`。所持数はすべてのガーデンを合わせて数える）、家と柵はレベルで立派になる（小屋 → 家 → 2階建て → お屋敷、`HOUSE_TIERS`）。条件と見た目は管理画面の `/admin/chizu-tane/levels`・`/admin/chizu-tane/gardens`。水やり・チェックインは朝・昼・夜に1回ずつ（`geo.ts` の `slotKey`）。畑のランクが上がると実の数が増える（ランク×10個）。実ったら、誰が実らせても持ち主に「生産者の取り分」が1個届く（`chizu-tane-checkin`）。**実が全部取られるとタネ待ち**（`GameTaneBase.waitingSince`）になり、持ち主が同じ種類の畑のタネをまき直す（`replantTaneBase`、遠くからでもよい）と育ち直す。1週間（`growth.ts` の `REPLANT_LIMIT_SLOTS`）まかなければ空き地に戻る。空き地に戻ったかはその場で計算し（定期的な処理は無い）、行は次にまいた人が条件付きの書き込みで上書きする。前の持ち主の `GameTaneOwnership` は消さず `releasedAt` を付ける（開拓した地区の数・まいたことのあるタネに数え続ける）。同じ地区のほかの人の訪問の記録（`GameTaneVisit`）は残るので、新しい畑に来ても「初めて」にはならない
+- **フォローしている人のガーデン**: ガーデンの画面の下から見に行ける（`/game/chizu-tane/garden/[userId]`、見るだけ）。見られるのは、持ち主が自分に「農園を見せる」にしていて（`GameTaneShare`）、自分が持ち主をフォローしているときだけ（はじめは見せない）。`GameTaneGarden` は本人しか読めず、ほかの人のガーデンは Lambda（`viewTaneGarden`）が確かめてから返す
+- 絵は未作成で、アイテムごとの絵文字を出している。絵は画像生成AIで作り、`art/chizu-tane/` に置いて `scripts/chizu-tane/process-item-images.mts` を動かすと `public/chizu-tane/items/` と `itemImages.generated.ts` ができて `imageUrl` になる（手順は `docs/地図タネ_絵の作り方.md`）。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`

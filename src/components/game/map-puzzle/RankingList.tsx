@@ -8,8 +8,10 @@ import { areaLabelOf, formatRelativeTime } from "@/lib/game/format";
 export interface RankingListProps {
   items: RankingEntry[];
   showArea?: boolean;
-  /** 行をタップしたときのプロフィールページ。null ならリンクにしない(プロフィールページが無いゲーム用) */
+  /** 行をタップしたときのプロフィールページ。null ならリンクにしない(行を開閉して中身を見せるゲーム用) */
   profileBasePath?: string | null;
+  /** プロフィールを開いたときに選んでおくゲーム */
+  profileGame?: "map-puzzle" | "map-pack";
   /** 渡すと各行の右端に、そのエリアを遊ぶリンクを縦に並べて出す(行がプロフィールへのリンクでない場合のみ) */
   playLinks?: (item: RankingEntry) => { label: string; href: string }[];
   /** 渡すと行をタップで開閉できるようにし、開いたときにその下へ出す(プロフィールへのリンク・playLinks より優先) */
@@ -26,7 +28,8 @@ function rankBadge(index: number): string {
 export default function RankingList({
   items,
   showArea = true,
-  profileBasePath = "/game/map-puzzle/profile",
+  profileBasePath = "/profile",
+  profileGame = "map-puzzle",
   playLinks,
   renderExpanded,
 }: RankingListProps) {
@@ -93,7 +96,7 @@ export default function RankingList({
         }
 
         return item.nickname && profileBasePath ? (
-          <Link key={key} href={`${profileBasePath}/${item.userId}`} className={`block ${cardClass}`}>
+          <Link key={key} href={`${profileBasePath}/${item.userId}?game=${profileGame}`} className={`block ${cardClass}`}>
             {row}
           </Link>
         ) : (
