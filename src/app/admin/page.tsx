@@ -8,7 +8,7 @@ const ADMIN_LINKS: { section: string; links: { href: string; label: string; desc
       {
         href: "/admin/chizu-tane/items",
         label: "アイテム一覧",
-        description: "コース・タネの種類・アイテムの定義と、実とタネの絵（courses.ts）",
+        description: "コース・タネの種類・アイテムの定義と、実とタネの絵（courses.ts）。ご当地のもののたたき台（localItems.ts）",
       },
       {
         href: "/admin/chizu-tane/levels",

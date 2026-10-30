@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MAX_LEVEL_DEV, MAX_LEVEL_PRODUCTION, TANE_COURSES, TANE_ITEMS, baseTypesOf } from "@/lib/game/chizuTane/courses";
+import { TANE_LOCAL_ITEMS, TANE_LOCAL_PREFS, TANE_LOCAL_RANK_ROLES } from "@/lib/game/chizuTane/localItems";
 import { ItemIcon, SeedIcon } from "@/components/game/chizu-tane/TaneParts";
 
 // 管理: アイテム定義(src/lib/game/chizuTane/courses.ts)と、その絵の一覧。
@@ -37,6 +38,7 @@ export default function ChizuTaneItemsPage() {
                   <th className="px-2 py-1.5">ランク</th>
                   <th className="px-2 py-1.5">itemId</th>
                   <th className="px-2 py-1.5">名前</th>
+                  <th className="px-2 py-1.5 text-center">絵文字</th>
                   <th className="px-2 py-1.5 text-center">実</th>
                   <th className="px-2 py-1.5 text-center">タネ</th>
                   <th className="px-2 py-1.5">絵</th>
@@ -63,7 +65,7 @@ export default function ChizuTaneItemsPage() {
                     return (
                       <tr key={type.id} className="border-t border-[#f0e6d2] text-[#c8b8a0]">
                         {typeCell(1)}
-                        <td colSpan={6} className="px-2 py-1.5 text-xs">
+                        <td colSpan={7} className="px-2 py-1.5 text-xs">
                           —
                         </td>
                       </tr>
@@ -75,6 +77,8 @@ export default function ChizuTaneItemsPage() {
                       <td className="px-2 py-1.5 text-xs">{item.rank}</td>
                       <td className="px-2 py-1.5 text-[11px] font-mono text-[#78716c]">{item.itemId}</td>
                       <td className="px-2 py-1.5">{item.name}</td>
+                      {/* 定義の絵文字(絵があると画面には出ないが、絵の無い所の代わりや文章の中で使う) */}
+                      <td className="px-2 py-1.5 text-center text-xl">{item.emoji}</td>
                       <td className="px-2 py-1.5 text-center">
                         <ItemIcon item={item} size={36} />
                       </td>
@@ -105,6 +109,59 @@ export default function ChizuTaneItemsPage() {
           </div>
         </section>
       ))}
+
+      <section className="mb-8">
+        <h2 className="font-bold mb-1">📍 ご当地（たたき台。まだ手に入らない）</h2>
+        <p className="text-xs text-[#78716c] mb-3">
+          定義: <code>src/lib/game/chizuTane/localItems.ts</code>（設計書は docs/地図タネ_ご当地タネ設計書.md）。1つの都道府県につき 5コース × 3つ。
+          {TANE_LOCAL_PREFS.length}都道府県・{TANE_LOCAL_ITEMS.length}件。1個目＝現地で味わう・乗る・体験する、2個目＝持ち帰るお土産、3個目＝ガーデンに飾って見せたいもの
+        </p>
+        {TANE_LOCAL_PREFS.map((pref) => (
+          <div key={pref.prefCode} className="mb-5">
+            <h3 className="text-sm font-bold mb-1">
+              {pref.prefName} <span className="text-xs font-normal text-[#a8937a]">({pref.prefCode})</span>
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse bg-white rounded-xl overflow-hidden">
+                <thead>
+                  <tr className="bg-[#f5ecd9] text-xs text-[#78716c] text-left">
+                    <th className="px-2 py-1.5">コース</th>
+                    {TANE_LOCAL_RANK_ROLES.map((role, i) => (
+                      <th key={role} className="px-2 py-1.5">
+                        {i + 1}個目（{role}）
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {TANE_COURSES.map((course) => (
+                    <tr key={course.id} className="border-t border-[#f0e6d2]">
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">
+                        {course.emoji} {course.label}
+                      </td>
+                      {TANE_LOCAL_ITEMS.filter((i) => i.local === pref.prefCode && i.course === course.id).map((item) => (
+                        <td key={item.itemId} className="px-2 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <ItemIcon item={item} size={32} />
+                            <SeedIcon item={item} size={32} />
+                            <div>
+                              <div>
+                                {item.name}
+                                {item.imageUrl && <span className="ml-1">{item.emoji}</span>}
+                              </div>
+                              <div className="text-[10px] font-mono text-[#a8937a]">{item.itemId}</div>
+                            </div>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </section>
     </main>
   );
 }
