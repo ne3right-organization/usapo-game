@@ -9,7 +9,7 @@ import {
   type TaneCourse,
   type TaneItem,
 } from "@/lib/game/chizuTane/courses";
-import { GROWTH_STAGES, RIPE_STAGE, growthStage, waterUntilRipe, type GrowingBase } from "@/lib/game/chizuTane/growth";
+import { GROWTH_STAGES, RIPE_STAGE, growthStage, isWaitingReplant, waterUntilRipe, type GrowingBase } from "@/lib/game/chizuTane/growth";
 
 // 地図タネの画面で共通に使う小さな部品
 
@@ -54,6 +54,16 @@ export function SeedIcon({ item, size = 40 }: { item: TaneItem; size?: number })
   );
 }
 
+/** 残り時間の言い方(「あと3日」「あと5時間」「あと20分」) */
+export function remainingLabel(ms: number): string {
+  if (ms <= 0) return "すぐに";
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return `あと${minutes}分で`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `あと${hours}時間で`;
+  return `あと${Math.ceil(hours / 24)}日で`;
+}
+
 /** 地図のタネのアイコンの凡例(育ち具合で見せる。taneMarker.ts と同じ色) */
 export function GrowthLegend() {
   return (
@@ -65,6 +75,10 @@ export function GrowthLegend() {
       <span className="flex items-center gap-1">
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-amber-500 bg-amber-50 text-[9px] leading-none">✨</span>
         実っている（実をもらえる）
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-[#a16207] bg-[#f5efe6] text-[9px] leading-none">🟫</span>
+        タネ待ち
       </span>
     </>
   );
@@ -215,6 +229,14 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
 
 /** まいたタネの育ち具合:「🌸 花 ●●●●●○ · ランク2」。実ったら残っている実の数 */
 export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) {
+  if (isWaitingReplant(base)) {
+    return (
+      <span className="text-xs text-[#a16207]">
+        🟫 タネ待ち
+        <span className="ml-1 text-[#a8937a] font-normal">· ランク{base.rank}</span>
+      </span>
+    );
+  }
   const stage = growthStage(base);
   const s = GROWTH_STAGES[stage];
   return (
@@ -231,6 +253,10 @@ export function GrowthBadge({ base }: { base: GrowingBase & { rank: number } }) 
 
 /** 実るまで、あと何回水をやればよいか(実っていれば、もらい方) */
 export function WaterHint({ base, remote = true }: { base: GrowingBase; remote?: boolean }) {
+  // タネ待ち: 持ち主(remote)には ReplantPicker で案内するので出さない
+  if (isWaitingReplant(base)) {
+    return remote ? null : <p className="text-[11px] text-[#a16207]">実が全部収穫されて、持ち主がタネをまき直すのを待っています</p>;
+  }
   const need = waterUntilRipe(base);
   if (!need) {
     return <p className="text-[11px] text-amber-700">現地でチェックインすると、実を1個もらえます（朝・昼・夜それぞれ1回、早い者勝ち）</p>;

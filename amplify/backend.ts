@@ -46,6 +46,10 @@ for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
   fn.addEnvironment("CHIZU_TANE_HARVEST_TABLE", taneHarvestTable.tableName);
 }
 
+// タネをまく・まき直すのも「空き地か、空き地に戻った畑のときだけ」「タネ待ちのときだけ」の条件付きで拠点のテーブルに書く
+taneBaseTable.grantReadWriteData(backend.chizuTanePlace.resources.lambda);
+backend.chizuTanePlace.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
+
 // 届いた通知は最新の1日分だけ残す。期限(expiresAt)が過ぎたら DynamoDB が消す
 backend.data.resources.cfnResources.amplifyDynamoDbTables["GameNotification"].timeToLiveAttribute = {
   attributeName: "expiresAt",

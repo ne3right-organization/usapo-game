@@ -3,7 +3,7 @@ import Link from "next/link";
 import { GARDEN_DESIGNS, GARDEN_HEIGHT, GARDEN_WIDTH, HOUSE_TIERS, type GardenObject } from "@/lib/game/chizuTane/garden";
 import GardenSvg from "@/components/game/chizu-tane/GardenSvg";
 
-// 管理: ガーデンのデザイン(まいたタネの数で増える)× 家と柵の段階(レベルで立派になる)の見た目の一覧。
+// 管理: ガーデンのデザイン(開拓した地区の数で増える)× 家と柵の段階(レベルで立派になる)の見た目の一覧。
 // 定義は src/lib/game/chizuTane/garden.ts、絵は src/components/game/chizu-tane/GardenSvg.tsx
 export const metadata: Metadata = {
   title: "うさぽ農園 ガーデンのデザイン",
@@ -25,7 +25,7 @@ export default function AdminGardensPage() {
       </Link>
       <h1 className="text-xl font-bold mb-1 mt-2">うさぽ農園 ガーデンのデザイン</h1>
       <p className="text-xs text-[#78716c] mb-6">
-        横はユーザーのレベルで変わる家と柵、縦はまいたタネの数で増えるガーデン。条件の一覧は{" "}
+        横はユーザーのレベルで変わる家と柵、縦は開拓した地区の数で増えるガーデン。条件の一覧は{" "}
         <Link href="/admin/chizu-tane/levels" className="underline">
           レベルとガーデンの条件
         </Link>
@@ -35,7 +35,7 @@ export default function AdminGardensPage() {
           <h2 className="font-bold mb-2">
             {d.emoji} {d.name}
             <span className="ml-2 text-xs font-normal text-[#a8937a]">
-              （{d.id}。{d.unlockPlanted === 0 ? "はじめから" : `タネを${d.unlockPlanted}個まくと増える`}）
+              （{d.id}。{d.unlockPlanted === 0 ? "はじめから" : `${d.unlockPlanted}地区を開拓すると増える`}）
             </span>
           </h2>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

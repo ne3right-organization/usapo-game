@@ -10,7 +10,7 @@ import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTa
 import { useTanePlayer } from "./useTanePlayer";
 
 // ガーデン(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う。
-// ガーデンは、まいたタネの数で別のデザインのものが増える(上のタブで切り替える)。家と柵はレベルで立派になる。
+// ガーデンは、開拓した地区の数で別のデザインのものが増える(上のタブで切り替える)。家と柵はレベルで立派になる。
 // 所持数は、すべてのガーデンに置いている分を合わせて数える。
 // 下に、フォローしている人のガーデンへのリンク(見るだけ)と、自分のフォロワー・フォローしてもらうリンクを並べる(FriendGardenView)
 
@@ -153,7 +153,7 @@ function Garden() {
 
   return (
     <div>
-      {/* ガーデンのタブ(まいたタネの数で増える) */}
+      {/* ガーデンのタブ(開拓した地区の数で増える) */}
       <div className="flex gap-1.5 mb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {GARDEN_DESIGNS.map((d) => {
           const locked = garden.plantedCount < d.unlockPlanted;
@@ -172,13 +172,13 @@ function Garden() {
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold border ${tabClass}`}
             >
               {locked ? "🔒" : d.emoji} {d.name}
-              {locked && <span className="ml-1 font-normal">あと{d.unlockPlanted - garden.plantedCount}個</span>}
+              {locked && <span className="ml-1 font-normal">あと{d.unlockPlanted - garden.plantedCount}地区</span>}
             </button>
           );
         })}
       </div>
       <p className="text-[11px] text-[#a8937a] mb-2">
-        家と柵: {tier.name}（Lv.{garden.level}）。タネをまくとガーデンが増え（いま{garden.plantedCount}個まいています）、レベルが上がると家と柵が立派になります
+        家と柵: {tier.name}（Lv.{garden.level}）。新しい地区にタネをまくとガーデンが増え（いま{garden.plantedCount}地区）、レベルが上がると家と柵が立派になります
       </p>
       <div className="bg-[#eaf6ea] rounded-2xl p-2 mb-3">
         <GardenSvg

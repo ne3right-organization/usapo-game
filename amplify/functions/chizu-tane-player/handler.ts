@@ -66,7 +66,7 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   };
 };
 
-/** レベル(家と柵の見た目)と、まいたタネの数(使えるガーデン) */
+/** レベル(家と柵の見た目)と、開拓した地区の数(使えるガーデン) */
 async function gardenProgress(c: DataClient, userId: string, course: string): Promise<{ level: number; plantedCount: number }> {
   const [visited, planted, plantedCount] = await Promise.all([countVisitedBases(c, userId), plantedItemIds(c, userId), countPlanted(c, userId)]);
   return { level: levelFor(course as TaneCourse, visited, planted), plantedCount };

@@ -298,13 +298,13 @@ const schema = a
         townName: a.string().required(),
         baseTypeId: a.string().required(),
         seedItemId: a.string().required(), // まいたタネのもの(梨の木など)。訪ねた人はこれをもらう
-        rank: a.integer().required(), // 実が全部取られて芽に戻るたびに1つ上がる(10まで)
+        rank: a.integer().required(), // 実が全部取られてタネ待ちになるたびに1つ上がる(10まで)
         plantedAt: a.datetime().required(),
         // 地区の代表点(geojson の X_CODE / Y_CODE)。全国のタネ地図に出す。まいた人の実際の位置は保存しない
         repLng: a.float(),
         repLat: a.float(),
         // 育ち方(src/lib/game/chizuTane/growth.ts)。water はたまった水(現地のチェックイン1回で10、遠くからの水やりで1)。
-        // たまると実って fruits(残っている実の数)が10になり、実が全部取られると water を0に戻して芽から育ち直す
+        // たまると実って fruits(残っている実の数)がランク×10になり、実が全部取られると water を0に戻してタネ待ちになる
         water: a.integer(),
         fruits: a.integer(),
         // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す
@@ -315,6 +315,9 @@ const schema = a
         droppedSeeds: a.integer(),
         // 持ち主が最後に自分のタネにチェックインした時間帯(slotKey)。朝・昼・夜に1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
         lastOwnerVisitOn: a.string(),
+        // 実が全部取られて、持ち主がタネをまき直すのを待ち始めた日時(まき直したら消す)。
+        // 1週間(growth.ts の REPLANT_LIMIT_SLOTS)まかなければ空き地に戻り、誰でもまける(行は新しくまいた人が上書きする)
+        waitingSince: a.datetime(),
       })
       .identifier(["areaKey"])
       .secondaryIndexes((index) => [
@@ -328,8 +331,13 @@ const schema = a
       .model({
         ownerId: a.id().required(),
         areaKey: a.string().required(),
-        seedItemId: a.string().required(), // まいたタネのもの(レベルの条件「今のレベルのタネを3つともまいたか」に使う)
+        seedItemId: a.string().required(), // いままいているタネのもの
+        // 前にこの畑にまいたタネ(まき直すたびに足す)。seedItemId と合わせて、レベルの条件「今のレベルのタネを3つともまいたか」に使う
+        pastSeedItemIds: a.string().array(),
         plantedAt: a.datetime().required(),
+        // タネ待ちのまま空き地に戻り、ほかの人がまいて手放した日時。手放した行も、開拓した地区の数(ガーデン)や
+        // まいたことのあるタネ(レベル)には数え続けるので消さない。持ち主を引くときは、これの無い行を見る
+        releasedAt: a.datetime(),
       })
       .identifier(["ownerId", "areaKey"])
       .secondaryIndexes((index) => [index("areaKey").queryField("listTaneOwnershipByArea")])
@@ -414,14 +422,14 @@ const schema = a
         width: a.integer().required(),
         height: a.integer().required(),
         objects: a.json().required(), // おうちの庭(はじめからあるガーデン)
-        // まいたタネの数で増えるほかのガーデンの配置({ flower: GardenObject[], ... }。src/lib/game/chizuTane/garden.ts の GardenLayouts)
+        // 開拓した地区の数で増えるほかのガーデンの配置({ flower: GardenObject[], ... }。src/lib/game/chizuTane/garden.ts の GardenLayouts)
         layouts: a.json(),
       })
       .identifier(["userId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / already(今日はもう来た)
+      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / waiting(タネ待ちの畑) / already(この時間帯はもう来た)
       status: a.string().required(),
       townName: a.string().required(),
       baseTypeId: a.string().required(),
@@ -453,7 +461,7 @@ const schema = a
       objects: a.json().required(), // おうちの庭の GardenObject[]
       layouts: a.json().required(), // ほかのガーデン(GardenLayouts)
       level: a.integer().required(), // 持ち主のレベル(家と柵の見た目)
-      plantedCount: a.integer().required(), // 持ち主がまいたタネの数(使えるガーデン)
+      plantedCount: a.integer().required(), // 持ち主が開拓した地区の数(使えるガーデン)
     }),
 
     TaneGardenState: a.customType({
@@ -463,7 +471,7 @@ const schema = a
       layouts: a.json().required(), // ほかのガーデン(GardenLayouts)
       items: a.json().required(), // { itemId, quantity }[]
       level: a.integer().required(), // レベル(家と柵の見た目)
-      plantedCount: a.integer().required(), // まいたタネの数(使えるガーデン)
+      plantedCount: a.integer().required(), // 開拓した地区の数(使えるガーデン)
     }),
 
     MapPackSubmitResult: a.customType({
@@ -534,6 +542,14 @@ const schema = a
         cityCode: a.string().required(),
         itemId: a.string().required(),
       })
+      .returns(a.ref("GameTaneBase"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlace)),
+
+    // 地図タネ: タネ待ちの自分の畑に、同じ種類の畑のタネをまき直す(遠くからでもよい)。持っているタネが1つ減る
+    replantTaneBase: a
+      .mutation()
+      .arguments({ areaKey: a.string().required(), itemId: a.string().required() })
       .returns(a.ref("GameTaneBase"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlace)),

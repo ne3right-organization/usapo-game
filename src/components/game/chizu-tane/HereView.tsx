@@ -24,6 +24,7 @@ import {
 import { ErrorText, GrowthBadge, GrowthLegend, ItemIcon, Loading, NeedStart, NoSeedsHelp, SeedIcon, TaneHeading, TaneScreen, WaterHint } from "./TaneParts";
 import HereMap from "./HereMap";
 import SeedPicker from "./SeedPicker";
+import ReplantPicker from "./ReplantPicker";
 import { useTanePlayer } from "./useTanePlayer";
 
 
@@ -211,12 +212,18 @@ function Here() {
       const parts: string[] = [];
       if (res.status === "fruit") {
         parts.push(`${item ? fruitName(district, item.name) : "実"}を1個もらいました！（${item?.name ?? "実"}は${res.quantity ?? 1}個目）`);
-        parts.push(res.fruits > 0 ? `ここの実は、あと${res.fruits}個です。` : `実がなくなったので、芽に戻ってランク${res.rank ?? ""}になりました。`);
+        parts.push(res.fruits > 0 ? `ここの実は、あと${res.fruits}個です。` : `実がなくなったので、畑のランクが${res.rank ?? ""}に上がりました。持ち主がタネをまき直すのを待ちます。`);
       } else if (res.status === "ripened") {
         parts.push(
           (res.gainedItems ?? 0) > 0
             ? `💧 水をやりました。実りました！ ${item ? fruitName(district, item.name) : "実"}を1個もらいました（${item?.name ?? "実"}は${res.quantity ?? 1}個目）。ここの実は、あと${res.fruits}個です。`
             : `💧 水をやりました。実りました！ 実が${res.fruits}個なっています。`
+        );
+      } else if (res.status === "waiting") {
+        parts.push(
+          isMine
+            ? "この畑はタネ待ちです。同じ種類の畑のタネをまき直すと、また育ちます。"
+            : "この畑は実が全部収穫されて、持ち主がタネをまき直すのを待っています。"
         );
       } else if (res.status === "watered") {
         const need = waterUntilRipe({ water: res.water, fruits: res.fruits });
@@ -368,18 +375,32 @@ function Here() {
                   </div>
                   {/* 1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。チェックインは水やりと同じで、実っていれば実を1個もらう(誰でも)。
                       ほかの人のタネに初めて来たときは、そこにタネが1個落ちる(拾うかは選べる)。まいた直後から水をやれる */}
-                  <button
-                    type="button"
-                    onClick={handleCheckIn}
-                    disabled={busy}
-                    className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
-                  >
-                    {busy
-                      ? "チェックイン中..."
-                      : (baseHere.fruits ?? 0) > 0
-                        ? `${TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.emoji ?? ""} チェックインして実をもらう（残り${baseHere.fruits}個）`
-                        : "💧 チェックインして水をやる"}
-                  </button>
+                  {/* タネ待ちの自分の畑は、チェックインの代わりにまき直す */}
+                  {baseHere.waitingSince && isMine ? (
+                    <ReplantPicker
+                      base={baseHere}
+                      seeds={seeds ?? []}
+                      onReplanted={async () => {
+                        setNotice({ kind: "ok", text: "タネをまき直しました！ またタネから育ちます" });
+                        await Promise.all([reloadSeeds(), reloadBases(district)]);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleCheckIn}
+                      disabled={busy}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
+                    >
+                      {busy
+                        ? "チェックイン中..."
+                        : baseHere.waitingSince
+                          ? "📍 チェックインする（タネ待ち）"
+                          : (baseHere.fruits ?? 0) > 0
+                            ? `${TANE_ITEM_BY_ID.get(baseHere.seedItemId)?.emoji ?? ""} チェックインして実をもらう（残り${baseHere.fruits}個）`
+                            : "💧 チェックインして水をやる"}
+                    </button>
+                  )}
                   {(baseHere.droppedSeeds ?? 0) > 0 && (
                     <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3">
                       <p className="text-sm text-amber-900 mb-2">

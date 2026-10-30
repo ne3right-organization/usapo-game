@@ -70,7 +70,7 @@ export default function AdminLevelsPage() {
       </div>
 
       <h2 className="font-bold mb-1">ガーデン</h2>
-      <p className="text-xs text-[#78716c] mb-2">まいたタネの数で、別のデザインのガーデンが増える。置けるものの数は、すべてのガーデンを合わせて持っている数まで</p>
+      <p className="text-xs text-[#78716c] mb-2">開拓した地区の数で、別のデザインのガーデンが増える。置けるものの数は、すべてのガーデンを合わせて持っている数まで</p>
       <table className="text-sm bg-white rounded-xl overflow-hidden mb-8">
         <thead>
           <tr className="bg-[#f5ecd9] text-xs text-[#78716c] text-left">
@@ -84,7 +84,7 @@ export default function AdminLevelsPage() {
               <td className="px-3 py-1.5">
                 {d.emoji} {d.name}
               </td>
-              <td className="px-3 py-1.5">{d.unlockPlanted === 0 ? "はじめから" : `タネを${d.unlockPlanted}個まく`}</td>
+              <td className="px-3 py-1.5">{d.unlockPlanted === 0 ? "はじめから" : `${d.unlockPlanted}地区を開拓`}</td>
             </tr>
           ))}
         </tbody>
@@ -96,7 +96,7 @@ export default function AdminLevelsPage() {
           水が{WATER_TO_RIPE}たまると実る（現地のチェックインで{WATER_ONSITE}、持ち主が遠くからやると{WATER_REMOTE}。どちらも朝・昼・夜に1回ずつ）
         </li>
         <li>実の数はランク×{FRUITS_WHEN_RIPE}個。水をやって実らせた人は、そのまま1個もらえる</li>
-        <li>実が全部取られると芽に戻り、ランクが1つ上がる（10まで）</li>
+        <li>実が全部取られるとランクが1つ上がり（10まで）、タネ待ちになる。持ち主が同じ種類の畑のタネをまき直すと、またタネから育つ（遠くからでもよい）。1週間まかないと空き地に戻る</li>
       </ul>
     </main>
   );

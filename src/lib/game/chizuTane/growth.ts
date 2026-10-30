@@ -4,7 +4,8 @@
 // まく → タネ → 芽 → 若葉 → つぼみ → 花 → 実り。時間では育たず、必ず水をやって育つ(芽が出るのも水)。
 // 水は、現地のチェックイン(持ち主でもほかの人でも。チェックイン＝水やり)1回で10、持ち主が遠くからやると1(10分の1)。
 // たまった水が WATER_TO_RIPE になると実って、実が FRUITS_WHEN_RIPE 個できる。実は現地にチェックインした人が誰でも1個ずつもらえ
-// (1人1つの時間帯に1回、早い者勝ち)、全部なくなると芽に戻ってランクが1つ上がる。実っている間は水をやっても変わらない。
+// (1人1つの時間帯に1回、早い者勝ち)、全部なくなるとランクが1つ上がって「タネ待ち」になる。実っている間は水をやっても変わらない。
+// タネ待ちの畑は、持ち主が同じ種類の畑のタネをまき直すと、またタネから育つ(遠くからでもまける)。1週間まかなければ空き地に戻る。
 // 実の数はランクとともに増える(ランク1は10個、ランク2は20個…。人が来て育ててくれた畑ほど豊かになる)
 
 export interface GrowthStage {
@@ -41,6 +42,31 @@ export const MAX_RANK = 10;
 export interface GrowingBase {
   water?: number | null;
   fruits?: number | null;
+  /** 実が全部取られて、持ち主がタネをまき直すのを待っている(待ち始めた日時) */
+  waitingSince?: string | null;
+}
+
+/**
+ * タネ待ちの畑が空き地に戻るまでの区切り(geo.ts の slotKey の区切り)の数。朝・昼・夜の3つ × 7日 = 1週間。
+ * dev は区切りが5分なので 105分
+ */
+export const REPLANT_LIMIT_SLOTS = 21;
+
+/** タネ待ち(実が全部取られて、まき直しを待っている)か */
+export function isWaitingReplant(base: GrowingBase): boolean {
+  return !!base.waitingSince;
+}
+
+/** タネ待ちの畑が空き地に戻る日時(タネ待ちでなければ null)。slotMs は区切りの長さ(本番は8時間) */
+export function replantDeadline(base: GrowingBase, slotMs: number): Date | null {
+  if (!base.waitingSince) return null;
+  return new Date(Date.parse(base.waitingSince) + REPLANT_LIMIT_SLOTS * slotMs);
+}
+
+/** タネ待ちのまま期限が過ぎた(空き地に戻った)か。空き地に戻った畑は、誰でも新しくタネをまける */
+export function isAbandoned(base: GrowingBase, now: Date, slotMs: number): boolean {
+  const deadline = replantDeadline(base, slotMs);
+  return deadline !== null && deadline.getTime() <= now.getTime();
 }
 
 /** いまの段階。0(タネ)〜 RIPE_STAGE(実り) */

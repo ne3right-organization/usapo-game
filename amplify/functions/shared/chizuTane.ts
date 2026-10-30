@@ -2,6 +2,7 @@ import {
   ConditionalCheckFailedException,
   GetItemCommand,
   DynamoDBClient,
+  PutItemCommand,
   TransactionCanceledException,
   TransactWriteItemsCommand,
   UpdateItemCommand,
@@ -131,13 +132,16 @@ export async function plantedItemIds(c: DataClient, userId: string): Promise<Set
   let nextToken: string | null | undefined;
   do {
     const page = await c.models.GameTaneOwnership.list({ ownerId: userId, nextToken });
-    for (const o of unwrap(page)) ids.add(o.seedItemId);
+    for (const o of unwrap(page)) {
+      ids.add(o.seedItemId);
+      for (const past of o.pastSeedItemIds ?? []) if (past) ids.add(past);
+    }
     nextToken = page.nextToken;
   } while (nextToken);
   return ids;
 }
 
-/** まいたタネの数(使えるガーデンの数に使う) */
+/** 開拓した地区の数(使えるガーデンの数に使う)。空き地に戻って手放した地区も数える。まき直しは数えない */
 export async function countPlanted(c: DataClient, userId: string): Promise<number> {
   let count = 0;
   let nextToken: string | null | undefined;
@@ -151,9 +155,10 @@ export async function countPlanted(c: DataClient, userId: string): Promise<numbe
 
 /** 拠点の持ち主の ID(拠点の行には持ち主を持たないので、GameTaneOwnership から引く) */
 export async function baseOwnerId(c: DataClient, areaKey: string): Promise<string> {
-  const rows = unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey }));
-  if (!rows[0]) throw new Error("このタネの持ち主が分かりません");
-  return rows[0].ownerId;
+  // 空き地に戻って手放した行(releasedAt)は除く
+  const row = unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey })).find((r) => !r.releasedAt);
+  if (!row) throw new Error("このタネの持ち主が分かりません");
+  return row.ownerId;
 }
 
 /**
@@ -261,7 +266,7 @@ export async function dropSeed(areaKey: string, max: number): Promise<boolean> {
 
 // ─── 水やりと実(DynamoDB を直接さわる) ─────────────────────────────────
 // 実っていない拠点は fruits の項目が無い(または null)。実ると fruits を FRUITS_WHEN_RIPE にして water を0に戻し、
-// 実が全部取られると fruits を消してランクを上げる(芽に戻る)。どれも条件付きの書き込みなので、同時に来ても数がずれない
+// 実が全部取られると fruits を消してランクを上げ、タネ待ちにする。どれも条件付きの書き込みなので、同時に来ても数がずれない
 
 const NOT_RIPE = "(attribute_not_exists(fruits) OR attribute_type(fruits, :nullType))";
 
@@ -398,14 +403,14 @@ export async function takeFruit(base: FruitSource, userId: string, itemId: strin
   return Number(after.Item?.fruits?.N ?? 0);
 }
 
-/** 実が全部取られた拠点を芽に戻し、ランクを上げる(1回だけ。先にほかの人が戻していれば何もしない) */
+/** 実が全部取られた拠点のランクを上げて、タネ待ちにする(1回だけ。先にほかの人が済ませていれば何もしない) */
 export async function resetAfterFruits(areaKey: string, newRank: number): Promise<void> {
   try {
     await ddb.send(
       new UpdateItemCommand({
         TableName: BASE_TABLE,
         Key: { areaKey: { S: areaKey } },
-        UpdateExpression: "SET #rank = :rank, water = :zero, updatedAt = :now REMOVE fruits, ripenedAt",
+        UpdateExpression: "SET #rank = :rank, water = :zero, waitingSince = :now, updatedAt = :now REMOVE fruits, ripenedAt",
         ConditionExpression: "fruits = :zero",
         ExpressionAttributeNames: { "#rank": "rank" },
         ExpressionAttributeValues: { ":rank": { N: String(newRank) }, ":zero": { N: "0" }, ":now": { S: new Date().toISOString() } },
@@ -413,6 +418,88 @@ export async function resetAfterFruits(areaKey: string, newRank: number): Promis
     );
   } catch (err) {
     if (err instanceof ConditionalCheckFailedException) return;
+    throw err;
+  }
+}
+
+// ─── タネをまく・まき直す(DynamoDB を直接さわる) ─────────────────────────
+
+export interface NewBaseRow {
+  areaKey: string;
+  cityKey: string;
+  prefCode: string;
+  prefName: string;
+  cityCode: string;
+  cityName: string;
+  townName: string;
+  baseTypeId: string;
+  seedItemId: string;
+  repLng: number;
+  repLat: number;
+}
+
+/**
+ * 新しくタネをまいた拠点の行を書く。空き地(行が無い)か、タネ待ちのまま abandonedBefore より前から待っている(空き地に戻った)ときだけ書ける。
+ * 同時にまこうとしても先に書いた方だけが通る。書けなければ false
+ */
+export async function putNewBase(row: NewBaseRow, abandonedBefore: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new PutItemCommand({
+        TableName: BASE_TABLE,
+        Item: {
+          areaKey: { S: row.areaKey },
+          cityKey: { S: row.cityKey },
+          prefCode: { S: row.prefCode },
+          prefName: { S: row.prefName },
+          cityCode: { S: row.cityCode },
+          cityName: { S: row.cityName },
+          townName: { S: row.townName },
+          baseTypeId: { S: row.baseTypeId },
+          seedItemId: { S: row.seedItemId },
+          rank: { N: "1" },
+          plantedAt: { S: now },
+          repLng: { N: String(row.repLng) },
+          repLat: { N: String(row.repLat) },
+          water: { N: "0" },
+          droppedSeeds: { N: "0" },
+          // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
+          __typename: { S: "GameTaneBase" },
+          createdAt: { S: now },
+          updatedAt: { S: now },
+        },
+        ConditionExpression: "attribute_not_exists(areaKey) OR (attribute_exists(waitingSince) AND waitingSince < :cutoff)",
+        ExpressionAttributeValues: { ":cutoff": { S: abandonedBefore } },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
+}
+
+/**
+ * タネ待ちの拠点にタネをまき直す(タネから育ち直す。ランクはそのまま)。タネ待ちで、まだ空き地に戻っていない
+ * (abandonedBefore 以降から待っている)ときだけ。書けなければ false
+ */
+export async function replantBaseRow(areaKey: string, itemId: string, abandonedBefore: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression:
+          "SET seedItemId = :item, water = :zero, plantedAt = :now, updatedAt = :now REMOVE waitingSince, lastRemoteWaterOn, lastOwnerVisitOn",
+        ConditionExpression: "attribute_exists(waitingSince) AND waitingSince >= :cutoff",
+        ExpressionAttributeValues: { ":item": { S: itemId }, ":zero": { N: "0" }, ":now": { S: now }, ":cutoff": { S: abandonedBefore } },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
     throw err;
   }
 }

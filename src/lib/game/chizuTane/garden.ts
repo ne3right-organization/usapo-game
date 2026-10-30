@@ -2,7 +2,7 @@
 import { TANE_ITEM_BY_ID } from "./courses";
 
 // ─── ガーデンのデザインと家の段階 ───────────────────────────────────────────
-// ガーデンは、まいたタネの数に応じて別のデザインのものが増える(はじめは「おうちの庭」だけ)。
+// ガーデンは、開拓した(タネをまいた)地区の数に応じて別のデザインのものが増える(はじめは「おうちの庭」だけ)。
 // 家と柵は、ユーザーのレベルに応じて立派になる(小屋 → 家 → 2階建て → お屋敷)。どのガーデンも同じ家と柵。
 // 見た目の一覧は管理画面 /admin/chizu-tane/gardens、条件の一覧は /admin/chizu-tane/levels
 
@@ -12,7 +12,7 @@ export interface GardenDesign {
   id: GardenDesignId;
   name: string;
   emoji: string;
-  /** このデザインのガーデンが増える、まいたタネの数 */
+  /** このデザインのガーデンが増える、開拓した地区の数 */
   unlockPlanted: number;
 }
 
@@ -29,7 +29,7 @@ export function isGardenDesignId(value: unknown): value is GardenDesignId {
   return typeof value === "string" && GARDEN_DESIGN_BY_ID.has(value as GardenDesignId);
 }
 
-/** まいたタネの数で使えるガーデン */
+/** 開拓した地区の数で使えるガーデン */
 export function unlockedGardenDesigns(plantedCount: number): GardenDesign[] {
   return GARDEN_DESIGNS.filter((d) => plantedCount >= d.unlockPlanted);
 }

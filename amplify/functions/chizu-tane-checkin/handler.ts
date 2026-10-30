@@ -21,6 +21,8 @@ import { notifyUsers } from "../shared/push";
 import { DAY_MS_PRODUCTION, slotKey } from "../../../src/lib/game/chizuTane/geo";
 import {
   fruitsWhenRipe,
+  isAbandoned,
+  isWaitingReplant,
   MAX_RANK,
   WATER_ONSITE,
   WATER_REMOTE,
@@ -48,7 +50,8 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
 
 /**
  * 現地のチェックイン。持ち主でもほかの人でも同じで、1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。まいた直後からできる。
- * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個なら芽に戻り、ランクが1つ上がる
+ * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個ならランクが1つ上がり、タネ待ちになる(持ち主がまき直すまで育たない)
+ * - タネ待ちの畑では、水も実も無い(ほかの人の初めてのチェックインなら、タネが落ちて訪問にも数える)。1週間たって空き地に戻った畑は無いのと同じ
  * - 実っていなければ、水をやる(現地は10)。たまったら実って、実ができる(ランク×10個)。実ったら、持ち主に「生産者の取り分」が1個届き、
  *   ほかの人が実らせたときは、実らせた人もそのまま1個もらう(持ち主が自分で実らせたときは取り分の1個だけ)
  * - ほかの人のタネに初めてチェックインしたときだけ、拠点にタネが1個落ちる(3個まで。直接はもらわず、拾うかどうかは選べる)。
@@ -63,7 +66,8 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   assertNotTooFast(player, district, now);
 
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
-  if (!base) throw new Error("この地区にはまだタネがありません");
+  if (!base || isAbandoned(base, now, DAY_MS)) throw new Error("この地区にはまだタネがありません");
+  const waiting = isWaitingReplant(base);
   await rememberPosition(c, userId, district, now);
 
   const picked = TANE_ITEM_BY_ID.get(base.seedItemId);
@@ -88,6 +92,12 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     seedsGained: "[]",
   };
 
+  // タネ待ちの自分の畑では、何も起きない(まき直すのはホームか、おでかけの画面から)
+  if (waiting && isOwn) {
+    result.status = "waiting";
+    return result;
+  }
+
   // 1つの時間帯に1回(自分の拠点は拠点の行に、ほかの人の拠点は訪問の記録に、最後に来た時間帯を持つ)
   const visit = isOwn ? null : unwrap(await c.models.GameTaneVisit.get({ userId, areaKey: base.areaKey }));
   const lastOn = isOwn ? base.lastOwnerVisitOn : visit?.lastReceivedOn;
@@ -96,8 +106,10 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     return result;
   }
 
-  // 実が残っていれば実を1個、無ければ水をやる
-  if ((base.fruits ?? 0) > 0) {
+  // 実が残っていれば実を1個、無ければ水をやる(タネ待ちなら何もしない)
+  if (waiting) {
+    result.status = "waiting";
+  } else if ((base.fruits ?? 0) > 0) {
     const left = await takeFruit({ ...base, ownerId }, userId, picked.itemId);
     if (left !== null) {
       result.status = "fruit";
@@ -147,8 +159,13 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`;
   const visitorName = await visitorNameFor(c, userId, ownerId);
   const who = visitorName ? `${visitorName}さん` : "誰か";
-  const notice =
-    result.status === "ripened"
+  const lastFruitTaken = result.status === "fruit" && result.fruits === 0;
+  const notice = lastFruitTaken
+    ? {
+        title: "実が全部収穫されました",
+        body: `${who}が${place}の最後の実を収穫しました。畑のランクが${result.rank}に上がりました。1週間以内にタネをまき直してください（まかないと空き地に戻ります）`,
+      }
+    : result.status === "ripened"
       ? {
           title: "タネが実りました",
           body: `${visitorName ? `${who}が水をやって、` : ""}${place}が実りました！ 生産者の取り分として実が1個届きました（のこり${result.fruits}個）`,
@@ -156,7 +173,8 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
       : result.status === "fruit"
         ? { title: "実が収穫されました", body: `${who}が${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
         : { title: `タネに${who}が来ました`, body: `${who}が${place}に来て、水をやってくれました` };
-  await notifyUsers(c, [ownerId], { ...notice, url: "/game/chizu-tane", tag: `tane-${base.areaKey}` });
+  // タネ待ちの畑に来ただけのときは知らせない(何も変わらないので)
+  if (result.status !== "waiting") await notifyUsers(c, [ownerId], { ...notice, url: "/game/chizu-tane", tag: `tane-${base.areaKey}` });
 
   // ほかの人のタネに初めて来たときだけ、拠点にタネが1個落ちる(直接はもらわない。要らなければ拾わずに置いていける)
   const seedsGained: SeedGain[] = [];
@@ -210,6 +228,7 @@ async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
   const own = unwrap(await c.models.GameTaneOwnership.get({ ownerId: userId, areaKey }));
   if (!base || !own) throw new Error("自分のタネにだけ、遠くから水をやれます");
   if ((base.fruits ?? 0) > 0) throw new Error("実っているので、水はいりません。現地で実をもらってください");
+  if (isWaitingReplant(base)) throw new Error("タネ待ちの畑には水をやれません。先にタネをまき直してください");
   if (base.lastRemoteWaterOn === today) throw new Error("遠くからの水やりは、1つのタネに朝・昼・夜それぞれ1回です");
   unwrap(await c.models.GameTaneBase.update({ areaKey, lastRemoteWaterOn: today }));
   const watered = await addWater(areaKey, WATER_REMOTE, WATER_TO_RIPE, fruitsWhenRipe(base.rank));

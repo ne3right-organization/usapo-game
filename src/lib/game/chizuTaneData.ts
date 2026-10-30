@@ -4,6 +4,7 @@ import { currentUser } from "@/lib/auth";
 import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { GardenDesignId, GardenLayouts, GardenObject } from "@/lib/game/chizuTane/garden";
+import { isAbandoned } from "@/lib/game/chizuTane/growth";
 import {
   DAY_MS_DEV,
   DAY_MS_PRODUCTION,
@@ -58,30 +59,54 @@ export async function fetchCourseCounts(): Promise<Map<string, number>> {
   return new Map(rows.filter((r) => r != null).map((r) => [r.course, r.players]));
 }
 
-/** 自分がまいたタネの地区(areaKey)。タネの行には持ち主を持たないので、本人しか読めない GameTaneOwnership から引く */
-export async function fetchMyAreaKeys(): Promise<Set<string>> {
+type TaneOwnership = Schema["GameTaneOwnership"]["type"];
+
+/** 自分の持ち主の行を全部(空き地に戻って手放した地区も含む) */
+async function fetchMyOwnerships(): Promise<TaneOwnership[]> {
   const ownerId = await requireUserId();
-  const keys = new Set<string>();
+  const rows: TaneOwnership[] = [];
   let nextToken: string | null | undefined;
   do {
     const page = await data.models.GameTaneOwnership.list({ ownerId, nextToken });
-    for (const o of unwrap(page)) keys.add(o.areaKey);
+    rows.push(...unwrap(page));
     nextToken = page.nextToken;
   } while (nextToken);
-  return keys;
+  return rows;
 }
 
-/** 自分がまいたタネ(新しい順) */
+/** 自分がまいたタネの地区(areaKey)。タネの行には持ち主を持たないので、本人しか読めない GameTaneOwnership から引く。手放した地区は除く */
+export async function fetchMyAreaKeys(): Promise<Set<string>> {
+  return new Set((await fetchMyOwnerships()).filter((o) => !o.releasedAt).map((o) => o.areaKey));
+}
+
+/** まいたことのあるタネ(まき直す前のものも含む)。レベルの条件「今のレベルのタネを3つともまいたか」に使う(Lambda の plantedItemIds と同じ) */
+export async function fetchMyPlantedItemIds(): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (const o of await fetchMyOwnerships()) {
+    ids.add(o.seedItemId);
+    for (const past of o.pastSeedItemIds ?? []) if (past) ids.add(past);
+  }
+  return ids;
+}
+
+/** 自分がまいたタネ(新しい順)。タネ待ちのまま空き地に戻ったものは除く */
 export async function fetchMyBases(): Promise<TaneBase[]> {
   const keys = await fetchMyAreaKeys();
+  const now = new Date();
   const bases: TaneBase[] = [];
   await Promise.all(
     [...keys].map(async (areaKey) => {
       const b = unwrap(await data.models.GameTaneBase.get({ areaKey }));
-      if (b) bases.push(b);
+      if (b && !isAbandoned(b, now, taneDayMs())) bases.push(b);
     })
   );
   return bases.sort((a, b) => b.plantedAt.localeCompare(a.plantedAt));
+}
+
+/** タネ待ちのまま空き地に戻ったタネを除く(行は、次にだれかがまくまで残っている) */
+function withoutAbandoned(bases: TaneBase[]): TaneBase[] {
+  const now = new Date();
+  return bases.filter((b) => !isAbandoned(b, now, taneDayMs()));
 }
 
 /** その市区町村にあるタネ */
@@ -94,7 +119,7 @@ export async function fetchBasesInCity(prefCode: string, cityCode: string): Prom
     bases.push(...unwrap(page));
     nextToken = page.nextToken;
   } while (nextToken);
-  return bases;
+  return withoutAbandoned(bases);
 }
 
 /**
@@ -109,7 +134,7 @@ export async function fetchAllBases(): Promise<TaneBase[]> {
     bases.push(...unwrap(page));
     nextToken = page.nextToken;
   } while (nextToken);
-  return bases;
+  return withoutAbandoned(bases);
 }
 
 export async function fetchMyItems(): Promise<TaneOwnedItem[]> {
@@ -310,9 +335,17 @@ export async function placeBase(loc: Location, district: TownDistrict, itemId: s
   return base;
 }
 
+/** タネ待ちの自分の畑に、同じ種類の畑のタネ(itemId)をまき直す(遠くからでもよい)。まき直したあとのタネを返す */
+export async function replantBase(areaKey: string, itemId: string): Promise<TaneBase> {
+  await requireUserId();
+  const base = unwrap(await data.mutations.replantTaneBase({ areaKey, itemId }));
+  if (!base) throw new Error("タネをまき直せませんでした");
+  return base;
+}
+
 export interface CheckInResult {
-  /** watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / already: 今日はもう来た */
-  status: "watered" | "ripened" | "fruit" | "already";
+  /** watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / waiting: タネ待ちの畑 / already: この時間帯はもう来た */
+  status: "watered" | "ripened" | "fruit" | "waiting" | "already";
   townName: string;
   baseTypeId: string;
   itemId: string | null;
@@ -391,12 +424,12 @@ export interface GardenState {
   height: number;
   /** おうちの庭 */
   objects: GardenObject[];
-  /** まいたタネの数で増えるほかのガーデン */
+  /** 開拓した地区の数で増えるほかのガーデン */
   layouts: GardenLayouts;
   items: { itemId: string; quantity: number }[];
   /** レベル(家と柵の見た目) */
   level: number;
-  /** まいたタネの数(使えるガーデン) */
+  /** 開拓した地区の数(使えるガーデン) */
   plantedCount: number;
 }
 

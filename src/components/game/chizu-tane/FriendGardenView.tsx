@@ -54,7 +54,7 @@ function FriendGarden({ userId }: { userId: string }) {
     );
   }
   if (garden === undefined) return <Loading />;
-  // 持ち主が使えるガーデン(まいたタネの数で増える)
+  // 持ち主が使えるガーデン(開拓した地区の数で増える)
   const opened = GARDEN_DESIGNS.filter((d) => garden.plantedCount >= d.unlockPlanted);
 
   return (
