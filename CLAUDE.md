@@ -8,7 +8,8 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 
 - `git@github.com:ne3right-organization/usapo-game.git`
 - 公開リポジトリ。認証情報や内部運用の詳細（利用者数、移行対象データの具体的な扱い、AWSのアカウント番号など）はこのファイルおよびリポジトリには書かない方針
-- ブランチ: `develop`（開発。push で dev 環境に自動デプロイ）→ `main`（本番。push で本番に自動デプロイ）。作業は `develop` にコミットし、リリースは `develop` を `main` に早送りマージする
+- ブランチ: `develop`（開発。push で dev 環境に自動デプロイ）→ `main`（本番。push で本番に自動デプロイ）。作業は `develop` にコミットする
+- リリース（2026-10-31〜）: 出すコミット（dev で確かめ終わったもの）からリリース用のブランチ `release/vX.Y.Z` を切って push し、`release/vX.Y.Z` → `main` のプルリクをマージする。`release/*` には自動デプロイが無いので、`develop` を先に進めていても、そのあとの変更を入れずに出せる。リリースのあとは `main` を `develop` に取り込む。staging の環境は作っていない（Gen2 はブランチごとにバックエンドが別で、Cognito・OAuth・ドメイン・CORS をもう1組用意することになるため）
 
 ## 経緯
 
