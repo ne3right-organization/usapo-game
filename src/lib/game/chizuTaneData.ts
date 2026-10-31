@@ -5,6 +5,7 @@ import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { GardenDesignId, GardenLayouts, GardenObject } from "@/lib/game/chizuTane/garden";
 import { isAbandoned } from "@/lib/game/chizuTane/growth";
+import { OFFICIAL_OWNER_ID } from "@/lib/game/chizuTane/official";
 import {
   DAY_MS_DEV,
   DAY_MS_PRODUCTION,
@@ -163,7 +164,7 @@ export async function fetchMyHarvests(): Promise<TaneHarvest[]> {
 }
 
 /** 生産者(タネをまいた人)の見え方: 自分 / 農園を見せてくれている人(ニックネームを出す) / それ以外(出さない) */
-export type TaneOwnerView = { kind: "me" } | { kind: "shared"; userId: string; nickname: string } | { kind: "hidden" };
+export type TaneOwnerView = { kind: "me" } | { kind: "official" } | { kind: "shared"; userId: string; nickname: string } | { kind: "hidden" };
 
 /**
  * 生産者を、その人が自分に農園を見せてくれていて(GameTaneShare)、自分がその人をフォローしている間だけ明かす。
@@ -175,6 +176,7 @@ export async function fetchOwnerViews(ownerIds: string[]): Promise<Map<string, T
   await Promise.all(
     [...new Set(ownerIds)].map(async (ownerId) => {
       if (ownerId === me) return views.set(ownerId, { kind: "me" });
+      if (ownerId === OFFICIAL_OWNER_ID) return views.set(ownerId, { kind: "official" });
       const [share, following] = await Promise.all([
         data.models.GameTaneShare.get({ ownerId, viewerId: me }),
         data.models.GameFollow.get({ followerId: me, followeeId: ownerId }),
@@ -257,9 +259,9 @@ export async function claimLocalSeed(loc: Location, district: TownDistrict): Pro
  * たずねた(もらったことのある)ほかの人のタネの数(visited)と、フォローしている人の畑への手伝いの水やりの回数(helps)。
  * レベルの条件の1つ(courses.ts の levelFor には levelVisitCount で合わせた数を渡す)
  */
-export async function fetchVisitedCount(): Promise<{ visited: number; helps: number }> {
+export async function fetchVisitedCount(): Promise<{ visited: number; official: number; helps: number }> {
   const userId = await requireUserId();
-  const player = unwrap(await data.models.GameTanePlayer.get({ userId }));
+  const [player, official] = await Promise.all([data.models.GameTanePlayer.get({ userId }), fetchOfficialVisits()]);
   let count = 0;
   let nextToken: string | null | undefined;
   do {
@@ -267,7 +269,33 @@ export async function fetchVisitedCount(): Promise<{ visited: number; helps: num
     count += unwrap(page).length;
     nextToken = page.nextToken;
   } while (nextToken);
-  return { visited: count, helps: player?.helpCount ?? 0 };
+  return { visited: count, official: official.length, helps: unwrap(player)?.helpCount ?? 0 };
+}
+
+// ─── 公式の畑(src/lib/game/chizuTane/official.ts) ───────────────────────────────
+
+export type TaneOfficialVisit = Schema["GameTaneOfficialVisit"]["type"];
+export type TaneOfficialResult = Schema["TaneOfficialResult"]["type"];
+
+/** チェックインした公式の畑 */
+export async function fetchOfficialVisits(): Promise<TaneOfficialVisit[]> {
+  const userId = await requireUserId();
+  const rows: TaneOfficialVisit[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneOfficialVisit.list({ userId, nextToken });
+    rows.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return rows;
+}
+
+/** 公式の畑に遠くからチェックインして、実とタネを1個ずつもらう(1人1か所に1回、新しい公式の畑は1日3か所まで) */
+export async function checkInOfficialField(fieldId: string): Promise<TaneOfficialResult> {
+  await requireUserId();
+  const result = unwrap(await data.mutations.checkInTaneOfficialField({ fieldId }));
+  if (!result) throw new Error("公式の畑にチェックインできませんでした");
+  return result;
 }
 
 // ─── アイコン(集めたものから1つ) ───────────────────────────────────────────

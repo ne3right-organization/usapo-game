@@ -3,12 +3,15 @@ import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-checkin";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
 import {
+  addSeeds,
   addWater,
   assertNotTooFast,
   baseOwnerId,
   dropSeed,
+  giveFruit,
   grantLevelSeeds,
   grantNextLocalSeed,
+  listOfficialVisits,
   locateTownDistrict,
   rememberPosition,
   requirePlayer,
@@ -17,7 +20,14 @@ import {
   type LocateArgs,
   type SeedGain,
 } from "../shared/chizuTane";
-import { DROPPED_SEEDS_MAX, SEEDS_PER_CHECKIN, TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
+import { DROPPED_SEEDS_MAX, SEEDS_PER_CHECKIN, TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
+import {
+  OFFICIAL_DAILY_LIMIT,
+  OFFICIAL_OWNER_ID,
+  OFFICIAL_PLACE,
+  officialDayKey,
+  officialFieldsFor,
+} from "../../../src/lib/game/chizuTane/official";
 import { isLocalBaseTypeId, type TaneLocalItem } from "../../../src/lib/game/chizuTane/localItems";
 import { notifyUsers } from "../shared/push";
 import { DAY_MS_PRODUCTION, slotKey } from "../../../src/lib/game/chizuTane/geo";
@@ -38,13 +48,14 @@ const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
 type CheckInResult = Schema["TaneCheckInResult"]["type"];
 type HelpField = Schema["TaneHelpField"]["type"];
 type HelpResult = Schema["TaneHelpResult"]["type"];
+type OfficialResult = Schema["TaneOfficialResult"]["type"];
 type Args = Partial<LocateArgs> & { areaKey?: string; ownerId?: string; fieldId?: string };
 
 /**
  * 地図タネの、現地のチェックイン(checkInTaneBase)・遠くからの水やり(waterTaneBaseRemotely)・
- * フォローしている人の畑の一覧(listTaneHelpFields)とその畑への手伝いの水やり(helpWaterTaneBase)。
- * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(areaKey があれば遠くからの水やり、fieldId があれば手伝い、
- * ownerId だけなら畑の一覧)
+ * フォローしている人の畑の一覧(listTaneHelpFields)とその畑への手伝いの水やり(helpWaterTaneBase)・公式の畑へのチェックイン(checkInTaneOfficialField)。
+ * Amplify Gen2 の関数には event.info が来ないので、引数で見分ける(areaKey があれば遠くからの水やり、ownerId と fieldId があれば手伝い、
+ * fieldId だけなら公式の畑、ownerId だけなら畑の一覧)
  */
 export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const userId = (event.identity as AppSyncIdentityCognito).sub;
@@ -52,6 +63,7 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   const { areaKey, ownerId, fieldId } = event.arguments;
   if (typeof areaKey === "string") return waterRemotely(c, userId, areaKey);
   if (typeof ownerId === "string" && typeof fieldId === "string") return helpWater(c, userId, ownerId, fieldId);
+  if (typeof fieldId === "string") return checkInOfficial(c, userId, fieldId);
   if (typeof ownerId === "string") return listHelpFields(c, userId, ownerId);
   return checkIn(c, userId, event.arguments as LocateArgs);
 };
@@ -383,5 +395,44 @@ async function helpWater(c: DataClient, helperId: string, ownerId: string, field
     level: granted.level,
     leveledUp: granted.gains.length > 0,
     seedsGained: JSON.stringify(granted.gains),
+  };
+}
+
+// ─── 公式の畑(2026-10-31。src/lib/game/chizuTane/official.ts) ────────────────────────────
+
+/**
+ * 公式の畑に遠くからチェックインして、実とそのタネを1個ずつもらう(タネはほかのコースのものでも、おでかけでまける)。使えるのはほかのコースの畑だけで、1人1か所に1回、新しい公式の畑は1日3か所まで。
+ * チェックインした公式の畑はたずねたタネ1か所と数えるので、レベルが上がることもある
+ */
+async function checkInOfficial(c: DataClient, userId: string, fieldId: string): Promise<OfficialResult> {
+  const player = await requirePlayer(c, userId);
+  const field = officialFieldsFor(player.course as TaneCourse).find((f) => f.fieldId === fieldId);
+  if (!field) throw new Error("この公式の畑にはチェックインできません");
+  const now = new Date();
+  const today = officialDayKey(now, DAY_MS);
+  const visits = await listOfficialVisits(c, userId);
+  if (visits.some((v) => v.fieldId === fieldId)) throw new Error("この公式の畑にはもうチェックインしました");
+  const todayCount = visits.filter((v) => v.visitedOn === today).length;
+  if (todayCount >= OFFICIAL_DAILY_LIMIT) throw new Error(`公式の畑は1日${OFFICIAL_DAILY_LIMIT}か所までです。また明日どうぞ`);
+
+  // 先に記録を作る(同時に2回押されても、2回目は同じ行を作れずに失敗するので、実を2個渡さない)
+  try {
+    unwrap(await c.models.GameTaneOfficialVisit.create({ userId, fieldId, visitedAt: now.toISOString(), visitedOn: today }));
+  } catch {
+    throw new Error("この公式の畑にはもうチェックインしました");
+  }
+  const itemId = field.item.itemId;
+  await giveFruit({ areaKey: `official#${fieldId}`, ownerId: OFFICIAL_OWNER_ID, ...OFFICIAL_PLACE }, userId, itemId);
+  await addSeeds(c, userId, itemId, 1);
+  const quantity = unwrap(await c.models.GameTaneItem.get({ userId, itemId }))?.quantity ?? 1;
+  const granted = await grantLevelSeeds(c, player);
+  const seedsGained: SeedGain[] = [{ itemId, count: 1, reason: "official" }, ...granted.gains];
+  return {
+    itemId,
+    quantity,
+    todayCount: todayCount + 1,
+    level: granted.level,
+    leveledUp: granted.gains.length > 0,
+    seedsGained: JSON.stringify(seedsGained),
   };
 }

@@ -389,6 +389,18 @@ const schema = a
       .identifier(["helperId", "areaKey"])
       .authorization((allow) => [allow.group("admin")]),
 
+    // 公式の畑にチェックインした記録(ユーザー×公式の畑。2026-10-31、src/lib/game/chizuTane/official.ts)。1人1か所に1回で、
+    // そのとき実を1個もらう。visitedOn はチェックインした日(officialDayKey)で、1日3か所までの判定に使う。行の数をたずねたタネの数に足す
+    GameTaneOfficialVisit: a
+      .model({
+        userId: a.id().required(),
+        fieldId: a.string().required(),
+        visitedAt: a.datetime().required(),
+        visitedOn: a.string().required(),
+      })
+      .identifier(["userId", "fieldId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
     // おすそ分けの棚(持ち主×もの。2026-10-31)。持ち主が余ったタネや実を手元から出しておき、持ち主が「農園を見せる」にした
     // フォロワーが遠くから1日1個持っていける。shelfKey は `${kind}#${itemId}`(kind は seed / fruit)。
     // 本人だけ読める(ほかの人の棚は Lambda が確かめてから返す)。数は早い者勝ちなので、Lambda が DynamoDB で直接(条件付きで)書き換える
@@ -527,6 +539,16 @@ const schema = a
       level: a.integer(),
       leveledUp: a.boolean(),
       seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
+    }),
+
+    // 公式の畑へのチェックイン。itemId はもらった実(そのタネも1個もらう)、quantity はその実の手元の数。todayCount はこの日にチェックインした公式の畑の数
+    TaneOfficialResult: a.customType({
+      itemId: a.string().required(),
+      quantity: a.integer().required(),
+      todayCount: a.integer().required(),
+      level: a.integer(),
+      leveledUp: a.boolean(),
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: official / level)
     }),
 
     // おすそ分けの棚。items は { kind, itemId, quantity }[](kind は seed / fruit)。takenToday はほかの人の棚を見たとき、今日もうもらったか
@@ -676,6 +698,14 @@ const schema = a
       .mutation()
       .arguments({ ownerId: a.id().required(), fieldId: a.string().required() })
       .returns(a.ref("TaneHelpResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 公式の畑に遠くからチェックインして実とタネを1個ずつもらう(ほかのコースの畑だけ、1人1か所に1回、新しい公式の畑は1日3か所まで)
+    checkInTaneOfficialField: a
+      .mutation()
+      .arguments({ fieldId: a.string().required() })
+      .returns(a.ref("TaneOfficialResult"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 

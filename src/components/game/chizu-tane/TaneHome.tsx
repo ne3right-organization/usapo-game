@@ -36,6 +36,8 @@ import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem } from "@/lib/game/chizuTane/local
 import SwipePages from "./SwipePages";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
+import OfficialFields from "./OfficialFields";
+import { OFFICIAL_DAILY_LIMIT } from "@/lib/game/chizuTane/official";
 import { ErrorText, GrowthBadge, ItemIcon, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
@@ -170,9 +172,9 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
 function Home({ course }: { course: TaneCourse }) {
   const [bases, setBases] = useState<TaneBase[] | null>(null);
   const [garden, setGarden] = useState<GardenState | null>(null);
-  const [visits, setVisits] = useState<{ visited: number; helps: number } | null>(null);
-  // レベルの条件に使う数(手伝いの水やりは HELPS_PER_VISIT 回で1か所)
-  const visitedCount = visits ? levelVisitCount(visits.visited, visits.helps) : null;
+  const [visits, setVisits] = useState<{ visited: number; official: number; helps: number } | null>(null);
+  // レベルの条件に使う数(公式の畑は1か所ずつ、手伝いの水やりは HELPS_PER_VISIT 回で1か所)
+  const visitedCount = visits ? levelVisitCount(visits.visited + visits.official, visits.helps) : null;
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [error, setError] = useState("");
   const courseDef = TANE_COURSE_BY_ID.get(course);
@@ -220,7 +222,8 @@ function Home({ course }: { course: TaneCourse }) {
           <>
             <span className="mx-2">·</span>
             <span className="font-bold text-emerald-700">Lv.{levelFor(course, visitedCount, plantedIds)}</span>
-            （たずねたタネ {visits?.visited}か所{visits && visits.helps > 0 && `・水やりの手伝い ${visits.helps}回`}）
+            （たずねたタネ {visits?.visited}か所{visits && visits.official > 0 && `・公式の畑 ${visits.official}か所`}
+            {visits && visits.helps > 0 && `・水やりの手伝い ${visits.helps}回`}）
           </>
         )}
       </p>
@@ -332,6 +335,15 @@ function Home({ course }: { course: TaneCourse }) {
         />
       )}
 
+      <OfficialFields
+        course={course}
+        onCheckedIn={() => {
+          // たずねたタネの数が増え、レベルが上がるとタネも届く
+          fetchVisitedCount().then(setVisits).catch(() => {});
+          loadSeeds().catch(() => {});
+        }}
+      />
+
       <div className="mt-8 bg-white rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">
         <h2 className="text-sm font-bold text-[#3c2a14] mb-2">あそびかた</h2>
         <ol className="list-decimal pl-5 space-y-1">
@@ -345,7 +357,8 @@ function Home({ course }: { course: TaneCourse }) {
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
           <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1週間以内）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
-          <li>ほかの人のタネをたずねた数（自分のタネは数えません。フォロー中の人の畑への遠くからの水やり10回も、1か所と数えます）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
+          <li>近くにほかの人のタネが無くても、このページの「公式の畑」（ほかのコースの Lv.1 のもの12か所）に遠くからチェックインできます。その実とタネを1個ずつもらえて（タネはおでかけでまけます）、たずねたタネ1か所と数えます（新しい畑は1日{OFFICIAL_DAILY_LIMIT}か所まで）</li>
+          <li>ほかの人のタネをたずねた数（自分のタネは数えません。公式の畑も1か所ずつ数え、フォロー中の人の畑への遠くからの水やり10回も、1か所と数えます）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
         </ol>
       </div>
 

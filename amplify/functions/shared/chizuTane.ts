@@ -6,6 +6,7 @@ import {
   TransactionCanceledException,
   TransactWriteItemsCommand,
   UpdateItemCommand,
+  type TransactWriteItem,
 } from "@aws-sdk/client-dynamodb";
 import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
@@ -100,8 +101,8 @@ export async function rememberPosition(c: DataClient, userId: string, district: 
 }
 
 /**
- * レベルの計算に使う、たずねたタネの数。たずねた(もらったことのある)ほかの人の拠点の数(自分の拠点は訪問の記録に残さないので入らない)に、
- * フォローしている人の畑への手伝いの水やりを HELPS_PER_VISIT 回で1か所として足す
+ * レベルの計算に使う、たずねたタネの数。たずねた(もらったことのある)ほかの人の拠点の数(自分の拠点は訪問の記録に残さないので入らない)と
+ * チェックインした公式の畑の数に、フォローしている人の畑への手伝いの水やりを HELPS_PER_VISIT 回で1か所として足す
  */
 export async function countVisitedBases(c: DataClient, userId: string): Promise<number> {
   const helpCount = unwrap(await c.models.GameTanePlayer.get({ userId }))?.helpCount ?? 0;
@@ -112,13 +113,29 @@ export async function countVisitedBases(c: DataClient, userId: string): Promise<
     count += unwrap(page).length;
     nextToken = page.nextToken;
   } while (nextToken);
-  return levelVisitCount(count, helpCount);
+  return levelVisitCount(count + (await countOfficialVisits(c, userId)), helpCount);
+}
+
+/** チェックインした公式の畑の数(たずねたタネの数に足す。src/lib/game/chizuTane/official.ts) */
+export async function countOfficialVisits(c: DataClient, userId: string): Promise<number> {
+  return (await listOfficialVisits(c, userId)).length;
+}
+
+export async function listOfficialVisits(c: DataClient, userId: string) {
+  const rows: NonNullable<Awaited<ReturnType<DataClient["models"]["GameTaneOfficialVisit"]["get"]>>["data"]>[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneOfficialVisit.list({ userId, nextToken });
+    rows.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return rows;
 }
 
 export interface SeedGain {
   itemId: string;
   count: number;
-  reason: "level";
+  reason: "level" | "official";
 }
 
 /** タネ(もの)を増やす(無ければ作る) */
@@ -367,7 +384,6 @@ export interface FruitSource {
  */
 export async function takeFruit(base: FruitSource, userId: string, itemId: string, once = false): Promise<number | null> {
   const { areaKey } = base;
-  const areaName = `${base.cityName} ${base.townName}`;
   const now = new Date().toISOString();
   try {
     await ddb.send(
@@ -382,45 +398,7 @@ export async function takeFruit(base: FruitSource, userId: string, itemId: strin
               ExpressionAttributeValues: { ":one": { N: "1" }, ":now": { S: now } },
             },
           },
-          {
-            // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
-            Update: {
-              TableName: ITEM_TABLE,
-              Key: { userId: { S: userId }, itemId: { S: itemId } },
-              ...(once ? { ConditionExpression: "attribute_not_exists(quantity)" } : {}),
-              UpdateExpression:
-                "SET quantity = if_not_exists(quantity, :zero) + :one, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now, " +
-                "firstAcquiredAt = if_not_exists(firstAcquiredAt, :now), firstAreaName = if_not_exists(firstAreaName, :area)",
-              ExpressionAttributeNames: { "#tn": "__typename" },
-              ExpressionAttributeValues: {
-                ":one": { N: "1" },
-                ":zero": { N: "0" },
-                ":tn": { S: "GameTaneItem" },
-                ":now": { S: now },
-                ":area": { S: areaName },
-              },
-            },
-          },
-          {
-            Put: {
-              TableName: HARVEST_TABLE,
-              Item: {
-                userId: { S: userId },
-                harvestedAt: { S: now },
-                itemId: { S: itemId },
-                areaKey: { S: areaKey },
-                prefName: { S: base.prefName },
-                cityName: { S: base.cityName },
-                townName: { S: base.townName },
-                ...(base.ripenedAt ? { ripenedAt: { S: base.ripenedAt } } : {}),
-                ownerId: { S: base.ownerId },
-                __typename: { S: "GameTaneHarvest" },
-                createdAt: { S: now },
-                updatedAt: { S: now },
-              },
-              ConditionExpression: "attribute_not_exists(harvestedAt)",
-            },
-          },
+          ...fruitGainWrites(base, userId, itemId, once, now),
         ],
       })
     );
@@ -430,6 +408,60 @@ export async function takeFruit(base: FruitSource, userId: string, itemId: strin
   }
   const after = await ddb.send(new GetItemCommand({ TableName: BASE_TABLE, Key: { areaKey: { S: areaKey } }, ConsistentRead: true }));
   return Number(after.Item?.fruits?.N ?? 0);
+}
+
+/**
+ * 拠点の行を使わずに実を1個渡す(公式の畑。src/lib/game/chizuTane/official.ts)。「もらった人の実を1個増やす」と「収穫の記録を1行足す」を
+ * 1つのトランザクションで行う
+ */
+export async function giveFruit(base: FruitSource, userId: string, itemId: string): Promise<void> {
+  await ddb.send(new TransactWriteItemsCommand({ TransactItems: fruitGainWrites(base, userId, itemId, false, new Date().toISOString()) }));
+}
+
+/** 実を1個もらうときの書き込み(もらった人の GameTaneItem を1個増やす・GameTaneHarvest を1行足す)。once ならまだ持っていないときだけ */
+function fruitGainWrites(base: FruitSource, userId: string, itemId: string, once: boolean, now: string): TransactWriteItem[] {
+  const areaName = `${base.cityName} ${base.townName}`;
+  return [
+    {
+      // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
+      Update: {
+        TableName: ITEM_TABLE,
+        Key: { userId: { S: userId }, itemId: { S: itemId } },
+        ...(once ? { ConditionExpression: "attribute_not_exists(quantity)" } : {}),
+        UpdateExpression:
+          "SET quantity = if_not_exists(quantity, :zero) + :one, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now, " +
+          "firstAcquiredAt = if_not_exists(firstAcquiredAt, :now), firstAreaName = if_not_exists(firstAreaName, :area)",
+        ExpressionAttributeNames: { "#tn": "__typename" },
+        ExpressionAttributeValues: {
+          ":one": { N: "1" },
+          ":zero": { N: "0" },
+          ":tn": { S: "GameTaneItem" },
+          ":now": { S: now },
+          ":area": { S: areaName },
+        },
+      },
+    },
+    {
+      Put: {
+        TableName: HARVEST_TABLE,
+        Item: {
+          userId: { S: userId },
+          harvestedAt: { S: now },
+          itemId: { S: itemId },
+          areaKey: { S: base.areaKey },
+          prefName: { S: base.prefName },
+          cityName: { S: base.cityName },
+          townName: { S: base.townName },
+          ...(base.ripenedAt ? { ripenedAt: { S: base.ripenedAt } } : {}),
+          ownerId: { S: base.ownerId },
+          __typename: { S: "GameTaneHarvest" },
+          createdAt: { S: now },
+          updatedAt: { S: now },
+        },
+        ConditionExpression: "attribute_not_exists(harvestedAt)",
+      },
+    },
+  ];
 }
 
 /** 実が全部取られた拠点のランクを上げて、タネ待ちにする(1回だけ。先にほかの人が済ませていれば何もしない) */

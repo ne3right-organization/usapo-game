@@ -283,6 +283,8 @@ function HarvestSheet({
                     "…"
                   ) : owner.kind === "me" ? (
                     "あなた"
+                  ) : owner.kind === "official" ? (
+                    "うさぽ農園"
                   ) : owner.kind === "shared" ? (
                     <Link href={`/profile/${owner.userId}`} className="text-emerald-700 underline">
                       {owner.nickname}
