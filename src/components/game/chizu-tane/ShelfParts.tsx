@@ -13,6 +13,7 @@ import {
   type TaneShelf,
   type TaneShelfItem,
 } from "@/lib/game/chizuTaneData";
+import SwipeGrid from "./SwipeGrid";
 import { ErrorText, ItemIcon, Loading, SeedIcon } from "./TaneParts";
 
 // おすそ分けの棚: 余ったタネや実を手元から棚に出しておくと、「農園を見せる」にしたフォロワーが遠くから1日1個持っていける
@@ -121,10 +122,10 @@ export function MyShelf() {
           {stocked.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3 mb-3">まだ何も出していません</p>
           ) : (
-            <ul className="grid grid-cols-3 gap-2 mb-3">
-              {stocked.map((x) => {
+            <SwipeGrid className="mb-3">
+              {stocked.flatMap((x) => {
                 const item = TANE_ITEM_BY_ID.get(x.itemId);
-                if (!item) return null;
+                if (!item) return [];
                 return (
                   <li key={`${x.kind}#${x.itemId}`} className="bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
                     <div className="h-9 flex items-center justify-center">
@@ -143,16 +144,16 @@ export function MyShelf() {
                   </li>
                 );
               })}
-            </ul>
+            </SwipeGrid>
           )}
           <p className="text-[11px] font-semibold text-[#78716c] mb-1">手元から出す</p>
           {spareNow.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">出せるものがありません</p>
           ) : (
-            <ul className="grid grid-cols-3 gap-2">
-              {spareNow.map((x) => {
+            <SwipeGrid>
+              {spareNow.flatMap((x) => {
                 const item = TANE_ITEM_BY_ID.get(x.itemId);
-                if (!item) return null;
+                if (!item) return [];
                 return (
                   <li key={`${x.kind}#${x.itemId}`} className="bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
                     <div className="h-9 flex items-center justify-center">
@@ -171,7 +172,7 @@ export function MyShelf() {
                   </li>
                 );
               })}
-            </ul>
+            </SwipeGrid>
           )}
           <div className="flex gap-2 mt-3">
             <button
@@ -241,10 +242,10 @@ export function FriendShelf({ ownerId, nickname }: { ownerId: string; nickname: 
       {shelf && shelf.items.length > 0 && (
         <>
           {shelf.takenToday && <p className="text-[11px] text-[#a16207] mb-1">今日はもうもらいました。また明日どうぞ</p>}
-          <ul className="grid grid-cols-3 gap-2">
-            {shelf.items.map((x) => {
+          <SwipeGrid>
+            {shelf.items.flatMap((x) => {
               const item = TANE_ITEM_BY_ID.get(x.itemId);
-              if (!item) return null;
+              if (!item) return [];
               return (
                 <li key={`${x.kind}#${x.itemId}`} className="bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
                   <div className="h-9 flex items-center justify-center">
@@ -263,7 +264,7 @@ export function FriendShelf({ ownerId, nickname }: { ownerId: string; nickname: 
                 </li>
               );
             })}
-          </ul>
+          </SwipeGrid>
         </>
       )}
     </section>
