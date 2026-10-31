@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { TANE_ITEM_BY_ID, type TaneItem } from "@/lib/game/chizuTane/courses";
 import { countPlaced } from "@/lib/game/chizuTane/garden";
 import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
@@ -13,7 +13,7 @@ import {
   type TaneShelf,
   type TaneShelfItem,
 } from "@/lib/game/chizuTaneData";
-import SwipeGrid from "./SwipeGrid";
+import SwipePages from "./SwipePages";
 import { ErrorText, ItemIcon, Loading, SeedIcon } from "./TaneParts";
 
 // おすそ分けの棚: 余ったタネや実を手元から棚に出しておくと、「農園を見せる」にしたフォロワーが遠くから1日1個持っていける
@@ -41,6 +41,31 @@ async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]
 }
 
 const keyOf = (x: { kind: TaneShelfItem["kind"]; itemId: string }) => `${x.kind}#${x.itemId}`;
+
+/** 棚のものを 3×3 ずつ並べて、横にスワイプでめくる。render は名前の下に出すもの(数とボタン) */
+function ShelfGrid({ items, render }: { items: TaneShelfItem[]; render: (x: TaneShelfItem, item: TaneItem) => ReactNode }) {
+  const rows = items.flatMap((x) => {
+    const item = TANE_ITEM_BY_ID.get(x.itemId);
+    return item ? [{ x, item }] : [];
+  });
+  return (
+    <SwipePages
+      items={rows}
+      perPage={9}
+      layout="grid"
+      keyOf={({ x }) => keyOf(x)}
+      render={({ x, item }) => (
+        <div className="h-full bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
+          <div className="h-9 flex items-center justify-center">
+            <ShelfIcon kind={x.kind} item={item} />
+          </div>
+          <p className="text-[11px] font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
+          {render(x, item)}
+        </div>
+      )}
+    />
+  );
+}
 
 /**
  * 自分の棚: 出しているものを戻す・手元のタネや実を出す。「1個出す」「1個戻す」は下書きで、「保存」で確定する。
@@ -122,16 +147,11 @@ export function MyShelf() {
           {stocked.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3 mb-3">まだ何も出していません</p>
           ) : (
-            <SwipeGrid className="mb-3">
-              {stocked.flatMap((x) => {
-                const item = TANE_ITEM_BY_ID.get(x.itemId);
-                if (!item) return [];
-                return (
-                  <li key={`${x.kind}#${x.itemId}`} className="bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-                    <div className="h-9 flex items-center justify-center">
-                      <ShelfIcon kind={x.kind} item={item} />
-                    </div>
-                    <p className="text-[11px] font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
+            <div className="mb-3">
+              <ShelfGrid
+                items={stocked}
+                render={(x) => (
+                  <>
                     <p className="text-[11px] text-emerald-700">×{x.quantity}</p>
                     <button
                       type="button"
@@ -141,38 +161,31 @@ export function MyShelf() {
                     >
                       1個戻す
                     </button>
-                  </li>
-                );
-              })}
-            </SwipeGrid>
+                  </>
+                )}
+              />
+            </div>
           )}
           <p className="text-[11px] font-semibold text-[#78716c] mb-1">手元から出す</p>
           {spareNow.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">出せるものがありません</p>
           ) : (
-            <SwipeGrid>
-              {spareNow.flatMap((x) => {
-                const item = TANE_ITEM_BY_ID.get(x.itemId);
-                if (!item) return [];
-                return (
-                  <li key={`${x.kind}#${x.itemId}`} className="bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-                    <div className="h-9 flex items-center justify-center">
-                      <ShelfIcon kind={x.kind} item={item} />
-                    </div>
-                    <p className="text-[11px] font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
-                    <p className="text-[10px] text-[#a8937a]">手元 {x.quantity}個</p>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => change(x, 1)}
-                      className="mt-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
-                    >
-                      1個出す
-                    </button>
-                  </li>
-                );
-              })}
-            </SwipeGrid>
+            <ShelfGrid
+              items={spareNow}
+              render={(x) => (
+                <>
+                  <p className="text-[10px] text-[#a8937a]">手元 {x.quantity}個</p>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => change(x, 1)}
+                    className="mt-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
+                  >
+                    1個出す
+                  </button>
+                </>
+              )}
+            />
           )}
           <div className="flex gap-2 mt-3">
             <button
@@ -242,29 +255,22 @@ export function FriendShelf({ ownerId, nickname }: { ownerId: string; nickname: 
       {shelf && shelf.items.length > 0 && (
         <>
           {shelf.takenToday && <p className="text-[11px] text-[#a16207] mb-1">今日はもうもらいました。また明日どうぞ</p>}
-          <SwipeGrid>
-            {shelf.items.flatMap((x) => {
-              const item = TANE_ITEM_BY_ID.get(x.itemId);
-              if (!item) return [];
-              return (
-                <li key={`${x.kind}#${x.itemId}`} className="bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-                  <div className="h-9 flex items-center justify-center">
-                    <ShelfIcon kind={x.kind} item={item} />
-                  </div>
-                  <p className="text-[11px] font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
-                  <p className="text-[11px] text-emerald-700">×{x.quantity}</p>
-                  <button
-                    type="button"
-                    disabled={busy || shelf.takenToday}
-                    onClick={() => take(x, item)}
-                    className="mt-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
-                  >
-                    もらう
-                  </button>
-                </li>
-              );
-            })}
-          </SwipeGrid>
+          <ShelfGrid
+            items={shelf.items}
+            render={(x, item) => (
+              <>
+                <p className="text-[11px] text-emerald-700">×{x.quantity}</p>
+                <button
+                  type="button"
+                  disabled={busy || shelf.takenToday}
+                  onClick={() => take(x, item)}
+                  className="mt-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
+                >
+                  もらう
+                </button>
+              </>
+            )}
+          />
         </>
       )}
     </section>

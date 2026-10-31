@@ -7,7 +7,7 @@ import { gardenObjectsOf, openGarden, saveGarden, type GardenState } from "@/lib
 import GardenSvg from "./GardenSvg";
 import { FollowingGardens, MyFollowers } from "./FriendGardenView";
 import { MyShelf } from "./ShelfParts";
-import SwipeGrid from "./SwipeGrid";
+import SwipePages from "./SwipePages";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -264,35 +264,36 @@ function Garden() {
       {garden.items.length === 0 ? (
         <p className="text-sm text-[#78716c]">まだ何も持っていません。</p>
       ) : (
-        <SwipeGrid>
-          {garden.items.flatMap(({ itemId, quantity }) => {
-            const item = TANE_ITEM_BY_ID.get(itemId);
-            if (!item) return [];
+        <SwipePages
+          items={garden.items.filter(({ itemId }) => TANE_ITEM_BY_ID.has(itemId))}
+          perPage={9}
+          layout="grid"
+          keyOf={({ itemId }) => itemId}
+          render={({ itemId, quantity }) => {
+            const item = TANE_ITEM_BY_ID.get(itemId)!;
             const left = remaining(itemId);
             const active = paletteItemId === itemId;
             return (
-              <li key={itemId}>
-                <button
-                  type="button"
-                  disabled={left <= 0}
-                  onClick={() => {
-                    setPaletteItemId(active ? null : itemId);
-                    setSelectedObjectId(null);
-                  }}
-                  className={`w-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
-                >
-                  <div className="h-9 flex items-center justify-center">
-                    <ItemIcon item={item} size={34} />
-                  </div>
-                  <p className="text-[10px] text-[#3c2a14] mt-1 truncate">{item.name}</p>
-                  <p className="text-[10px] text-[#a8937a]">
-                    {left}/{quantity}
-                  </p>
-                </button>
-              </li>
+              <button
+                type="button"
+                disabled={left <= 0}
+                onClick={() => {
+                  setPaletteItemId(active ? null : itemId);
+                  setSelectedObjectId(null);
+                }}
+                className={`w-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
+              >
+                <div className="h-9 flex items-center justify-center">
+                  <ItemIcon item={item} size={34} />
+                </div>
+                <p className="text-[10px] text-[#3c2a14] mt-1 truncate">{item.name}</p>
+                <p className="text-[10px] text-[#a8937a]">
+                  {left}/{quantity}
+                </p>
+              </button>
             );
-          })}
-        </SwipeGrid>
+          }}
+        />
       )}
     </div>
   );
