@@ -68,7 +68,7 @@ export default function TaneHome() {
         </div>
       ) : (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-6 leading-relaxed">
-          🎉 うさぽ農園Ver1.0をリリースしました！ポスティング・お出かけついでにタネをまいてみましょう
+          🎉 近くに畑が無くても遊べる「公式の畑」ができました！また知り合いを増やすと色々楽しめる機能も増えています！
         </div>
       )}
 
