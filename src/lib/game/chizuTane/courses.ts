@@ -6,6 +6,7 @@
 // itemImages.generated.ts に載り、imageUrl になる(無いあいだは emoji を出す。docs/地図タネ_絵の作り方.md)
 
 import { ITEM_IMAGE_URLS } from "./itemImages.generated";
+import { TANE_LOCAL_BASE_TYPES, TANE_LOCAL_ITEMS } from "./localItems";
 
 export type TaneCourse = "plant" | "animal" | "hobby" | "vehicle" | "building";
 
@@ -109,7 +110,8 @@ export const TANE_BASE_TYPES: TaneBaseType[] = [
   ]),
 ];
 
-export const TANE_BASE_TYPE_BY_ID = new Map(TANE_BASE_TYPES.map((t) => [t.id, t]));
+/** 拠点の種類を ID で引く。ご当地の畑(localItems.ts)も引ける */
+export const TANE_BASE_TYPE_BY_ID = new Map([...TANE_BASE_TYPES, ...TANE_LOCAL_BASE_TYPES].map((t) => [t.id, t]));
 
 /** 拠点でもらえるもの(そのまま箱庭に置ける形)。itemId は `${baseTypeId}_${rank}` */
 export interface TaneItem {
@@ -184,7 +186,8 @@ export const TANE_ITEMS: TaneItem[] = [
   ...items("castle", [["石垣", "🧱"], ["金のしゃちほこ", "🐉"], ["天守閣", "🏯"]]),
 ];
 
-export const TANE_ITEM_BY_ID = new Map(TANE_ITEMS.map((i) => [i.itemId, i]));
+/** もらえるものを ID で引く。ご当地のもの(localItems.ts)も引ける */
+export const TANE_ITEM_BY_ID = new Map<string, TaneItem>([...TANE_ITEMS, ...TANE_LOCAL_ITEMS].map((i) => [i.itemId, i]));
 
 /**
  * 上がれるレベルの上限。本番(game.usapo.net・main の Lambda)は絵を用意する Lv.3 まで、テスト用(devgame.usapo.net・手元・
@@ -213,6 +216,17 @@ export function taneMaxLevel(): number {
 export const TANE_LEVEL_THRESHOLDS = [0, 5, 12, 25, 40, 60, 90, 130, 180, 250];
 
 const maxLevel = () => Math.min(TANE_LEVEL_THRESHOLDS.length, taneMaxLevel());
+
+/**
+ * フォローしている人の畑に遠くから水をやる(手伝い)と、この回数でたずねたタネ1か所と数える(2026-10-31)。
+ * 近くにほかの人がいなくても、友達と始めればレベルが上がっていくように
+ */
+export const HELPS_PER_VISIT = 10;
+
+/** レベルの条件に使う「たずねたタネの数」。たずねたほかの人のタネの数に、手伝いの水やりを HELPS_PER_VISIT 回で1か所として足す */
+export function levelVisitCount(visited: number, helpCount: number): number {
+  return visited + Math.floor(Math.max(0, helpCount) / HELPS_PER_VISIT);
+}
 
 /**
  * レベル。Lv.n → n+1 に上がるには、(1) ほかの人の拠点を TANE_LEVEL_THRESHOLDS[n] か所たずねていて、

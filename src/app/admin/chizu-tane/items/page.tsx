@@ -111,7 +111,7 @@ export default function ChizuTaneItemsPage() {
       ))}
 
       <section className="mb-8">
-        <h2 className="font-bold mb-1">📍 ご当地（たたき台。まだ手に入らない）</h2>
+        <h2 className="font-bold mb-1">📍 ご当地（7都道府県。案のまま）</h2>
         <p className="text-xs text-[#78716c] mb-3">
           定義: <code>src/lib/game/chizuTane/localItems.ts</code>（設計書は docs/地図タネ_ご当地タネ設計書.md）。1つの都道府県につき 5コース × 3つ。
           {TANE_LOCAL_PREFS.length}都道府県・{TANE_LOCAL_ITEMS.length}件。1個目＝現地で味わう・乗る・体験する、2個目＝持ち帰るお土産、3個目＝ガーデンに飾って見せたいもの

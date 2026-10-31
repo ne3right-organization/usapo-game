@@ -1,10 +1,11 @@
 // うさぽ農園の「ご当地」のもの(都道府県ごとに 5コース × 3つ = 15点)。設計書は docs/地図タネ_ご当地タネ設計書.md。
-// まだゲームでは手に入らない(たたき台。管理画面 /admin/chizu-tane/items で眺める用)。TANE_ITEMS には入れていないので、
-// レベルアップの条件・集めたものの一覧には出ない。
+// TANE_ITEMS には入れていないので、レベルアップの条件・コースの表には入らない(TANE_ITEM_BY_ID では引ける)。
 //
-// 3つの役目: 1個目＝現地で味わう・乗る・体験するもの、2個目＝持ち帰るお土産、3個目＝ガーデンに飾って見せたいもの
+// 3つの役目: 1個目＝現地で味わう・乗る・体験するもの、2個目＝持ち帰るお土産、3個目＝ガーデンに飾って見せたいもの。
+// 手に入れ方: 1個目は Lv.3 以上でその都道府県に初めておでかけしたとき(その県でしかまけない)、2個目は1個目の畑が実ったとき、
+// 3個目は2個目の畑の実が全部収穫されたとき(どちらも持ち主に届く)。ご当地の畑にはタネが落ちず、まき直せず、実は1つの品につき1人1個
 
-import { type TaneCourse, type TaneItem } from "./courses";
+import type { TaneBaseType, TaneCourse, TaneItem } from "./courses";
 import { ITEM_IMAGE_URLS } from "./itemImages.generated";
 
 /** ご当地のもの。local は都道府県コード(2桁) */
@@ -22,7 +23,15 @@ export const TANE_LOCAL_BASE_TYPE_IDS: Record<TaneCourse, string> = {
   building: "local_building",
 };
 
+/** ご当地の畑の種類(コースの表の Lv.10 の次の段。レベルでは手に入らない) */
+export const TANE_LOCAL_BASE_TYPES: TaneBaseType[] = (Object.entries(TANE_LOCAL_BASE_TYPE_IDS) as [TaneCourse, string][]).map(
+  ([course, id]) => ({ id, course, unlockLevel: 11, name: "ご当地の畑", emoji: "🗾" })
+);
+
 export const TANE_LOCAL_RANK_ROLES = ["現地で", "お土産", "見せたい"] as const;
+
+/** 1個目のご当地のタネをもらえるレベル */
+export const LOCAL_SEED_MIN_LEVEL = 3;
 
 type Three = [[name: string, emoji: string], [name: string, emoji: string], [name: string, emoji: string]];
 
@@ -125,5 +134,32 @@ export const TANE_LOCAL_ITEMS: TaneLocalItem[] = LOCAL_PREFS.flatMap((pref) =>
   )
 );
 
+export const TANE_LOCAL_ITEM_BY_ID = new Map(TANE_LOCAL_ITEMS.map((i) => [i.itemId, i]));
+
 /** ご当地のものを決めた都道府県(都道府県コード順) */
 export const TANE_LOCAL_PREFS: { prefCode: string; prefName: string }[] = LOCAL_PREFS.map(({ prefCode, prefName }) => ({ prefCode, prefName }));
+
+export function isLocalBaseTypeId(baseTypeId: string): boolean {
+  return baseTypeId.startsWith("local_");
+}
+
+/** その都道府県・コースの何個目(1〜3)のご当地のもの。まだ決めていなければ undefined */
+export function localItemFor(prefCode: string, course: TaneCourse, rank: number): TaneLocalItem | undefined {
+  return TANE_LOCAL_ITEM_BY_ID.get(`${TANE_LOCAL_BASE_TYPE_IDS[course]}_p${prefCode}_${rank}`);
+}
+
+/** ご当地のものの次(1個目 → 2個目 → 3個目)。3個目なら undefined */
+export function nextLocalItem(item: TaneLocalItem): TaneLocalItem | undefined {
+  return localItemFor(item.local, item.course, item.rank + 1);
+}
+
+/**
+ * ご当地の畑を伏せて見せるか。ほかの人のご当地の畑は、何の畑かを実るまで(地図では実っても)出さない。
+ * 珍しい畑は、どこに誰が行ったか(住んでいるか)の手がかりになるため(設計書 5章)
+ */
+export function isHiddenLocalBase(base: { baseTypeId: string }, isMine: boolean): boolean {
+  return !isMine && isLocalBaseTypeId(base.baseTypeId);
+}
+
+/** 伏せたご当地の畑の名前と印 */
+export const HIDDEN_LOCAL_BASE = { name: "なぞの畑", emoji: "❓" } as const;

@@ -7,6 +7,7 @@ import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
 import { fetchTaneShareViewerIds, setTaneShare } from "@/lib/game/chizuTaneData";
 import { formatRelativeTime } from "@/lib/game/format";
 import { currentUser } from "@/lib/auth";
+import { UserIcon } from "@/components/game/chizu-tane/TaneParts";
 
 type Tab = "followers" | "following";
 type Props = { searchParams: Promise<{ tab?: string }> };
@@ -118,7 +119,7 @@ export default function FollowsPage({ searchParams }: Props) {
             )}
             {!errorMsg && items && items.length > 0 && tab === "followers" && (
               <p className="text-xs text-[#a8937a] leading-relaxed mb-3">
-                🌱 うさぽ農園は、「見せる」にしたフォロワーにだけ、あなたのガーデンと、あなたがタネをまいた畑（実の生産者）が見えるようになります。はじめは誰にも見せていません。
+                🌱 うさぽ農園は、「見せる」にしたフォロワーにだけ、あなたのガーデン・おすそ分けの棚と、あなたがタネをまいた畑の場所（遠くから水やりを手伝えます。実の生産者にも名前が出ます）が見えるようになります。はじめは誰にも見せていません。
               </p>
             )}
             {items && items.length > 0 && (
@@ -126,7 +127,10 @@ export default function FollowsPage({ searchParams }: Props) {
                 {items.map((u) => {
                   const shared = sharedIds.has(u.userId);
                   const name = (
-                    <span className="text-sm font-semibold text-[#3c2a14] truncate">{u.nickname ? `👤 ${u.nickname}` : "ニックネーム未設定"}</span>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-[#3c2a14] min-w-0">
+                      <UserIcon iconItemId={u.iconItemId} size={24} />
+                      <span className="truncate">{u.nickname ?? "ニックネーム未設定"}</span>
+                    </span>
                   );
                   return (
                     <div

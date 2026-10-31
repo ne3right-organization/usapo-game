@@ -10,6 +10,8 @@ import { data, unwrap, type Schema } from "@/lib/amplify/data";
 export interface FollowUser {
   userId: string;
   nickname: string | null;
+  /** アイコン(うさぽ農園で集めたものの itemId。無ければ null) */
+  iconItemId: string | null;
   followedAt: string;
 }
 
@@ -65,7 +67,7 @@ export async function fetchFollowList(kind: "followers" | "following"): Promise<
     items.map(async (item) => {
       const otherId = kind === "followers" ? item.followerId : item.followeeId;
       const profile = unwrap(await data.models.GameProfile.get({ userId: otherId }));
-      return { userId: otherId, nickname: profile?.nickname ?? null, followedAt: item.followedAt };
+      return { userId: otherId, nickname: profile?.nickname ?? null, iconItemId: profile?.iconItemId ?? null, followedAt: item.followedAt };
     })
   );
 }

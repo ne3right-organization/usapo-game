@@ -11,7 +11,7 @@ export default function MyProfilePage({ searchParams }: Props) {
   return (
     <main className="min-h-full bg-[#fdf8f0]">
       <div className="max-w-lg mx-auto px-4 pt-6 pb-16">
-        <h1 className="text-lg font-bold text-[#3c2a14] mb-5">👤 プロフィール</h1>
+        <h1 className="text-lg font-bold text-[#3c2a14] mb-5">プロフィール</h1>
         <CompletionProfileView initialGame={game} initialLevel={level} />
       </div>
     </main>

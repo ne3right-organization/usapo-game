@@ -6,13 +6,15 @@ import { GARDEN_DESIGNS, countPlaced, houseTierFor, type GardenDesignId, type Ga
 import { gardenObjectsOf, openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
 import { FollowingGardens, MyFollowers } from "./FriendGardenView";
+import { MyShelf } from "./ShelfParts";
+import SwipePages from "./SwipePages";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // ガーデン(おまけ): 集めたものを、斜め見下ろしのマス目に置く・動かす・しまう。保存はボタンで行う。
 // ガーデンは、開拓した地区の数で別のデザインのものが増える(上のタブで切り替える)。家と柵はレベルで立派になる。
 // 所持数は、すべてのガーデンに置いている分を合わせて数える。
-// 下に、フォローしている人のガーデンへのリンク(見るだけ)と、自分のフォロワー・フォローしてもらうリンクを並べる(FriendGardenView)
+// 下に、おすそ分けの棚(ShelfParts)と、フォローしている人のガーデンへのリンク(見るだけ)と、自分のフォロワー・フォローしてもらうリンクを並べる(FriendGardenView)
 
 export default function TaneGardenView() {
   const [state] = useTanePlayer();
@@ -25,6 +27,7 @@ export default function TaneGardenView() {
       {state.status === "ready" && (
         <>
           <Garden />
+          <MyShelf />
           <FollowingGardens />
           <MyFollowers />
         </>
@@ -108,9 +111,27 @@ function Garden() {
       return;
     }
     if (paletteItemId && remaining(paletteItemId) > 0) {
-      change([...objects, { objectId: newObjectId(), itemId: paletteItemId, x, y }]);
-      if (remaining(paletteItemId) - 1 <= 0) setPaletteItemId(null);
+      // 置いたものを選んだままにして、すぐ矢印で位置を直せるようにする(続けて置くときは、もう一度下の一覧から選ぶ)
+      const objectId = newObjectId();
+      change([...objects, { objectId, itemId: paletteItemId, x, y }]);
+      setPaletteItemId(null);
+      setSelectedObjectId(objectId);
     }
+  };
+
+  // 選んでいるものを、となりのマスへ1つ動かす(斜め見下ろしなので、矢印は画面の斜めの向き)。外か、ふさがっていれば動かせない
+  const selected = objects.find((o) => o.objectId === selectedObjectId);
+  const moveTarget = (dx: number, dy: number) => {
+    if (!selected) return null;
+    const x = selected.x + dx;
+    const y = selected.y + dy;
+    if (x < 0 || y < 0 || x >= garden.width || y >= garden.height || objectAt.has(`${x},${y}`)) return null;
+    return { x, y };
+  };
+  const handleMove = (dx: number, dy: number) => {
+    const to = moveTarget(dx, dy);
+    if (!to || !selected) return;
+    change(objects.map((o) => (o.objectId === selected.objectId ? { ...o, ...to } : o)));
   };
 
   const handleStore = () => {
@@ -196,7 +217,28 @@ function Garden() {
       <div className="flex items-center gap-2 mb-3 min-h-[40px]">
         {selectedObjectId ? (
           <>
-            <p className="flex-1 text-xs text-[#78716c]">空いているマスをタップすると動かせます</p>
+            <p className="flex-1 text-xs text-[#78716c]">矢印か、空いているマスをタップすると動かせます</p>
+            {/* 画面の斜めの向き: ↖ は x-1、↗ は y-1、↙ は y+1、↘ は x+1(GardenSvg の at) */}
+            <div className="grid grid-cols-2 gap-1 shrink-0" aria-label="となりのマスへ動かす">
+              {(
+                [
+                  ["↖", -1, 0],
+                  ["↗", 0, -1],
+                  ["↙", 0, 1],
+                  ["↘", 1, 0],
+                ] as const
+              ).map(([arrow, dx, dy]) => (
+                <button
+                  key={arrow}
+                  type="button"
+                  onClick={() => handleMove(dx, dy)}
+                  disabled={!moveTarget(dx, dy)}
+                  className="w-8 h-8 rounded-lg bg-white border border-[#e7dccb] text-sm text-[#3c2a14] disabled:opacity-30"
+                >
+                  {arrow}
+                </button>
+              ))}
+            </div>
             <button type="button" onClick={handleStore} className="rounded-xl px-3 py-2 text-sm font-semibold bg-white border border-[#e7dccb] text-[#78716c]">
               しまう
             </button>
@@ -222,22 +264,24 @@ function Garden() {
       {garden.items.length === 0 ? (
         <p className="text-sm text-[#78716c]">まだ何も持っていません。</p>
       ) : (
-        <div className="grid grid-cols-4 gap-2">
-          {garden.items.map(({ itemId, quantity }) => {
-            const item = TANE_ITEM_BY_ID.get(itemId);
-            if (!item) return null;
+        <SwipePages
+          items={garden.items.filter(({ itemId }) => TANE_ITEM_BY_ID.has(itemId))}
+          perPage={9}
+          layout="grid"
+          keyOf={({ itemId }) => itemId}
+          render={({ itemId, quantity }) => {
+            const item = TANE_ITEM_BY_ID.get(itemId)!;
             const left = remaining(itemId);
             const active = paletteItemId === itemId;
             return (
               <button
-                key={itemId}
                 type="button"
                 disabled={left <= 0}
                 onClick={() => {
                   setPaletteItemId(active ? null : itemId);
                   setSelectedObjectId(null);
                 }}
-                className={`bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
+                className={`w-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
               >
                 <div className="h-9 flex items-center justify-center">
                   <ItemIcon item={item} size={34} />
@@ -248,8 +292,8 @@ function Garden() {
                 </p>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { GardenDesignId, GardenLayouts, GardenObject } from "@/lib/game/chizuTane/garden";
 import { isAbandoned } from "@/lib/game/chizuTane/growth";
+import { OFFICIAL_OWNER_ID } from "@/lib/game/chizuTane/official";
 import {
   DAY_MS_DEV,
   DAY_MS_PRODUCTION,
@@ -163,7 +164,7 @@ export async function fetchMyHarvests(): Promise<TaneHarvest[]> {
 }
 
 /** 生産者(タネをまいた人)の見え方: 自分 / 農園を見せてくれている人(ニックネームを出す) / それ以外(出さない) */
-export type TaneOwnerView = { kind: "me" } | { kind: "shared"; userId: string; nickname: string } | { kind: "hidden" };
+export type TaneOwnerView = { kind: "me" } | { kind: "official" } | { kind: "shared"; userId: string; nickname: string } | { kind: "hidden" };
 
 /**
  * 生産者を、その人が自分に農園を見せてくれていて(GameTaneShare)、自分がその人をフォローしている間だけ明かす。
@@ -175,6 +176,7 @@ export async function fetchOwnerViews(ownerIds: string[]): Promise<Map<string, T
   await Promise.all(
     [...new Set(ownerIds)].map(async (ownerId) => {
       if (ownerId === me) return views.set(ownerId, { kind: "me" });
+      if (ownerId === OFFICIAL_OWNER_ID) return views.set(ownerId, { kind: "official" });
       const [share, following] = await Promise.all([
         data.models.GameTaneShare.get({ ownerId, viewerId: me }),
         data.models.GameFollow.get({ followerId: me, followeeId: ownerId }),
@@ -217,22 +219,52 @@ export interface TaneSeedCount {
   quantity: number;
 }
 
-/** 持っているタネ(0個のものは除く) */
+/** 持っているタネ(0個のものは除く)。新しく手に入れたものから順に並べる */
 export async function fetchMySeeds(): Promise<TaneSeedCount[]> {
   const userId = await requireUserId();
-  const seeds: TaneSeedCount[] = [];
+  const seeds: (TaneSeedCount & { gainedAt: string })[] = [];
   let nextToken: string | null | undefined;
   do {
     const page = await data.models.GameTaneHeldSeed.list({ userId, nextToken });
-    for (const s of unwrap(page)) if (s.quantity > 0) seeds.push({ itemId: s.itemId, quantity: s.quantity });
+    for (const s of unwrap(page)) {
+      // lastGainedAt は 2026-10-31 に足したので、それより前の行は作った日時で並べる
+      if (s.quantity > 0) seeds.push({ itemId: s.itemId, quantity: s.quantity, gainedAt: s.lastGainedAt ?? s.createdAt });
+    }
     nextToken = page.nextToken;
   } while (nextToken);
-  return seeds;
+  return seeds.sort((a, b) => b.gainedAt.localeCompare(a.gainedAt)).map(({ itemId, quantity }) => ({ itemId, quantity }));
 }
 
-/** たずねた(もらったことのある)ほかの人のタネの数。レベルの条件の1つ(courses.ts の levelFor) */
-export async function fetchVisitedCount(): Promise<number> {
+/** ご当地のタネをもらった都道府県(都道府県コード)。1個目をもらった県だけ行がある */
+export async function fetchMyLocalGrantPrefs(): Promise<Set<string>> {
   const userId = await requireUserId();
+  const prefs = new Set<string>();
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneLocalGrant.list({ userId, nextToken });
+    for (const g of unwrap(page)) prefs.add(g.prefCode);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return prefs;
+}
+
+/** いまいる都道府県の1個目のご当地のタネをもらう(Lv.3 以上、1人1都道府県に1回)。もらったタネの itemId を返す */
+export async function claimLocalSeed(loc: Location, district: TownDistrict): Promise<string> {
+  await requireUserId();
+  const itemId = unwrap(
+    await data.mutations.claimLocalTaneSeed({ lng: loc.lng, lat: loc.lat, prefCode: district.prefCode, cityCode: district.cityCode })
+  );
+  if (!itemId) throw new Error("ご当地のタネをもらえませんでした");
+  return itemId;
+}
+
+/**
+ * たずねた(もらったことのある)ほかの人のタネの数(visited)と、フォローしている人の畑への手伝いの水やりの回数(helps)。
+ * レベルの条件の1つ(courses.ts の levelFor には levelVisitCount で合わせた数を渡す)
+ */
+export async function fetchVisitedCount(): Promise<{ visited: number; official: number; helps: number }> {
+  const userId = await requireUserId();
+  const [player, official] = await Promise.all([data.models.GameTanePlayer.get({ userId }), fetchOfficialVisits()]);
   let count = 0;
   let nextToken: string | null | undefined;
   do {
@@ -240,7 +272,154 @@ export async function fetchVisitedCount(): Promise<number> {
     count += unwrap(page).length;
     nextToken = page.nextToken;
   } while (nextToken);
-  return count;
+  return { visited: count, official: official.length, helps: unwrap(player)?.helpCount ?? 0 };
+}
+
+// ─── 公式の畑(src/lib/game/chizuTane/official.ts) ───────────────────────────────
+
+export type TaneOfficialVisit = Schema["GameTaneOfficialVisit"]["type"];
+export interface TaneOfficialResult {
+  /** watered: 水をやった / ripened: 水をやって実り、実をもらった / fruit: 実っていた実をもらった / already: この時間帯はもう来た */
+  status: "watered" | "ripened" | "fruit" | "already";
+  itemId: string;
+  water: number;
+  fruits: number;
+  droppedSeeds: number;
+  firstVisit: boolean;
+  /** もらった実の手元の数 */
+  quantity: number | null;
+  /** この日に初めて来た公式の畑の数 */
+  todayCount: number;
+  level: number | null;
+  leveledUp: boolean;
+  seedsGained: { itemId: string; count: number; reason: "level" }[];
+}
+
+/** チェックインした公式の畑 */
+export async function fetchOfficialVisits(): Promise<TaneOfficialVisit[]> {
+  const userId = await requireUserId();
+  const rows: TaneOfficialVisit[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await data.models.GameTaneOfficialVisit.list({ userId, nextToken });
+    rows.push(...unwrap(page));
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return rows;
+}
+
+/** 公式の畑に遠くからチェックインする(1つの畑に朝・昼・夜に1回、新しい公式の畑は1日3か所まで)。水をやって、実ったらそのまま実をもらう */
+export async function checkInOfficialField(fieldId: string): Promise<TaneOfficialResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.checkInTaneOfficialField({ fieldId }));
+  if (!res) throw new Error("公式の畑にチェックインできませんでした");
+  return {
+    status: res.status as TaneOfficialResult["status"],
+    itemId: res.itemId,
+    water: res.water,
+    fruits: res.fruits,
+    droppedSeeds: res.droppedSeeds,
+    firstVisit: res.firstVisit,
+    quantity: res.quantity ?? null,
+    todayCount: res.todayCount,
+    level: res.level ?? null,
+    leveledUp: res.leveledUp ?? false,
+    seedsGained: parseJson<TaneOfficialResult["seedsGained"] | null>(res.seedsGained) ?? [],
+  };
+}
+
+/** 公式の畑に落ちているタネを拾う。拾えた数を返す */
+export async function pickUpOfficialSeed(fieldId: string): Promise<number> {
+  await requireUserId();
+  return unwrap(await data.mutations.pickUpTaneOfficialSeed({ officialFieldId: fieldId })) ?? 0;
+}
+
+// ─── アイコン(集めたものから1つ) ───────────────────────────────────────────
+
+/** 自分のアイコン(集めたものの itemId。無ければ null) */
+export async function fetchMyIconItemId(): Promise<string | null> {
+  const userId = await requireUserId();
+  return unwrap(await data.models.GameProfile.get({ userId }))?.iconItemId ?? null;
+}
+
+/** 集めたものから1つ選んでアイコンにする(null で外す)。フォローの一覧などでニックネームの横に出る */
+export async function setTaneIcon(itemId: string | null): Promise<string | null> {
+  await requireUserId();
+  return unwrap(await data.mutations.setTaneIcon({ itemId })) ?? null;
+}
+
+// ─── おすそ分けの棚 ────────────────────────────────────────────────────────
+
+export interface TaneShelfItem {
+  kind: "seed" | "fruit";
+  itemId: string;
+  quantity: number;
+}
+
+export interface TaneShelf {
+  items: TaneShelfItem[];
+  /** ほかの人の棚: 今日もうもらったか(1人が1つの棚から1日1個) */
+  takenToday: boolean;
+}
+
+function toShelf(v: { items: unknown; takenToday: boolean } | null | undefined): TaneShelf {
+  if (!v) throw new Error("棚を読み込めませんでした");
+  return { items: parseJson<TaneShelfItem[] | null>(v.items) ?? [], takenToday: v.takenToday };
+}
+
+/** おすそ分けの棚。ownerId を省くと自分の棚(ほかの人の棚は、その人が自分に農園を見せていて、自分がその人をフォローしているときだけ) */
+export async function fetchShelf(ownerId?: string): Promise<TaneShelf> {
+  await requireUserId();
+  return toShelf(unwrap(await data.queries.taneShelf(ownerId ? { ownerId } : {})));
+}
+
+/** 自分の棚に、手元のタネ・実を出す(count > 0)・手元に戻す(count < 0) */
+export async function stockShelf(kind: TaneShelfItem["kind"], itemId: string, count: number): Promise<TaneShelf> {
+  await requireUserId();
+  return toShelf(unwrap(await data.mutations.stockTaneShelf({ kind, itemId, count })));
+}
+
+/** ほかの人の棚から1個もらう(1人が1つの棚から1日1個、早い者勝ち) */
+export async function takeFromShelf(ownerId: string, kind: TaneShelfItem["kind"], itemId: string): Promise<TaneShelf> {
+  await requireUserId();
+  return toShelf(unwrap(await data.mutations.takeFromTaneShelf({ ownerId, kind, itemId })));
+}
+
+// ─── 手伝いの水やり(フォローしている人の畑) ─────────────────────────────────
+
+export type TaneHelpField = Schema["TaneHelpField"]["type"];
+
+export interface HelpWaterResult {
+  field: TaneHelpField;
+  /** この水やりで実った(持ち主に生産者の取り分が届いた) */
+  ripened: boolean;
+  /** 手伝った回数(合計) */
+  helpCount: number;
+  level: number | null;
+  leveledUp: boolean;
+  seedsGained: { itemId: string; count: number; reason: "level" }[];
+}
+
+/** フォローしていて、自分に「農園を見せる」にしている人の畑 */
+export async function fetchHelpFields(ownerId: string): Promise<TaneHelpField[]> {
+  await requireUserId();
+  const list = unwrap(await data.queries.listTaneHelpFields({ ownerId }));
+  return (list ?? []).filter((f): f is TaneHelpField => !!f);
+}
+
+/** フォローしている人の畑に遠くから水をやる(1つの畑に朝・昼・夜に1回、現地の10分の1) */
+export async function helpWater(ownerId: string, fieldId: string): Promise<HelpWaterResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.helpWaterTaneBase({ ownerId, fieldId }));
+  if (!res) throw new Error("水をやれませんでした");
+  return {
+    field: res.field,
+    ripened: res.ripened,
+    helpCount: res.helpCount,
+    level: res.level ?? null,
+    leveledUp: res.leveledUp ?? false,
+    seedsGained: parseJson<HelpWaterResult["seedsGained"] | null>(res.seedsGained) ?? [],
+  };
 }
 
 // ─── いまいる地区 ─────────────────────────────────────────────────────────
@@ -344,8 +523,11 @@ export async function replantBase(areaKey: string, itemId: string): Promise<Tane
 }
 
 export interface CheckInResult {
-  /** watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / waiting: タネ待ちの畑 / already: この時間帯はもう来た */
-  status: "watered" | "ripened" | "fruit" | "waiting" | "already";
+  /**
+   * watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / have: ご当地の実をもう持っているので、もらわなかった /
+   * waiting: タネ待ちの畑 / already: この時間帯はもう来た
+   */
+  status: "watered" | "ripened" | "fruit" | "have" | "waiting" | "already";
   townName: string;
   baseTypeId: string;
   itemId: string | null;
@@ -360,7 +542,8 @@ export interface CheckInResult {
   fruits: number;
   level: number | null;
   leveledUp: boolean;
-  seedsGained: { itemId: string; count: number; reason: "level" }[];
+  /** 増えたタネ。level: レベルが上がった / local: 自分のご当地の畑が実った・配り終えたので、次のご当地のタネが届いた */
+  seedsGained: { itemId: string; count: number; reason: "level" | "local" }[];
   /** チェックインのあと、この拠点に落ちているタネの数 */
   droppedSeeds: number;
   /** チェックインのあとの育ちの段階(growth.ts) */

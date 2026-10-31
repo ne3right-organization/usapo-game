@@ -3,7 +3,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
-  TANE_ITEMS,
   TANE_ITEM_BY_ID,
   TANE_BASE_TYPE_BY_ID,
   TANE_COURSES,
@@ -11,6 +10,7 @@ import {
   taneMaxLevel,
   MAX_LEVEL_PRODUCTION,
   levelFor,
+  levelVisitCount,
   seedsForLevel,
   type TaneCourse,
 } from "@/lib/game/chizuTane/courses";
@@ -31,9 +31,12 @@ import {
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
 import { houseTierFor } from "@/lib/game/chizuTane/garden";
+import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem } from "@/lib/game/chizuTane/localItems";
 import SwipePages from "./SwipePages";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
+import OfficialFields from "./OfficialFields";
+import { OFFICIAL_DAILY_LIMIT } from "@/lib/game/chizuTane/official";
 import { ErrorText, GrowthBadge, ItemIcon, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
@@ -65,7 +68,7 @@ export default function TaneHome() {
         </div>
       ) : (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-6 leading-relaxed">
-          🎉 うさぽ農園Ver1.0をリリースしました！ポスティング・お出かけついでにタネをまいてみましょう
+          🎉 近くに畑が無くても遊べる「公式の畑」ができました！また知り合いを増やすと色々楽しめる機能も増えています！
         </div>
       )}
 
@@ -168,18 +171,17 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
 function Home({ course }: { course: TaneCourse }) {
   const [bases, setBases] = useState<TaneBase[] | null>(null);
   const [garden, setGarden] = useState<GardenState | null>(null);
-  const [visitedCount, setVisitedCount] = useState<number | null>(null);
+  const [visits, setVisits] = useState<{ visited: number; official: number; helps: number } | null>(null);
+  // レベルの条件に使う数(公式の畑は1か所ずつ、手伝いの水やりは HELPS_PER_VISIT 回で1か所)
+  const visitedCount = visits ? levelVisitCount(visits.visited + visits.official, visits.helps) : null;
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [error, setError] = useState("");
   const courseDef = TANE_COURSE_BY_ID.get(course);
   // まいたことのあるタネ(まき直す前のものも含む。レベルの条件「いまのタネを3つともまく」に使う)
   const [plantedIds, setPlantedIds] = useState<Set<string>>(new Set());
 
-  const loadSeeds = () =>
-    fetchMySeeds().then((list) => {
-      const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
-      setSeeds([...list].sort((a, b) => (order.get(a.itemId) ?? 0) - (order.get(b.itemId) ?? 0)));
-    });
+  // 新しく手に入れたものから順(fetchMySeeds で並べてある)
+  const loadSeeds = () => fetchMySeeds().then(setSeeds);
 
   // タネ待ちの畑にまき直したあと: その畑と、持っているタネ・まいたことのあるタネを読み直す
   const handleReplanted = async (next: TaneBase) => {
@@ -193,7 +195,7 @@ function Home({ course }: { course: TaneCourse }) {
       .then((b) => !cancelled && setBases(b))
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     fetchVisitedCount()
-      .then((n) => !cancelled && setVisitedCount(n))
+      .then((v) => !cancelled && setVisits(v))
       .catch(() => {});
     fetchMyPlantedItemIds()
       .then((ids) => !cancelled && setPlantedIds(ids))
@@ -215,7 +217,8 @@ function Home({ course }: { course: TaneCourse }) {
           <>
             <span className="mx-2">·</span>
             <span className="font-bold text-emerald-700">Lv.{levelFor(course, visitedCount, plantedIds)}</span>
-            （たずねたタネ {visitedCount}か所）
+            （たずねたタネ {visits?.visited}か所{visits && visits.official > 0 && `・公式の畑 ${visits.official}か所`}
+            {visits && visits.helps > 0 && `・水やりの手伝い ${visits.helps}回`}）
           </>
         )}
       </p>
@@ -270,7 +273,7 @@ function Home({ course }: { course: TaneCourse }) {
       )}
 
       <h2 className="text-sm font-bold text-[#3c2a14] mb-2">
-        あなたがまいたタネ{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
+        あなたの畑{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
       </h2>
       {error && <ErrorText message={error} />}
       {bases === null && !error && <Loading />}
@@ -307,7 +310,14 @@ function Home({ course }: { course: TaneCourse }) {
                   <div className="flex-1 min-w-0">
                     <WaterHint base={b} />
                   </div>
-                  <RemoteWaterButton base={b} onWatered={(next) => setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null)} />
+                  <RemoteWaterButton
+                    base={b}
+                    onWatered={(next) => {
+                      setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null);
+                      // ご当地の1個目の畑が実ると、次のご当地のタネが届いている
+                      if ((next.fruits ?? 0) > 0) loadSeeds().catch(() => {});
+                    }}
+                  />
                 </div>
                 {b.waitingSince && (
                   <div className="pl-9">
@@ -320,20 +330,23 @@ function Home({ course }: { course: TaneCourse }) {
         />
       )}
 
+      <OfficialFields course={course} />
+
       <div className="mt-8 bg-white rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">
         <h2 className="text-sm font-bold text-[#3c2a14] mb-2">あそびかた</h2>
         <ol className="list-decimal pl-5 space-y-1">
           <li>「おでかけ」で現在地の地区を調べます。位置情報が、その地区（○○一丁目のような町の区切り）の中にあるかどうかで判定します</li>
           <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）。タネをまいて開拓した地区の数で、ガーデンが増えます</li>
           <li>まいたタネは、水をやると タネ → 芽 → 若葉 → つぼみ → 花 → 実り と育ちます（時間がたつだけでは育ちません）</li>
-          <li>現地でチェックインすると水やりになります（実っていれば、水やりの代わりに実をもらいます。自分のタネでもほかの人のタネでも、1つのタネに朝・昼・夜それぞれ1回）。自分のタネには、このページから遠くから水をやることもできます（朝・昼・夜それぞれ1回、効き目は現地の10分の1）</li>
+          <li>現地でチェックインすると水やりになります（実っていれば、水やりの代わりに実をもらいます。自分のタネでもほかの人のタネでも、1つのタネに朝・昼・夜それぞれ1回）。自分のタネには、このページから遠くから水をやることもできます（朝・昼・夜それぞれ1回、効き目は現地の10分の1）。あなたに「農園を見せる」にしているフォロー中の人の畑にも、その人のガーデンの画面から遠くから水をやれます</li>
           <li>実ると実がなり（ランク1は10個。ランクが上がるほど多くなります）、あなたの手元に生産者の取り分として1個届きます（遠くから水をやって実らせても、ほかの人が実らせても）。残りは現地でチェックインした人が誰でも1個もらえます（早い者勝ち。現地で水をやって実らせた人は、そのまま1個もらえます）</li>
           <li>実が全部収穫されると、畑のランクが1つ上がり（次はもっと多く実ります）、「タネ待ち」になります。同じ種類の畑のタネを、このページから（遠くからでも）まき直すと、またタネから育ちます。1週間まかないと空き地に戻り、誰でもまけるようになります</li>
           <li>ほかの人のタネに初めてチェックインすると、そこにタネが1個落ちます（3個まで）。欲しければ拾い、要らなければ次の人のために置いていけます（誰でも早い者勝ち）</li>
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
           <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1週間以内）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
-          <li>ほかの人のタネをたずねた数（自分のタネは数えません）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
+          <li>近くにほかの人のタネが無くても、このページの「公式の畑」（ほかのコースの Lv.1 のもの12か所）に遠くからチェックインできます。ほかの人の畑と同じように、水をやって実らせて実をもらい、落ちているタネを拾えます。初めての畑はたずねたタネ1か所と数えます（新しい畑は1日{OFFICIAL_DAILY_LIMIT}か所まで）</li>
+          <li>ほかの人のタネをたずねた数（自分のタネは数えません。公式の畑も1か所ずつ数え、フォロー中の人の畑への遠くからの水やり10回も、1か所と数えます）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
         </ol>
       </div>
 
@@ -361,7 +374,13 @@ function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (ne
       const next = await waterRemotely(base.areaKey);
       onWatered(next);
       // 実ったら、生産者の取り分の1個が届いている(実ったあとはこのボタンが消えるので、ここで知らせる)
-      if ((next.fruits ?? 0) > 0) window.alert("実りました！ 生産者の取り分として、実が1個届きました");
+      if ((next.fruits ?? 0) > 0) {
+        const nextLocal = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
+        const localSeed = nextLocal?.rank === 1 ? nextLocalItem(nextLocal) : undefined;
+        window.alert(
+          `実りました！ 生産者の取り分として、実が1個届きました${localSeed ? `。ご当地のタネ「${localSeed.name}」も届きました（どこでもまけます）` : ""}`
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

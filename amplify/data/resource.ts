@@ -3,6 +3,7 @@ import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "../functions/chizu-tane-seeds/resource";
+import { chizuTaneShelf } from "../functions/chizu-tane-shelf/resource";
 import { chizuTaneStats } from "../functions/chizu-tane-stats/resource";
 import { createGameProfile } from "../functions/create-game-profile/resource";
 import { setFollowing } from "../functions/set-following/resource";
@@ -28,6 +29,9 @@ const schema = a
         // 地図パズルのベスト記録の合計とエリア数(submit-map-puzzle-challenge が更新する)
         totalScore: a.integer().required().default(0),
         areasPlayedCount: a.integer().required().default(0),
+        // アイコン(うさぽ農園で集めたもの1つの itemId。2026-10-31)。フォローの一覧などで、ニックネームの横に出す。
+        // 書くのは chizu-tane-player の setTaneIcon(集めたことのあるものかを確かめる)
+        iconItemId: a.string(),
       })
       .identifier(["userId"])
       .authorization((allow) => [allow.authenticated().to(["read"])]),
@@ -280,6 +284,8 @@ const schema = a
         lastLng: a.float(),
         lastLat: a.float(),
         lastMovedAt: a.datetime(),
+        // フォローしている人の畑に遠くから水をやった回数(手伝い)。HELPS_PER_VISIT 回で、たずねたタネ1か所と数える(courses.ts の levelVisitCount)
+        helpCount: a.integer(),
       })
       .identifier(["userId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
@@ -372,6 +378,61 @@ const schema = a
       .identifier(["userId", "areaKey"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
+    // 手伝いの水やり(手伝った人×拠点)。lastWaterOn は最後に水をやった時間帯(slotKey)で、1つの畑に朝・昼・夜に1回の判定に使う。
+    // 書くのも読むのも Lambda だけ(クライアントからは読ませない。誰も入っていない admin グループ)
+    GameTaneHelp: a
+      .model({
+        helperId: a.id().required(),
+        areaKey: a.string().required(),
+        lastWaterOn: a.string().required(),
+      })
+      .identifier(["helperId", "areaKey"])
+      .authorization((allow) => [allow.group("admin")]),
+
+    // 公式の畑(ユーザー×公式の畑。2026-10-31、src/lib/game/chizuTane/official.ts)。ほかの人の畑をたずねる練習なので、畑の育ちは1人ずつ別に持つ。
+    // 初めてチェックインしたときに行を作り、行の数をたずねたタネの数に足す。visitedOn は初めて来た日(officialDayKey)で、新しい畑は1日3か所までの判定に使う。
+    // water・fruits は本物の畑(GameTaneBase)と同じ意味。droppedSeeds は落ちているタネ(初めて来たときに1個落ちる)、
+    // lastCheckInOn は最後にチェックインした時間帯(slotKey)、harvestedAt は実をもらった日時(もらったら、この畑はおしまい)。
+    // 書くのは Lambda(chizu-tane-checkin)が DynamoDB で直接、条件付きで
+    GameTaneOfficialVisit: a
+      .model({
+        userId: a.id().required(),
+        fieldId: a.string().required(),
+        visitedAt: a.datetime().required(),
+        visitedOn: a.string().required(),
+        water: a.integer(),
+        fruits: a.integer(),
+        droppedSeeds: a.integer(),
+        lastCheckInOn: a.string(),
+        harvestedAt: a.datetime(),
+      })
+      .identifier(["userId", "fieldId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // おすそ分けの棚(持ち主×もの。2026-10-31)。持ち主が余ったタネや実を手元から出しておき、持ち主が「農園を見せる」にした
+    // フォロワーが遠くから1日1個持っていける。shelfKey は `${kind}#${itemId}`(kind は seed / fruit)。
+    // 本人だけ読める(ほかの人の棚は Lambda が確かめてから返す)。数は早い者勝ちなので、Lambda が DynamoDB で直接(条件付きで)書き換える
+    GameTaneShelf: a
+      .model({
+        ownerId: a.id().required(),
+        shelfKey: a.string().required(),
+        kind: a.string().required(),
+        itemId: a.string().required(),
+        quantity: a.integer().required(),
+      })
+      .identifier(["ownerId", "shelfKey"])
+      .authorization((allow) => [allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["read"])]),
+
+    // おすそ分けの棚から最後にもらった日(もらった人×持ち主)。1人が1つの棚から1日1個の判定に使う。Lambda だけが読み書きする
+    GameTaneShelfTake: a
+      .model({
+        takerId: a.id().required(),
+        ownerId: a.id().required(),
+        lastTakenOn: a.string().required(),
+      })
+      .identifier(["takerId", "ownerId"])
+      .authorization((allow) => [allow.group("admin")]),
+
     // 持っているもの(実。ユーザー×アイテム)。収穫したときだけ増える(訪ねてもらえるのはタネだけ)。ガーデンに飾れる数はこれ。
     // firstAreaName は初めて収穫した地区(「○○区 ○○町」)。産地ごとの記録は GameTaneHarvest
     GameTaneItem: a
@@ -409,8 +470,25 @@ const schema = a
         userId: a.id().required(),
         itemId: a.string().required(),
         quantity: a.integer().required(),
+        // 最後に手に入れた日時(持っているタネを新しい順に並べる。2026-10-31 に足したので、それより前の行は createdAt で並べる)
+        lastGainedAt: a.datetime(),
       })
       .identifier(["userId", "itemId"])
+      .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
+
+    // ご当地のタネをもらった記録(ユーザー×都道府県。docs/地図タネ_ご当地タネ設計書.md の 3章)。1個目 → 2個目 → 3個目を、それぞれ1回だけ渡すため。
+    // 1個目はその都道府県で「おでかけ」したときに本人が受け取り(claimLocalTaneSeed)、2個目は1個目の畑が実ったとき、
+    // 3個目は2個目の畑の実が全部収穫されたときに、チェックインの Lambda が持ち主に渡す。course はもらったときのコース
+    GameTaneLocalGrant: a
+      .model({
+        userId: a.id().required(),
+        prefCode: a.string().required(),
+        course: a.string().required(),
+        firstAt: a.datetime().required(),
+        secondAt: a.datetime(),
+        thirdAt: a.datetime(),
+      })
+      .identifier(["userId", "prefCode"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // 箱庭(画面では「ガーデン」。1人1つ)。objects は GardenObject(src/lib/game/chizuTane/garden.ts)の配列。
@@ -429,7 +507,8 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     TaneCheckInResult: a.customType({
-      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / waiting(タネ待ちの畑) / already(この時間帯はもう来た)
+      // watered(水をやった) / ripened(水をやって実った) / fruit(実をもらった) / have(ご当地の実で、もう持っているのでもらわなかった) /
+      // waiting(タネ待ちの畑) / already(この時間帯はもう来た)
       status: a.string().required(),
       townName: a.string().required(),
       baseTypeId: a.string().required(),
@@ -445,6 +524,53 @@ const schema = a
       droppedSeeds: a.integer(), // チェックインのあと、この拠点に落ちているタネの数
       stage: a.integer(), // チェックインのあとの育ちの段階(growth.ts)
       rank: a.integer(), // チェックインのあとのランク
+    }),
+
+    // フォローしている人の畑(手伝いの水やりの一覧)。fieldId は畑をまいた日時(畑の目印)。
+    // 地区も出す(全国農地と見比べれば地区は分かってしまうので隠さない。見せる相手は持ち主が選んでいる)
+    TaneHelpField: a.customType({
+      fieldId: a.string().required(),
+      prefName: a.string().required(),
+      cityName: a.string().required(),
+      townName: a.string().required(),
+      baseTypeId: a.string().required(),
+      seedItemId: a.string().required(),
+      rank: a.integer().required(),
+      water: a.integer(),
+      fruits: a.integer(),
+      waitingSince: a.datetime(),
+      wateredThisSlot: a.boolean().required(), // この時間帯にもう水をやった
+    }),
+
+    TaneHelpResult: a.customType({
+      field: a.ref("TaneHelpField").required(),
+      ripened: a.boolean().required(), // この水やりで実った
+      helpCount: a.integer().required(), // 手伝った回数(合計)
+      level: a.integer(),
+      leveledUp: a.boolean(),
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
+    }),
+
+    // 公式の畑へのチェックイン。status は watered(水をやった)/ ripened(水をやって実り、実をもらった)/ fruit(実っていた実をもらった)/ already(この時間帯はもう来た)。
+    // water・fruits・droppedSeeds はチェックインのあとの畑。quantity はもらった実の手元の数。todayCount はこの日に初めて来た公式の畑の数
+    TaneOfficialResult: a.customType({
+      status: a.string().required(),
+      itemId: a.string().required(),
+      water: a.integer().required(),
+      fruits: a.integer().required(),
+      droppedSeeds: a.integer().required(),
+      firstVisit: a.boolean().required(),
+      quantity: a.integer(),
+      todayCount: a.integer().required(),
+      level: a.integer(),
+      leveledUp: a.boolean(),
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
+    }),
+
+    // おすそ分けの棚。items は { kind, itemId, quantity }[](kind は seed / fruit)。takenToday はほかの人の棚を見たとき、今日もうもらったか
+    TaneShelfView: a.customType({
+      items: a.json().required(),
+      takenToday: a.boolean().required(),
     }),
 
     // コースごとの遊んでいる人数(コース選びの画面に出す)
@@ -575,6 +701,39 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
+    // 地図タネ: フォローしていて、自分に「農園を見せる」にしている人の畑の一覧(手伝いの水やり用)
+    listTaneHelpFields: a
+      .query()
+      .arguments({ ownerId: a.id().required() })
+      .returns(a.ref("TaneHelpField").array())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: フォローしている人の畑に遠くから水をやる(手伝い。持ち主の遠くからの水やりと同じく、1つの畑に朝・昼・夜に1回、現地の10分の1)
+    helpWaterTaneBase: a
+      .mutation()
+      .arguments({ ownerId: a.id().required(), fieldId: a.string().required() })
+      .returns(a.ref("TaneHelpResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 公式の畑に遠くからチェックインする(ほかのコースの畑だけ。1つの畑に朝・昼・夜に1回、新しい公式の畑は1日3か所まで)。
+    // 本物の畑と同じく、水をやる → 実ったら実らせた人がそのまま実をもらう。初めて来るとタネが1個落ちる
+    checkInTaneOfficialField: a
+      .mutation()
+      .arguments({ fieldId: a.string().required() })
+      .returns(a.ref("TaneOfficialResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 公式の畑に落ちているタネを拾う。拾えた数を返す
+    pickUpTaneOfficialSeed: a
+      .mutation()
+      .arguments({ officialFieldId: a.string().required() })
+      .returns(a.integer())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
     // 地図タネ: いまいる地区のタネ(拠点)に落ちているタネを、選んだ数だけ拾う(誰でも早い者勝ち)。拾えた数を返す
     pickUpTaneSeeds: a
       .mutation()
@@ -588,6 +747,51 @@ const schema = a
       .returns(a.integer())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneSeeds)),
+
+    // 地図タネ: いまいる都道府県の1個目のご当地のタネをもらう(Lv.3 以上、1人1都道府県に1回、自分のコースのもの)。もらったタネの itemId を返す
+    claimLocalTaneSeed: a
+      .mutation()
+      .arguments({
+        lng: a.float().required(),
+        lat: a.float().required(),
+        prefCode: a.string().required(),
+        cityCode: a.string().required(),
+      })
+      .returns(a.string())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneSeeds)),
+
+    // 地図タネ: おすそ分けの棚を見る(ownerId を省くと自分の棚。ほかの人の棚は、その人が自分に「農園を見せる」にしていて、自分がその人をフォローしているときだけ)
+    taneShelf: a
+      .query()
+      .arguments({ ownerId: a.id() })
+      .returns(a.ref("TaneShelfView"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneShelf)),
+
+    // 地図タネ: 自分のおすそ分けの棚に、手元のタネ・実を出す(count > 0)・手元に戻す(count < 0)。kind は seed / fruit
+    stockTaneShelf: a
+      .mutation()
+      .arguments({ kind: a.string().required(), itemId: a.string().required(), count: a.integer().required() })
+      .returns(a.ref("TaneShelfView"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneShelf)),
+
+    // 地図タネ: ほかの人のおすそ分けの棚から1個もらう(1人が1つの棚から1日1個、早い者勝ち)
+    takeFromTaneShelf: a
+      .mutation()
+      .arguments({ ownerId: a.id().required(), kind: a.string().required(), itemId: a.string().required() })
+      .returns(a.ref("TaneShelfView"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneShelf)),
+
+    // 地図タネ: 集めたものから1つ選んでアイコンにする(itemId を省くとアイコンを外す)。設定したアイコンの itemId を返す
+    setTaneIcon: a
+      .mutation()
+      .arguments({ itemId: a.string() })
+      .returns(a.string())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTanePlayer)),
 
     // ほかの人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしていて、自分が持ち主をフォローしているときだけ返す
     viewTaneGarden: a
@@ -637,6 +841,7 @@ const schema = a
     allow.resource(chizuTaneCheckin),
     allow.resource(chizuTaneSeeds),
     allow.resource(chizuTaneStats),
+    allow.resource(chizuTaneShelf),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

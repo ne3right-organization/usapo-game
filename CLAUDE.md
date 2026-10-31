@@ -8,7 +8,8 @@ usapo.net本体の「ゲームコーナー」機能を、本体のAWS Amplify構
 
 - `git@github.com:ne3right-organization/usapo-game.git`
 - 公開リポジトリ。認証情報や内部運用の詳細（利用者数、移行対象データの具体的な扱い、AWSのアカウント番号など）はこのファイルおよびリポジトリには書かない方針
-- ブランチ: `develop`（開発。push で dev 環境に自動デプロイ）→ `main`（本番。push で本番に自動デプロイ）。作業は `develop` にコミットし、リリースは `develop` を `main` に早送りマージする
+- ブランチ: `develop`（開発。push で dev 環境に自動デプロイ）→ `main`（本番。push で本番に自動デプロイ）。作業は `develop` にコミットする
+- リリース（2026-10-31〜）: 出すコミット（dev で確かめ終わったもの）からリリース用のブランチ `release/vX.Y.Z` を切って push し、`release/vX.Y.Z` → `main` のプルリクをマージする。`release/*` には自動デプロイが無いので、`develop` を先に進めていても、そのあとの変更を入れずに出せる。リリースのあとは `main` を `develop` に取り込む。staging の環境は作っていない（Gen2 はブランチごとにバックエンドが別で、Cognito・OAuth・ドメイン・CORS をもう1組用意することになるため）
 
 ## 経緯
 
@@ -148,16 +149,21 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 
 現実の地区（町丁）にタネ（拠点）をまき、ほかの人のタネを現地で訪ねてタネを分けてもらい、自分で育てて収穫した実（アイテム）を集める位置情報ゲーム。集めたものはガーデン（箱庭、自宅の庭のイメージ。おまけ）に飾れる。**メインは訪ねること**。
 
-- 設計書: `docs/地図タネ_全体設計書.md`（ルール・決定事項・コースの表）、`docs/地図タネ_初期試作設計書.md`（いま作っている範囲）、`docs/地図タネ_ご当地タネ設計書.md`（都道府県ごとのご当地もの。まだ作っていない）。検討のときは「箱庭コレクションゲーム」「地図コロ」と呼んでいた（名前の経緯は全体設計書の0章）
+- 設計書: `docs/地図タネ_全体設計書.md`（ルール・決定事項・コースの表）、`docs/地図タネ_初期試作設計書.md`（いま作っている範囲）、`docs/地図タネ_ご当地タネ設計書.md`（都道府県ごとのご当地もの。7都道府県ぶん）。検討のときは「箱庭コレクションゲーム」「地図コロ」と呼んでいた（名前の経緯は全体設計書の0章）
 - 画面での呼び名: 拠点＝タネ（種類ごとに果樹園・サイクルポート…）、箱庭＝ガーデン、町丁＝実際の地名と「地区」。**画面で「町丁」とは言わない**
 - 画面: `/game/chizu-tane`（トップ。ガーデンの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/map`（全国農地。全国のタネの地図）、`/collection`、`/garden`。下に固定のタブで切り替える（`TaneParts.tsx` の `TaneScreen`）。ログイン必須
 - 実装: `src/lib/game/chizuTane/`（コースの表 `courses.ts`・地区の判定 `geo.ts`・箱庭の検証 `garden.ts`。画面と Lambda の両方から使う）、`src/lib/game/chizuTaneData.ts`、`src/components/game/chizu-tane/`
-- バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（落ちているタネを拾う）/ `chizu-tane-stats`（コースごとの人数）（共通処理は `amplify/functions/shared/chizuTane.ts`）
-- **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・拠点に落ちているタネを拾う。ほかの人のタネに初めてチェックインするとそこに1個落ちる）は全体設計書 6.4、数は `courses.ts`。持ち主の手元に直接増えたり、時間で増えたりはしない
+- バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（落ちているタネを拾う）/ `chizu-tane-stats`（コースごとの人数）/ `chizu-tane-shelf`（おすそ分けの棚）（共通処理は `amplify/functions/shared/chizuTane.ts`）
+- **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・拠点に落ちているタネを拾う。ほかの人のタネに初めてチェックインするとそこに1個落ちる）は全体設計書 6.4、数は `courses.ts`。持ち主の手元に直接増えたり、時間で増えたりはしない。持っているタネは新しく手に入れたものから並べる（`GameTaneHeldSeed.lastGainedAt`。それより前の行は `createdAt`）
 - **地区の判定**: 位置 → 市区町村ごとの範囲の一覧（`public/chizu-tane/municipality-bounds.json`、作り方は `scripts/chizu-tane/build-municipality-bounds.mjs`）で候補を絞る → その市区町村の町丁 geojson だけを読む。都道府県・市区町村の geojson は重い（3.7MB / 北海道 7MB 超）ので毎回は読まない。Lambda はブラウザが言う地区を信用せず、位置から判定し直す。町丁のキーは `KEY_CODE`、町丁 geojson の市区町村コードは3桁
 - 位置はプレイヤーの実際の緯度・経度を保存せず、地区の代表点（`X_CODE` / `Y_CODE`）だけを持つ（移動の速さの確認用）
 - **畑の場所は生活圏が分かるので守る**（2026-10-29）: 誰でも読める `GameTaneBase` には持ち主の ID を入れない（ID はプロフィールの URL などから分かり、そこからタネの場所を全部たどれてしまうため）。持ち主は本人しか読めない `GameTaneOwnership`。ガーデンと実の「生産者」、それに畑に来た人の名前（持ち主に届く通知。見せていなければ「誰か」）は、その人が「農園を見せる」にしたフォロワー（`GameTaneShare`、フォロワーの一覧で一人ずつ選ぶ。はじめは誰にも見せない）にだけ出す。フォローはパズルのランキングからもできるため
 - **開発用の位置指定**: devgame.usapo.net と localhost だけ、地図をタップした点にいることにできる（代表点に寄せない。`CompletionMap` の `onPointSelect`）。dev の Lambda は速さを確かめない（`resource.ts` で `AWS_BRANCH` を見て切り替え）
 - **レベル・ガーデン・家**（2026-10-29）: レベルの上限は本番 Lv.3・テスト用（devgame・手元・main 以外の Lambda）Lv.10（`courses.ts` の `taneMaxLevel`。ブラウザはホスト名、Lambda は環境変数 `CHIZU_TANE_MAX_LEVEL` で決める。上がる条件は `courses.ts` の `TANE_LEVEL_THRESHOLDS`、きびしめ）。開拓した地区の数（タネをまいた地区。まき直しは数えない。手放した地区も数える）で別のデザインのガーデンが増え（おうちの庭・花の丘・海辺の庭・森の庭、`garden.ts` の `GARDEN_DESIGNS`。おうちの庭は `GameTaneGarden.objects`、ほかは `layouts`。所持数はすべてのガーデンを合わせて数える）、家と柵はレベルで立派になる（小屋 → 家 → 2階建て → お屋敷、`HOUSE_TIERS`）。条件と見た目は管理画面の `/admin/chizu-tane/levels`・`/admin/chizu-tane/gardens`。水やり・チェックインは朝・昼・夜に1回ずつ（`geo.ts` の `slotKey`）。畑のランクが上がると実の数が増える（ランク×10個）。実ったら、誰が実らせても持ち主に「生産者の取り分」が1個届く（`chizu-tane-checkin`）。**実が全部取られるとタネ待ち**（`GameTaneBase.waitingSince`）になり、持ち主が同じ種類の畑のタネをまき直す（`replantTaneBase`、遠くからでもよい）と育ち直す。1週間（`growth.ts` の `REPLANT_LIMIT_SLOTS`）まかなければ空き地に戻る。空き地に戻ったかはその場で計算し（定期的な処理は無い）、行は次にまいた人が条件付きの書き込みで上書きする。前の持ち主の `GameTaneOwnership` は消さず `releasedAt` を付ける（開拓した地区の数・まいたことのあるタネに数え続ける）。同じ地区のほかの人の訪問の記録（`GameTaneVisit`）は残るので、新しい畑に来ても「初めて」にはならない
+- **ご当地のタネ**（2026-10-30。設計書は `docs/地図タネ_ご当地タネ設計書.md`、定義は `localItems.ts`）: 都道府県ごとに 5コース×3つ（いまは7都道府県）。1個目は Lv.3 以上でその県におでかけしたときにボタンで受け取り（`claimLocalTaneSeed`、その県でしかまけない）、2個目は1個目の畑が実ったとき、3個目は2個目の畑の実が全部収穫されたときに持ち主に届く（もらった記録は `GameTaneLocalGrant`）。ご当地の畑はタネが落ちず、まき直せず、実は1つの品につき1人1個。**ほかの人のご当地の畑は、地図では実っても「？」で、現地でも実るまで何の畑か出さない**（`isHiddenLocalBase`。どこに誰が行ったかの手がかりになるため）
+- **手伝いの水やり**（2026-10-31）: 見せてもらえるガーデンの画面の下で、その人の畑に遠くから水をやれる（持ち主の遠くからの水やりと同じ回数・効き目。`listTaneHelpFields` / `helpWaterTaneBase`、`chizu-tane-checkin`）。手伝い10回でたずねたタネ1か所と数える（`GameTanePlayer.helpCount`、`courses.ts` の `levelVisitCount`）。手伝う人には畑の地区も出す（全国農地と見比べれば分かってしまうため、隠さずに「農園を見せる」の説明に「畑の場所が分かる」と書いた）。畑はまいた日時 `fieldId` で指し、1人1畑1回の記録は `GameTaneHelp`
+- **アイコン**（2026-10-31）: 集めたもの（実）から1つ選ぶと、フォローの一覧・見せてもらえるガーデン・フォロワーでニックネームの横に出る（`GameProfile.iconItemId`。集めたものの画面で実をタップして選ぶ。書くのは `chizu-tane-player` の `setTaneIcon`。画面の部品は `TaneParts.tsx` の `UserIcon`）
+- **おすそ分けの棚**（2026-10-31）: 余ったタネや実を自分のガーデンの画面で棚に出すと（手元から減る。ガーデンに飾っている実とご当地のタネは出せない）、農園を見せているフォロワーがその人のガーデンの画面から遠くから1人1日1個もらえる（早い者勝ち。棚の数は Lambda が DynamoDB を条件付きで書き換える）。`GameTaneShelf`（本人だけ読める）・`GameTaneShelfTake`（Lambda だけ）。もらった実の産地は、持ち主がその実を最後に収穫した畑のものを引き継ぐ。ご当地の実は1人1個のまま
+- **公式の畑**（2026-10-31）: 近くにほかの人がいなくてもレベルが上がり、ほかの人の畑のたずね方の練習にもなるように、トップの「あなたの畑」の下に、ほかのコースの Lv.1 の種類のランク1〜3 のもの（果樹園なら みかんの木・梨の木・いちご畑）の畑12か所を 3×4 で出す（`src/lib/game/chizuTane/official.ts`）。押すと畑ごとの画面（`/game/chizu-tane/official/[fieldId]`、`OfficialFieldView.tsx`。おでかけのチェックインと同じ形）で、遠くからチェックインする（1つの畑に朝・昼・夜に1回）。本物の畑と同じ流れで、1回目は水やり＋初めて来たのでタネが1個落ちる（拾う）、本物の畑と同じく5回の水やりで実り、実らせたのでそのまま実を1個もらっておしまい。畑の育ちは1人ずつ別（`GameTaneOfficialVisit`、本人が読める。書くのは `chizu-tane-checkin` の `checkInTaneOfficialField` / `pickUpTaneOfficialSeed` が DynamoDB で直接、条件付きで）。初めての畑はたずねたタネ1か所と数え（12か所でちょうど Lv.3）、新しい畑は1日3か所まで（本番は日付、dev は5分の区切り）。実際の地区は持たず、地図にも出さない。収穫の記録の生産者は `official`（画面では「うさぽ農園」）
 - **フォローしている人のガーデン**: ガーデンの画面の下から見に行ける（`/game/chizu-tane/garden/[userId]`、見るだけ）。見られるのは、持ち主が自分に「農園を見せる」にしていて（`GameTaneShare`）、自分が持ち主をフォローしているときだけ（はじめは見せない）。`GameTaneGarden` は本人しか読めず、ほかの人のガーデンは Lambda（`viewTaneGarden`）が確かめてから返す
-- 絵は未作成で、アイテムごとの絵文字を出している。絵は画像生成AIで作り、`art/chizu-tane/` に置いて `scripts/chizu-tane/process-item-images.mts` を動かすと `public/chizu-tane/items/` と `itemImages.generated.ts` ができて `imageUrl` になる（手順は `docs/地図タネ_絵の作り方.md`）。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`（ご当地のもののたたき台 `src/lib/game/chizuTane/localItems.ts` も出す。まだゲームでは手に入らない）
+- 絵は未作成で、アイテムごとの絵文字を出している。絵は画像生成AIで作り、`art/chizu-tane/` に置いて `scripts/chizu-tane/process-item-images.mts` を動かすと `public/chizu-tane/items/` と `itemImages.generated.ts` ができて `imageUrl` になる（手順は `docs/地図タネ_絵の作り方.md`）。アイテム定義と絵の一覧は管理ページ `/admin/chizu-tane/items`（ご当地のもの `src/lib/game/chizuTane/localItems.ts` も出す）

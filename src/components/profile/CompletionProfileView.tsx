@@ -20,6 +20,8 @@ import CompletionMap, { type FillStyle, type MapFeatureKey } from "@/components/
 import { FollowButton, FollowSummary } from "@/components/profile/FollowControls";
 import MapPuzzleScores from "@/components/profile/MapPuzzleScores";
 import { currentUser } from "@/lib/auth";
+import { UserIcon } from "@/components/game/chizu-tane/TaneParts";
+import TaneProfileLinks from "@/components/game/chizu-tane/TaneProfileLinks";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`;
@@ -56,7 +58,7 @@ type ViewState =
   | { status: "loading" }
   | { status: "needs-login" }
   | { status: "private" }
-  | { status: "ready"; userId: string; isSelf: boolean; nickname: string | null };
+  | { status: "ready"; userId: string; isSelf: boolean; nickname: string | null; iconItemId: string | null };
 
 export interface CompletionProfileViewProps {
   /** 省略すると自分 */
@@ -94,7 +96,7 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
           if (!cancelled) setView({ status: "private" });
           return;
         }
-        if (!cancelled) setView({ status: "ready", userId, isSelf, nickname: profile?.nickname ?? null });
+        if (!cancelled) setView({ status: "ready", userId, isSelf, nickname: profile?.nickname ?? null, iconItemId: profile?.iconItemId ?? null });
       } catch {
         if (!cancelled) setView({ status: "needs-login" });
       }
@@ -159,8 +161,9 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-lg font-bold text-[#3c2a14] truncate">
-            {view.nickname ? `👤 ${view.nickname}` : "ニックネーム未設定"}
+          <span className="flex items-center gap-2 text-lg font-bold text-[#3c2a14] min-w-0">
+            {view.iconItemId && <UserIcon iconItemId={view.iconItemId} size={30} />}
+            <span className="truncate">{view.nickname ?? "ニックネーム未設定"}</span>
           </span>
           {view.isSelf ? (
             <Link href="/nickname" className="shrink-0 text-xs text-[#78716c] underline underline-offset-2">
@@ -172,6 +175,8 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
         </div>
         {view.isSelf && <FollowSummary />}
       </div>
+
+      <TaneProfileLinks userId={view.userId} isSelf={view.isSelf} nickname={view.nickname} />
 
       <div className="flex gap-2">
         {COMPLETION_GAMES.map((g) => (

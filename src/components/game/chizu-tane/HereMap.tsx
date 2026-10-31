@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { TaneBase } from "@/lib/game/chizuTaneData";
+import { isHiddenLocalBase } from "@/lib/game/chizuTane/localItems";
 import { taneMarkerIcon } from "./taneMarker";
 
 // おでかけの地図: その市区町村の町丁 geojson を読み、現在地・いまいる地区・まかれているタネ(全国農地と同じアイコン)を出す。
@@ -19,11 +20,13 @@ export interface HereMapProps {
   /** 現在地(位置情報、または開発用の位置指定で選んだ点) */
   location: { lat: number; lng: number } | null;
   bases: TaneBase[];
+  /** 自分のタネの地区(ほかの人のご当地の畑は、何の畑かを伏せて出す) */
+  ownAreaKeys: ReadonlySet<string>;
   /** 地図のどこかをタップしたとき(開発用の位置指定)。渡さなければタップしても何もしない */
   onPointSelect?: (lat: number, lng: number) => void;
 }
 
-export default function HereMap({ geojsonUrl, selectedCode, location, bases, onPointSelect }: HereMapProps) {
+export default function HereMap({ geojsonUrl, selectedCode, location, bases, ownAreaKeys, onPointSelect }: HereMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; Lmod: typeof L } | null>(null);
   const layersRef = useRef<Map<string, L.GeoJSON[]>>(new Map());
@@ -116,11 +119,11 @@ export default function HereMap({ geojsonUrl, selectedCode, location, bases, onP
       if (typeof b.repLat !== "number" || typeof b.repLng !== "number") continue;
       const lat = b.repLat;
       const lng = b.repLng;
-      m.Lmod.marker([lat, lng], { icon: taneMarkerIcon(m.Lmod, b) })
+      m.Lmod.marker([lat, lng], { icon: taneMarkerIcon(m.Lmod, b, isHiddenLocalBase(b, ownAreaKeys.has(b.areaKey))) })
         .on("click", () => onPointSelectRef.current?.(lat, lng))
         .addTo(group);
     }
-  }, [loading, bases]);
+  }, [loading, bases, ownAreaKeys]);
 
   // 現在地
   useEffect(() => {

@@ -230,13 +230,19 @@ export default function GardenSvg({
 
       <Fence segments={backFence} tier={houseTier} />
 
-      {/* 置いたもの。足もとに影を付ける */}
+      {/* 置いたもの。足もとに影を付ける。絵はマスより上にはみ出すので、絵をタップしてもそのマスをタップしたことにする
+          (マスにだけ反応させると、絵を押したつもりで奥の空いたマスを押してしまい、選べない・しまえない) */}
       {sortedObjects.map((o) => {
         const item = TANE_ITEM_BY_ID.get(o.itemId);
         if (!item) return null;
         const c = at(o.x + 0.5, o.y + 0.5);
         return (
-          <g key={o.objectId} pointerEvents="none">
+          <g
+            key={o.objectId}
+            pointerEvents={onTileClick ? "visiblePainted" : "none"}
+            onClick={onTileClick ? () => onTileClick(o.x, o.y) : undefined}
+            className={onTileClick ? "cursor-pointer" : undefined}
+          >
             <ellipse cx={c.px} cy={c.py + 4} rx={15} ry={6} fill="#2f4a1f" opacity={0.22} />
             {item.imageUrl ? (
               <image href={item.imageUrl} x={c.px - 24} y={c.py - 42} width={48} height={48} />

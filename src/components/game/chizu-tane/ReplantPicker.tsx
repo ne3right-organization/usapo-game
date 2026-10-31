@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { replantDeadline } from "@/lib/game/chizuTane/growth";
+import { isLocalBaseTypeId } from "@/lib/game/chizuTane/localItems";
 import { replantBase, taneDayMs, type TaneBase, type TaneSeedCount } from "@/lib/game/chizuTaneData";
 import SeedPicker from "./SeedPicker";
 import { remainingLabel } from "./TaneParts";
@@ -29,6 +30,18 @@ export default function ReplantPicker({
   const typeName = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "この畑";
   const usable = seeds.filter((s) => TANE_ITEM_BY_ID.get(s.itemId)?.baseTypeId === base.baseTypeId);
   const deadline = replantDeadline(base, taneDayMs());
+
+  // ご当地の畑は1回かぎり(まき直せない)。役目を終えたので、期限が来たら空き地に戻る
+  if (isLocalBaseTypeId(base.baseTypeId)) {
+    return (
+      <div className="rounded-xl bg-[#f8f3ea] px-3 py-2 mt-1">
+        <p className="text-[11px] text-[#78716c]">
+          実が全部収穫されました。ご当地の畑はまき直せない1回かぎりの畑なので、これで役目を終えました
+          {deadline && <span className="text-[#a16207]">（{remainingLabel(deadline.getTime() - openedAt)}で空き地に戻ります）</span>}
+        </p>
+      </div>
+    );
+  }
 
   const handle = async () => {
     if (!chosen || busy) return;

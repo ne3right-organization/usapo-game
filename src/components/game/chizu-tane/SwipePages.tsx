@@ -4,19 +4,22 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * perPage 件ずつのページに分けて、左右のスワイプ(パソコンでは ‹ › ボタン)でめくる。
- * layout が "cols" なら1ページに横に並べ、"rows" なら縦に積む。initialIndex の件があるページを最初に開く
+ * layout が "cols" なら1ページに横に並べ、"rows" なら縦に積み、"grid" なら columns 列のます目に並べる(3列で perPage 9 なら 3×3)。
+ * initialIndex の件があるページを最初に開く
  */
 export default function SwipePages<T>({
   items,
   perPage,
   layout,
+  columns = 3,
   keyOf,
   render,
   initialIndex = 0,
 }: {
   items: T[];
   perPage: number;
-  layout: "cols" | "rows";
+  layout: "cols" | "rows" | "grid";
+  columns?: number;
   keyOf: (item: T) => string;
   render: (item: T) => ReactNode;
   initialIndex?: number;
@@ -43,9 +46,8 @@ export default function SwipePages<T>({
   };
 
   const pageClass =
-    layout === "cols"
-      ? "grid gap-2 w-full shrink-0 snap-start px-0.5 py-0.5"
-      : "flex flex-col gap-2 w-full shrink-0 snap-start px-0.5 py-0.5";
+    layout === "rows" ? "flex flex-col gap-2 w-full shrink-0 snap-start px-0.5 py-0.5" : "grid gap-2 w-full shrink-0 snap-start px-0.5 py-0.5";
+  const gridColumns = layout === "cols" ? perPage : layout === "grid" ? columns : null;
 
   return (
     <div>
@@ -56,7 +58,7 @@ export default function SwipePages<T>({
           className="flex items-start overflow-x-auto snap-x snap-mandatory overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {pages.map((group, p) => (
-            <div key={p} className={pageClass} style={layout === "cols" ? { gridTemplateColumns: `repeat(${perPage}, minmax(0, 1fr))` } : undefined}>
+            <div key={p} className={pageClass} style={gridColumns ? { gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` } : undefined}>
               {group.map((item) => (
                 <div key={keyOf(item)} className="min-w-0">
                   {render(item)}

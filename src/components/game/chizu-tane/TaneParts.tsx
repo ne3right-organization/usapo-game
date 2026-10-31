@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   TANE_BASE_TYPE_BY_ID,
   TANE_ITEM_BY_ID,
+  HELPS_PER_VISIT,
   nextLevelNeeds,
   seedsForLevel,
   type TaneCourse,
@@ -57,6 +58,17 @@ function WaitingIcon({ size }: { size: number }) {
     return <img src={url} alt="" width={size} height={size} className="inline-block align-middle" aria-hidden />;
   }
   return <span className="inline-block w-3 h-3 rounded-full border-2 border-[#a16207] bg-white align-[-1px]" aria-hidden />;
+}
+
+/** 人のアイコン。うさぽ農園で集めたものから選んだ実(iconItemId)の絵で、選んでいなければ 👤 */
+export function UserIcon({ iconItemId, size = 24 }: { iconItemId?: string | null; size?: number }) {
+  const item = iconItemId ? TANE_ITEM_BY_ID.get(iconItemId) : undefined;
+  if (item) return <ItemIcon item={item} size={size} />;
+  return (
+    <span role="img" aria-label="人" style={{ fontSize: size * 0.8, lineHeight: 1 }}>
+      👤
+    </span>
+  );
 }
 
 /**
@@ -241,7 +253,7 @@ export function NextLevelHint({
       </p>
       <p>
         {next.visitsRemaining > 0 ? "□" : "☑"} ほかの人のタネに、あと{next.visitsRemaining}か所チェックインする
-        <span className="text-[#a8937a]">（自分のタネは数えません）</span>
+        <span className="text-[#a8937a]">（自分のタネは数えません。フォロー中の人の畑への遠くからの水やり{HELPS_PER_VISIT}回で1か所）</span>
       </p>
       <p>
         {next.unplanted.length > 0 ? "□" : "☑"} いまのタネを3つともまく（{current.length - next.unplanted.length}/{current.length}
@@ -266,7 +278,8 @@ export function NoSeedsHelp({ onMap = false }: { onMap?: boolean }) {
 }
 
 /** まいたタネの育ち具合:「🌸 花 ●●●●●○ · ランク2」。実ったら残っている実の数 */
-export function GrowthBadge({ base }: { base: GrowingBase & { rank: number; seedItemId?: string } }) {
+/** 育ち具合。hidden(ほかの人のご当地の畑)なら、実っていても実の絵の代わりに「？」を出す */
+export function GrowthBadge({ base, hidden = false }: { base: GrowingBase & { rank: number; seedItemId?: string }; hidden?: boolean }) {
   if (isWaitingReplant(base)) {
     return (
       <span className="text-xs text-[#a16207]">
@@ -279,7 +292,14 @@ export function GrowthBadge({ base }: { base: GrowingBase & { rank: number; seed
   const s = GROWTH_STAGES[stage];
   return (
     <span className={`text-xs ${stage === RIPE_STAGE ? "font-bold text-amber-600" : "text-emerald-700"}`}>
-      <GrowthStageIcon stage={stage} seedItemId={base.seedItemId} size={18} /> {s.label}
+      {hidden && stage === RIPE_STAGE ? (
+        <span role="img" aria-label="なぞの実" style={{ fontSize: 15, lineHeight: 1 }}>
+          ❓
+        </span>
+      ) : (
+        <GrowthStageIcon stage={stage} seedItemId={base.seedItemId} size={18} />
+      )}{" "}
+      {s.label}
       <span className="ml-1 tracking-tighter text-[10px]" aria-hidden>
         {GROWTH_STAGES.map((_, i) => (i <= stage ? "●" : "○")).join("")}
       </span>

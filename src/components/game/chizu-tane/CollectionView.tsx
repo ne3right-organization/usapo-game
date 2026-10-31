@@ -4,9 +4,18 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_COURSES, TANE_ITEM_BY_ID, fruitName, prototypeItems, type TaneItem } from "@/lib/game/chizuTane/courses";
 import {
+  TANE_LOCAL_ITEMS,
+  TANE_LOCAL_ITEM_BY_ID,
+  TANE_LOCAL_PREFS,
+  TANE_LOCAL_RANK_ROLES,
+  type TaneLocalItem,
+} from "@/lib/game/chizuTane/localItems";
+import {
   fetchMyHarvests,
+  fetchMyIconItemId,
   fetchMyItems,
   fetchOwnerViews,
+  setTaneIcon,
   type TaneHarvest,
   type TaneOwnedItem,
   type TaneOwnerView,
@@ -33,15 +42,18 @@ function Collection() {
   const [owned, setOwned] = useState<Map<string, TaneOwnedItem> | null>(null);
   const [harvests, setHarvests] = useState<TaneHarvest[]>([]);
   const [openItem, setOpenItem] = useState<TaneItem | null>(null);
+  // 自分のアイコン(集めたものから1つ。フォローの一覧などでニックネームの横に出る)
+  const [iconItemId, setIconItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchMyItems(), fetchMyHarvests()])
-      .then(([items, hs]) => {
+    Promise.all([fetchMyItems(), fetchMyHarvests(), fetchMyIconItemId()])
+      .then(([items, hs, icon]) => {
         if (cancelled) return;
         setOwned(new Map(items.map((i) => [i.itemId, i])));
         setHarvests(hs);
+        setIconItemId(icon);
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     return () => {
@@ -52,12 +64,23 @@ function Collection() {
   if (error) return <ErrorText message={error} />;
   if (!owned) return <Loading />;
 
-  // 試作で手に入るものに、それ以外で持っているもの(あとから範囲を広げたときの分)を足す
+  // 試作で手に入るものに、それ以外で持っているもの(あとから範囲を広げたときの分)を足す。ご当地のものは下に都道府県ごとにまとめる
   const shown = new Map<string, TaneItem>(prototypeItems().map((i) => [i.itemId, i]));
+  const localOwned: TaneLocalItem[] = [];
   for (const id of owned.keys()) {
+    const local = TANE_LOCAL_ITEM_BY_ID.get(id);
+    if (local) {
+      localOwned.push(local);
+      continue;
+    }
     const item = TANE_ITEM_BY_ID.get(id);
     if (item) shown.set(id, item);
   }
+  // 持っているご当地のものを、都道府県コード・コース・何個目の順に
+  const localByPref = TANE_LOCAL_PREFS.map((p) => ({
+    ...p,
+    items: TANE_LOCAL_ITEMS.filter((i) => i.local === p.prefCode && localOwned.includes(i)),
+  })).filter((p) => p.items.length > 0);
   const ownedCount = [...shown.keys()].filter((id) => owned.has(id)).length;
   const placeCount = (itemId: string) => new Set(harvests.filter((h) => h.itemId === itemId).map((h) => h.areaKey)).size;
 
@@ -110,8 +133,41 @@ function Collection() {
           </section>
         );
       })}
+      {/* ご当地のもの(旅先で手に入れたもの)。持っているものだけ、都道府県ごとに出す */}
+      {localByPref.length > 0 && (
+        <section className="mb-5">
+          <h2 className="text-xs font-bold text-[#a8937a] mb-2">🗾 ご当地</h2>
+          {localByPref.map((p) => (
+            <div key={p.prefCode} className="mb-3">
+              <p className="text-[11px] font-semibold text-[#78716c] mb-1">{p.prefName}</p>
+              <div className="grid grid-cols-3 gap-2">
+                {p.items.map((item) => (
+                  <button
+                    key={item.itemId}
+                    type="button"
+                    onClick={() => setOpenItem(item)}
+                    className="bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] active:scale-95 transition"
+                  >
+                    <div className="h-12 flex items-center justify-center">
+                      <ItemIcon item={item} size={44} />
+                    </div>
+                    <p className="text-xs font-bold text-[#3c2a14] mt-1">{item.name}</p>
+                    <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{TANE_LOCAL_RANK_ROLES[item.rank - 1]}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
       {openItem && (
-        <HarvestSheet item={openItem} harvests={harvests.filter((h) => h.itemId === openItem.itemId)} onClose={() => setOpenItem(null)} />
+        <HarvestSheet
+          item={openItem}
+          harvests={harvests.filter((h) => h.itemId === openItem.itemId)}
+          isIcon={iconItemId === openItem.itemId}
+          onIconChanged={setIconItemId}
+          onClose={() => setOpenItem(null)}
+        />
       )}
     </div>
   );
@@ -130,8 +186,34 @@ function formatDateTime(iso: string | null | undefined): string {
 }
 
 /** 1つの実の産地ごとの記録。同じ短い名前の産地が2つあれば(よその県の同じ名前の区・町)、都道府県から全部出す */
-function HarvestSheet({ item, harvests, onClose }: { item: TaneItem; harvests: TaneHarvest[]; onClose: () => void }) {
+function HarvestSheet({
+  item,
+  harvests,
+  isIcon,
+  onIconChanged,
+  onClose,
+}: {
+  item: TaneItem;
+  harvests: TaneHarvest[];
+  isIcon: boolean;
+  onIconChanged: (itemId: string | null) => void;
+  onClose: () => void;
+}) {
   const [owners, setOwners] = useState<Map<string, TaneOwnerView> | null>(null);
+  const [iconBusy, setIconBusy] = useState(false);
+  const [iconError, setIconError] = useState("");
+
+  const toggleIcon = async () => {
+    setIconBusy(true);
+    setIconError("");
+    try {
+      onIconChanged(await setTaneIcon(isIcon ? null : item.itemId));
+    } catch (err) {
+      setIconError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIconBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +249,22 @@ function HarvestSheet({ item, harvests, onClose }: { item: TaneItem; harvests: T
             閉じる
           </button>
         </div>
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            type="button"
+            onClick={toggleIcon}
+            disabled={iconBusy}
+            className={`rounded-xl px-3 py-1.5 text-xs font-semibold border disabled:opacity-50 ${
+              isIcon ? "bg-white text-[#78716c] border-[#e7dccb]" : "bg-emerald-600 text-white border-emerald-600"
+            }`}
+          >
+            {isIcon ? "アイコンをやめる" : "これをアイコンにする"}
+          </button>
+          <p className="text-[11px] text-[#a8937a] leading-tight">
+            {isIcon ? "いまのアイコンです。" : ""}フォローの一覧などで、ニックネームの横に出ます
+          </p>
+        </div>
+        {iconError && <p className="text-xs text-red-600 mb-3">{iconError}</p>}
         {places.size === 0 && <p className="text-sm text-[#78716c]">収穫の記録はありません</p>}
         <ul className="space-y-3">
           {[...places.entries()].map(([areaKey, hs]) => {
@@ -185,6 +283,8 @@ function HarvestSheet({ item, harvests, onClose }: { item: TaneItem; harvests: T
                     "…"
                   ) : owner.kind === "me" ? (
                     "あなた"
+                  ) : owner.kind === "official" ? (
+                    "うさぽ農園"
                   ) : owner.kind === "shared" ? (
                     <Link href={`/profile/${owner.userId}`} className="text-emerald-700 underline">
                       {owner.nickname}
