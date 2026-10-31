@@ -3,7 +3,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
-  TANE_ITEMS,
   TANE_ITEM_BY_ID,
   TANE_BASE_TYPE_BY_ID,
   TANE_COURSES,
@@ -181,12 +180,8 @@ function Home({ course }: { course: TaneCourse }) {
   // まいたことのあるタネ(まき直す前のものも含む。レベルの条件「いまのタネを3つともまく」に使う)
   const [plantedIds, setPlantedIds] = useState<Set<string>>(new Set());
 
-  const loadSeeds = () =>
-    fetchMySeeds().then((list) => {
-      // コースの表の順(ご当地のタネは最後)
-      const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
-      setSeeds([...list].sort((a, b) => (order.get(a.itemId) ?? Infinity) - (order.get(b.itemId) ?? Infinity)));
-    });
+  // 新しく手に入れたものから順(fetchMySeeds で並べてある)
+  const loadSeeds = () => fetchMySeeds().then(setSeeds);
 
   // タネ待ちの畑にまき直したあと: その畑と、持っているタネ・まいたことのあるタネを読み直す
   const handleReplanted = async (next: TaneBase) => {
@@ -278,7 +273,7 @@ function Home({ course }: { course: TaneCourse }) {
       )}
 
       <h2 className="text-sm font-bold text-[#3c2a14] mb-2">
-        あなたがまいたタネ{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
+        あなたの畑{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
       </h2>
       {error && <ErrorText message={error} />}
       {bases === null && !error && <Loading />}
@@ -335,14 +330,7 @@ function Home({ course }: { course: TaneCourse }) {
         />
       )}
 
-      <OfficialFields
-        course={course}
-        onCheckedIn={() => {
-          // たずねたタネの数が増え、レベルが上がるとタネも届く
-          fetchVisitedCount().then(setVisits).catch(() => {});
-          loadSeeds().catch(() => {});
-        }}
-      />
+      <OfficialFields course={course} />
 
       <div className="mt-8 bg-white rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">
         <h2 className="text-sm font-bold text-[#3c2a14] mb-2">あそびかた</h2>
@@ -357,7 +345,7 @@ function Home({ course }: { course: TaneCourse }) {
           <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
           <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
           <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1週間以内）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
-          <li>近くにほかの人のタネが無くても、このページの「公式の畑」（ほかのコースの Lv.1 のもの12か所）に遠くからチェックインできます。その実とタネを1個ずつもらえて（タネはおでかけでまけます）、たずねたタネ1か所と数えます（新しい畑は1日{OFFICIAL_DAILY_LIMIT}か所まで）</li>
+          <li>近くにほかの人のタネが無くても、このページの「公式の畑」（ほかのコースの Lv.1 のもの12か所）に遠くからチェックインできます。ほかの人の畑と同じように、水をやって実らせて実をもらい、落ちているタネを拾えます。初めての畑はたずねたタネ1か所と数えます（新しい畑は1日{OFFICIAL_DAILY_LIMIT}か所まで）</li>
           <li>ほかの人のタネをたずねた数（自分のタネは数えません。公式の畑も1か所ずつ数え、フォロー中の人の畑への遠くからの水やり10回も、1か所と数えます）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
         </ol>
       </div>

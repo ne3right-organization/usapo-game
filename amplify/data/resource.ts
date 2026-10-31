@@ -389,14 +389,22 @@ const schema = a
       .identifier(["helperId", "areaKey"])
       .authorization((allow) => [allow.group("admin")]),
 
-    // 公式の畑にチェックインした記録(ユーザー×公式の畑。2026-10-31、src/lib/game/chizuTane/official.ts)。1人1か所に1回で、
-    // そのとき実を1個もらう。visitedOn はチェックインした日(officialDayKey)で、1日3か所までの判定に使う。行の数をたずねたタネの数に足す
+    // 公式の畑(ユーザー×公式の畑。2026-10-31、src/lib/game/chizuTane/official.ts)。ほかの人の畑をたずねる練習なので、畑の育ちは1人ずつ別に持つ。
+    // 初めてチェックインしたときに行を作り、行の数をたずねたタネの数に足す。visitedOn は初めて来た日(officialDayKey)で、新しい畑は1日3か所までの判定に使う。
+    // water・fruits は本物の畑(GameTaneBase)と同じ意味。droppedSeeds は落ちているタネ(初めて来たときに1個落ちる)、
+    // lastCheckInOn は最後にチェックインした時間帯(slotKey)、harvestedAt は実をもらった日時(もらったら、この畑はおしまい)。
+    // 書くのは Lambda(chizu-tane-checkin)が DynamoDB で直接、条件付きで
     GameTaneOfficialVisit: a
       .model({
         userId: a.id().required(),
         fieldId: a.string().required(),
         visitedAt: a.datetime().required(),
         visitedOn: a.string().required(),
+        water: a.integer(),
+        fruits: a.integer(),
+        droppedSeeds: a.integer(),
+        lastCheckInOn: a.string(),
+        harvestedAt: a.datetime(),
       })
       .identifier(["userId", "fieldId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
@@ -462,6 +470,8 @@ const schema = a
         userId: a.id().required(),
         itemId: a.string().required(),
         quantity: a.integer().required(),
+        // 最後に手に入れた日時(持っているタネを新しい順に並べる。2026-10-31 に足したので、それより前の行は createdAt で並べる)
+        lastGainedAt: a.datetime(),
       })
       .identifier(["userId", "itemId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
@@ -541,14 +551,20 @@ const schema = a
       seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
     }),
 
-    // 公式の畑へのチェックイン。itemId はもらった実(そのタネも1個もらう)、quantity はその実の手元の数。todayCount はこの日にチェックインした公式の畑の数
+    // 公式の畑へのチェックイン。status は watered(水をやった)/ ripened(水をやって実り、実をもらった)/ fruit(実っていた実をもらった)/ already(この時間帯はもう来た)。
+    // water・fruits・droppedSeeds はチェックインのあとの畑。quantity はもらった実の手元の数。todayCount はこの日に初めて来た公式の畑の数
     TaneOfficialResult: a.customType({
+      status: a.string().required(),
       itemId: a.string().required(),
-      quantity: a.integer().required(),
+      water: a.integer().required(),
+      fruits: a.integer().required(),
+      droppedSeeds: a.integer().required(),
+      firstVisit: a.boolean().required(),
+      quantity: a.integer(),
       todayCount: a.integer().required(),
       level: a.integer(),
       leveledUp: a.boolean(),
-      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: official / level)
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
     }),
 
     // おすそ分けの棚。items は { kind, itemId, quantity }[](kind は seed / fruit)。takenToday はほかの人の棚を見たとき、今日もうもらったか
@@ -701,11 +717,20 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
-    // 地図タネ: 公式の畑に遠くからチェックインして実とタネを1個ずつもらう(ほかのコースの畑だけ、1人1か所に1回、新しい公式の畑は1日3か所まで)
+    // 地図タネ: 公式の畑に遠くからチェックインする(ほかのコースの畑だけ。1つの畑に朝・昼・夜に1回、新しい公式の畑は1日3か所まで)。
+    // 本物の畑と同じく、水をやる → 実ったら実らせた人がそのまま実をもらう。初めて来るとタネが1個落ちる
     checkInTaneOfficialField: a
       .mutation()
       .arguments({ fieldId: a.string().required() })
       .returns(a.ref("TaneOfficialResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 公式の畑に落ちているタネを拾う。拾えた数を返す
+    pickUpTaneOfficialSeed: a
+      .mutation()
+      .arguments({ officialFieldId: a.string().required() })
+      .returns(a.integer())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 

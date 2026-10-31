@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TANE_BASE_TYPE_BY_ID, TANE_ITEMS, TANE_ITEM_BY_ID, fruitName, type TaneCourse } from "@/lib/game/chizuTane/courses";
+import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID, fruitName, type TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
 import { RIPE_STAGE, growthStage, waterUntilRipe } from "@/lib/game/chizuTane/growth";
 import {
@@ -90,11 +90,9 @@ function Here({ player }: { player: TanePlayer }) {
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [chosenItemId, setChosenItemId] = useState<string | null>(null);
   const applySeeds = useCallback((list: TaneSeedCount[]) => {
-    // コースの表の順に並べる(ご当地のタネは最後)
-    const order = new Map(TANE_ITEMS.map((t, i) => [t.itemId, i]));
-    const sorted = [...list].sort((a, b) => (order.get(a.itemId) ?? Infinity) - (order.get(b.itemId) ?? Infinity));
-    setSeeds(sorted);
-    setChosenItemId((cur) => (cur && sorted.some((x) => x.itemId === cur) ? cur : sorted[0]?.itemId ?? null));
+    // 新しく手に入れたものから順(fetchMySeeds で並べてある)。はじめは一番新しいタネを選ぶ
+    setSeeds(list);
+    setChosenItemId((cur) => (cur && list.some((x) => x.itemId === cur) ? cur : list[0]?.itemId ?? null));
   }, []);
   const reloadSeeds = useCallback(async () => applySeeds(await fetchMySeeds()), [applySeeds]);
   // ご当地のタネ(1個目)をもらった都道府県と、いまのレベル(Lv.3 からもらえる。チェックインでレベルが上がったら書き換える)

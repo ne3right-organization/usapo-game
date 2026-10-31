@@ -135,16 +135,17 @@ export async function listOfficialVisits(c: DataClient, userId: string) {
 export interface SeedGain {
   itemId: string;
   count: number;
-  reason: "level" | "official";
+  reason: "level";
 }
 
 /** タネ(もの)を増やす(無ければ作る) */
 export async function addSeeds(c: DataClient, userId: string, itemId: string, count: number): Promise<void> {
   const existing = unwrap(await c.models.GameTaneHeldSeed.get({ userId, itemId }));
+  const lastGainedAt = new Date().toISOString();
   unwrap(
     existing
-      ? await c.models.GameTaneHeldSeed.update({ userId, itemId, quantity: existing.quantity + count })
-      : await c.models.GameTaneHeldSeed.create({ userId, itemId, quantity: count })
+      ? await c.models.GameTaneHeldSeed.update({ userId, itemId, quantity: existing.quantity + count, lastGainedAt })
+      : await c.models.GameTaneHeldSeed.create({ userId, itemId, quantity: count, lastGainedAt })
   );
 }
 
@@ -264,7 +265,7 @@ export async function takeDroppedSeeds(areaKey: string, userId: string, itemId: 
               TableName: HELD_SEED_TABLE,
               Key: { userId: { S: userId }, itemId: { S: itemId } },
               UpdateExpression:
-                "SET quantity = if_not_exists(quantity, :zero) + :n, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now",
+                "SET quantity = if_not_exists(quantity, :zero) + :n, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now, lastGainedAt = :now",
               ExpressionAttributeNames: { "#tn": "__typename" },
               ExpressionAttributeValues: {
                 ":n": { N: String(count) },
