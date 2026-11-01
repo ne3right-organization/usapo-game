@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { TANE_ITEM_BY_ID, type TaneItem } from "@/lib/game/chizuTane/courses";
+import { TANE_ITEM_BY_ID, seedsNeededToLevelUp, type TaneCourse, type TaneItem } from "@/lib/game/chizuTane/courses";
 import { countPlaced } from "@/lib/game/chizuTane/garden";
 import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
 import {
+  fetchMyPlantedItemIds,
   fetchMySeeds,
   fetchShelf,
+  fetchTanePlayer,
   openGarden,
   stockShelf,
   takeFromShelf,
@@ -25,14 +27,27 @@ function ShelfIcon({ kind, item, size = 32 }: { kind: TaneShelfItem["kind"]; ite
 
 const label = (kind: TaneShelfItem["kind"], item: TaneItem) => (kind === "seed" ? `${item.name}のタネ` : item.name);
 
-/** 自分の棚と、棚に出せるもの(タネは持っている数、実はガーデンに飾っていない数) */
+/**
+ * 自分の棚と、棚に出せるもの(タネは持っている数、実はガーデンに飾っていない数)。
+ * レベルを上げるのにまだまいていない自分のコースのタネは、1個は手元に残す(Lambda でも確かめる)
+ */
 async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[] }> {
-  const [shelf, seeds, garden] = await Promise.all([fetchShelf(), fetchMySeeds(), openGarden()]);
+  const [shelf, seeds, garden, player, planted] = await Promise.all([
+    fetchShelf(),
+    fetchMySeeds(),
+    openGarden(),
+    fetchTanePlayer(),
+    fetchMyPlantedItemIds(),
+  ]);
   const placed = countPlaced([...garden.objects, ...Object.values(garden.layouts).flatMap((objs) => objs ?? [])]);
+  const needed = player ? seedsNeededToLevelUp(player.course as TaneCourse, planted) : new Set<string>();
   return {
     shelf,
     spare: [
-      ...seeds.filter((x) => x.quantity > 0 && !TANE_LOCAL_ITEM_BY_ID.has(x.itemId)).map((x) => ({ kind: "seed" as const, ...x })),
+      ...seeds
+        .filter((x) => !TANE_LOCAL_ITEM_BY_ID.has(x.itemId))
+        .map((x) => ({ kind: "seed" as const, ...x, quantity: x.quantity - (needed.has(x.itemId) ? 1 : 0) }))
+        .filter((x) => x.quantity > 0),
       ...garden.items
         .map((x) => ({ kind: "fruit" as const, itemId: x.itemId, quantity: x.quantity - (placed.get(x.itemId) ?? 0) }))
         .filter((x) => x.quantity > 0),
@@ -137,7 +152,7 @@ export function MyShelf() {
     <section className="mt-6">
       <h2 className="text-xs font-bold text-[#a8937a] mb-1">🧺 おすそ分けの棚</h2>
       <p className="text-[11px] text-[#a8937a] mb-2 leading-relaxed">
-        余ったタネや実を棚に出しておくと、あなたが「農園を見せる」にしたフォロワーが、遠くから1日1個ずつ持っていけます。出したものは手元から減ります（戻すこともできます）。ガーデンに飾っている実と、ご当地のタネは出せません。
+        余ったタネや実を棚に出しておくと、あなたが「農園を見せる」にしたフォロワーが、遠くから1日1個ずつ持っていけます。出したものは手元から減ります（戻すこともできます）。ガーデンに飾っている実と、ご当地のタネは出せません。レベルを上げるのにまだまいていないタネは、1個は手元に残します。
       </p>
       {error && <ErrorText message={error} />}
       {!shelf && !error && <Loading />}
