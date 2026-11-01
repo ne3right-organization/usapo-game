@@ -466,7 +466,7 @@ function Here({ player }: { player: TanePlayer }) {
             <p className="text-xs text-[#a8937a]">{district.cityName}</p>
             <p className="text-lg font-bold text-[#3c2a14]">{district.townName}</p>
             {locError && <ErrorText message={locError} />}
-            <p className="text-[11px] text-[#a8937a] mt-1">
+            <p className="text-2xs text-[#a8937a] mt-1">
               歩くと、いまいる地区も切り替わります。違う地区になっていたら、少し動くか、地図の右下の現在地ボタンを押してください。
             </p>
           </div>
@@ -481,7 +481,7 @@ function Here({ player }: { player: TanePlayer }) {
             onLocate={handleLocate}
             focusKey={focusKey}
           />
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mt-2 mb-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-[#78716c] mt-2 mb-3">
             <GrowthLegend />
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 h-3 rounded-full bg-blue-600 border-2 border-white shadow" />
@@ -616,7 +616,7 @@ function Here({ player }: { player: TanePlayer }) {
                           </button>
                         ))}
                       </div>
-                      <p className="text-[11px] text-amber-700 mt-2">拾わなければ、そのまま残ります</p>
+                      <p className="text-2xs text-amber-700 mt-2">拾わなければ、そのまま残ります</p>
                     </div>
                   )}
                 </>

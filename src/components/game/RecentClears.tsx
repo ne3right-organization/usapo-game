@@ -52,9 +52,9 @@ export default function RecentClears({ game }: { game: keyof typeof GAMES }) {
             href={href(item)}
             className="flex items-center gap-2 text-sm px-2 py-1.5 rounded-lg hover:bg-amber-50"
           >
-            <span className="text-[10px] text-[#a8937a] shrink-0 w-24 truncate">{levels[item.difficulty]}</span>
+            <span className="text-3xs text-[#a8937a] shrink-0 w-24 truncate">{levels[item.difficulty]}</span>
             <span className="text-[#3c2a14] truncate flex-1">{areaText(item)}</span>
-            <span className="text-[11px] text-[#a8937a] shrink-0">{formatRelativeTime(item.lastClearedAt)}</span>
+            <span className="text-2xs text-[#a8937a] shrink-0">{formatRelativeTime(item.lastClearedAt)}</span>
             <span className="text-teal-700 text-xs shrink-0">▶</span>
           </Link>
         ))}

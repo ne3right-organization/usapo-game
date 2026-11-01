@@ -66,7 +66,7 @@ export default function PushSettings() {
             {busy ? "設定中..." : enabled ? "通知を止める" : "この端末で通知を受け取る"}
           </button>
           {enabled && <p className="text-xs text-teal-700 mt-2 text-center">この端末で通知を受け取っています</p>}
-          <p className="text-[11px] text-[#a8937a] mt-2 leading-relaxed">端末ごとの設定です。ほかの端末でも受け取るには、その端末でも設定してください。</p>
+          <p className="text-2xs text-[#a8937a] mt-2 leading-relaxed">端末ごとの設定です。ほかの端末でも受け取るには、その端末でも設定してください。</p>
         </>
       )}
       {error && <p className="text-xs text-red-600 mt-2">{error}</p>}

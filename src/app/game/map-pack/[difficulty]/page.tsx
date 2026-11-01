@@ -235,7 +235,7 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
           <Link href="/game/map-pack" className="text-[#78716c] text-lg leading-none" title="戻る">
             ←
           </Link>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200">
+          <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200">
             {meta.label}
           </span>
           <h1 className="text-base font-bold text-[#3c2a14] truncate">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplaySize } from "@/lib/displaySize";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import type { TaneSeedCount } from "@/lib/game/chizuTaneData";
 import SwipePages from "./SwipePages";
@@ -17,11 +18,12 @@ export default function SeedPicker({
   onChoose: (itemId: string) => void;
   disabled?: boolean;
 }) {
+  const { seedPickerPerPage } = useDisplaySize();
   return (
     <div className="mb-3">
       <SwipePages
         items={seeds}
-        perPage={3}
+        perPage={seedPickerPerPage}
         layout="cols"
         keyOf={(sd) => sd.itemId}
         initialIndex={Math.max(0, seeds.findIndex((s) => s.itemId === chosenItemId))}
@@ -41,8 +43,8 @@ export default function SeedPicker({
             >
               {item ? <SeedIcon item={item} size={44} /> : null}
               <span className="mt-1 text-xs font-bold text-[#3c2a14] leading-tight">{item?.name ?? sd.itemId}</span>
-              {type && <span className="text-[10px] text-[#a8937a] leading-tight">{type.name}になる</span>}
-              <span className="text-[11px] text-emerald-700">×{sd.quantity}</span>
+              {type && <span className="text-3xs text-[#a8937a] leading-tight">{type.name}になる</span>}
+              <span className="text-2xs text-emerald-700">×{sd.quantity}</span>
             </button>
           );
         }}

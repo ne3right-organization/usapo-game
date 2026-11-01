@@ -16,6 +16,7 @@ import {
   type TaneShelfItem,
 } from "@/lib/game/chizuTaneData";
 import SwipePages from "./SwipePages";
+import { useDisplaySize } from "@/lib/displaySize";
 import { ErrorText, ItemIcon, Loading, SeedIcon } from "./TaneParts";
 
 // おすそ分けの棚: 余ったタネや実を手元から棚に出しておくと、「農園を見せる」にしたフォロワーが遠くから1日1個持っていける
@@ -57,8 +58,9 @@ async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]
 
 const keyOf = (x: { kind: TaneShelfItem["kind"]; itemId: string }) => `${x.kind}#${x.itemId}`;
 
-/** 棚のものを 3×3 ずつ並べて、横にスワイプでめくる。render は名前の下に出すもの(数とボタン) */
+/** 棚のものを 3×3(表示の大きさで変わる)ずつ並べて、横にスワイプでめくる。render は名前の下に出すもの(数とボタン) */
 function ShelfGrid({ items, render }: { items: TaneShelfItem[]; render: (x: TaneShelfItem, item: TaneItem) => ReactNode }) {
+  const { itemGrid } = useDisplaySize();
   const rows = items.flatMap((x) => {
     const item = TANE_ITEM_BY_ID.get(x.itemId);
     return item ? [{ x, item }] : [];
@@ -66,15 +68,16 @@ function ShelfGrid({ items, render }: { items: TaneShelfItem[]; render: (x: Tane
   return (
     <SwipePages
       items={rows}
-      perPage={9}
+      perPage={itemGrid.columns * itemGrid.rows}
+      columns={itemGrid.columns}
       layout="grid"
       keyOf={({ x }) => keyOf(x)}
       render={({ x, item }) => (
         <div className="h-full bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-          <div className="h-9 flex items-center justify-center">
+          <div className="min-h-9 flex items-center justify-center">
             <ShelfIcon kind={x.kind} item={item} />
           </div>
-          <p className="text-[11px] font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
+          <p className="text-2xs font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
           {render(x, item)}
         </div>
       )}
@@ -151,14 +154,14 @@ export function MyShelf() {
   return (
     <section className="mt-6">
       <h2 className="text-xs font-bold text-[#a8937a] mb-1">🧺 おすそ分けの棚</h2>
-      <p className="text-[11px] text-[#a8937a] mb-2 leading-relaxed">
+      <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
         余ったタネや実を棚に出しておくと、あなたが「農園を見せる」にしたフォロワーが、遠くから1日1個ずつ持っていけます。出したものは手元から減ります（戻すこともできます）。ガーデンに飾っている実と、ご当地のタネは出せません。レベルを上げるのにまだまいていないタネは、1個は手元に残します。
       </p>
       {error && <ErrorText message={error} />}
       {!shelf && !error && <Loading />}
       {shelf && (
         <>
-          <p className="text-[11px] font-semibold text-[#78716c] mb-1">棚に出しているもの</p>
+          <p className="text-2xs font-semibold text-[#78716c] mb-1">棚に出しているもの</p>
           {stocked.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3 mb-3">まだ何も出していません</p>
           ) : (
@@ -167,12 +170,12 @@ export function MyShelf() {
                 items={stocked}
                 render={(x) => (
                   <>
-                    <p className="text-[11px] text-emerald-700">×{x.quantity}</p>
+                    <p className="text-2xs text-emerald-700">×{x.quantity}</p>
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => change(x, -1)}
-                      className="mt-1 text-[11px] text-[#a8937a] underline underline-offset-2 disabled:opacity-50"
+                      className="mt-1 text-2xs text-[#a8937a] underline underline-offset-2 disabled:opacity-50"
                     >
                       1個戻す
                     </button>
@@ -181,7 +184,7 @@ export function MyShelf() {
               />
             </div>
           )}
-          <p className="text-[11px] font-semibold text-[#78716c] mb-1">手元から出す</p>
+          <p className="text-2xs font-semibold text-[#78716c] mb-1">手元から出す</p>
           {spareNow.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">出せるものがありません</p>
           ) : (
@@ -189,12 +192,12 @@ export function MyShelf() {
               items={spareNow}
               render={(x) => (
                 <>
-                  <p className="text-[10px] text-[#a8937a]">手元 {x.quantity}個</p>
+                  <p className="text-3xs text-[#a8937a]">手元 {x.quantity}個</p>
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => change(x, 1)}
-                    className="mt-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
+                    className="mt-1 rounded-lg px-2 py-0.5 text-2xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
                   >
                     1個出す
                   </button>
@@ -217,7 +220,7 @@ export function MyShelf() {
               </button>
             )}
           </div>
-          {pending.size > 0 && <p className="text-[11px] text-[#a16207] mt-1">保存すると確定して、画面を読み直します</p>}
+          {pending.size > 0 && <p className="text-2xs text-[#a16207] mt-1">保存すると確定して、画面を読み直します</p>}
         </>
       )}
     </section>
@@ -262,24 +265,24 @@ export function FriendShelf({ ownerId, nickname }: { ownerId: string; nickname: 
   return (
     <section className="mb-4">
       <h2 className="text-xs font-bold text-[#a8937a] mb-1">🧺 {nickname}さんのおすそ分けの棚</h2>
-      <p className="text-[11px] text-[#a8937a] mb-2 leading-relaxed">1日1個、好きなものをもらえます（早い者勝ち）</p>
+      <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">1日1個、好きなものをもらえます（早い者勝ち）</p>
       {error && <ErrorText message={error} />}
       {message && <p className="text-xs text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2 mb-2">{message}</p>}
       {!shelf && !error && <Loading />}
       {shelf && shelf.items.length === 0 && <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">いまは棚に何もありません</p>}
       {shelf && shelf.items.length > 0 && (
         <>
-          {shelf.takenToday && <p className="text-[11px] text-[#a16207] mb-1">今日はもうもらいました。また明日どうぞ</p>}
+          {shelf.takenToday && <p className="text-2xs text-[#a16207] mb-1">今日はもうもらいました。また明日どうぞ</p>}
           <ShelfGrid
             items={shelf.items}
             render={(x, item) => (
               <>
-                <p className="text-[11px] text-emerald-700">×{x.quantity}</p>
+                <p className="text-2xs text-emerald-700">×{x.quantity}</p>
                 <button
                   type="button"
                   disabled={busy || shelf.takenToday}
                   onClick={() => take(x, item)}
-                  className="mt-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
+                  className="mt-1 rounded-lg px-2 py-0.5 text-2xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 disabled:opacity-50"
                 >
                   もらう
                 </button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
@@ -11,6 +12,7 @@ import { ErrorText, GrowthStageIcon, ItemIcon, Loading } from "./TaneParts";
 // トップの「公式の畑」(src/lib/game/chizuTane/official.ts)。ほかのコースの Lv.1 のもの12か所を 3×4 に並べ、
 // 押すとその畑の画面(OfficialFieldView)へ行く。畑ごとに、まだ行っていない・育ち・実っている・タネが落ちている・おしまい を出す
 export default function OfficialFields({ course }: { course: TaneCourse }) {
+  const display = useDisplaySize();
   const [visits, setVisits] = useState<TaneOfficialVisit[] | null>(null);
   const [error, setError] = useState("");
   const fields = officialFieldsFor(course);
@@ -39,17 +41,17 @@ export default function OfficialFields({ course }: { course: TaneCourse }) {
           </span>
         )}
       </h2>
-      <p className="text-[11px] text-[#a8937a] mb-2 leading-relaxed">
+      <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
         うさぽ農園の、ほかのコースの Lv.1 の畑です。遠くからチェックインして、ほかの人の畑と同じように水をやって実らせ、実とタネをもらえます。初めての畑はたずねたタネ1か所と数えます
       </p>
       {error && <ErrorText message={error} />}
       {!visits && !error && <Loading />}
       {visits && (
         <>
-          <p className={`text-[11px] mb-1 ${left > 0 ? "text-emerald-700" : "text-[#a16207]"}`}>
+          <p className={`text-2xs mb-1 ${left > 0 ? "text-emerald-700" : "text-[#a16207]"}`}>
             {left > 0 ? `今日は、あと${left}か所の新しい畑に行けます` : "今日は新しい畑にはもう行けません（行ったことのある畑には行けます）"}
           </p>
-          <ul className="grid grid-cols-3 gap-2">
+          <ul className="grid gap-2" style={{ gridTemplateColumns: `repeat(${display.officialFieldColumns}, minmax(0, 1fr))` }}>
             {fields.map((f) => {
               const v = byField.get(f.fieldId);
               const done = !!v?.harvestedAt;
@@ -68,18 +70,18 @@ export default function OfficialFields({ course }: { course: TaneCourse }) {
                         🌰
                       </span>
                     )}
-                    <p className="text-[11px] font-bold text-[#3c2a14] leading-tight truncate">
+                    <p className="text-2xs font-bold text-[#3c2a14] leading-tight line-clamp-2">
                       {f.baseType.emoji} {f.baseType.name}
                     </p>
-                    <div className="h-9 flex items-center justify-center mt-1">
+                    <div className="min-h-9 flex items-center justify-center mt-1">
                       {v && !done ? (
                         <GrowthStageIcon stage={growthStage(v)} seedItemId={f.item.itemId} size={30} />
                       ) : (
                         <ItemIcon item={f.item} size={30} silhouette={!v} />
                       )}
                     </div>
-                    <p className="text-[10px] text-[#78716c] truncate">{f.item.name}</p>
-                    <p className={`text-[10px] mt-0.5 ${done ? "text-emerald-700" : ripe ? "text-amber-600 font-bold" : "text-[#a8937a]"}`}>{status}</p>
+                    <p className="text-3xs text-[#78716c] leading-tight line-clamp-2">{f.item.name}</p>
+                    <p className={`text-3xs mt-0.5 ${done ? "text-emerald-700" : ripe ? "text-amber-600 font-bold" : "text-[#a8937a]"}`}>{status}</p>
                   </Link>
                 </li>
               );

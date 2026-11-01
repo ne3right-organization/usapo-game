@@ -9,6 +9,50 @@
   --foreground: #3c2a14;
 }
 
+/* 表示の大きさ(設定画面で端末ごとに選ぶ。値は src/lib/displaySizes.ts)。文字の倍率 --text-scale を <html> の style に入れ、
+   下の @theme で Tailwind の文字の大きさ(text-xs など)に掛ける。絵の大きさと並べる数は、部品が useDisplaySize() で読む */
+:root {
+  --text-scale: 1;
+}
+
+/* 地図パズルの画面には、表示の大きさを効かせない(2026-11-02。いったんそのまま。src/app/game/map-puzzle/layout.tsx) */
+.display-size-reset {
+  --text-scale: 1;
+  --text-4xs: 0.5625rem;
+  --text-3xs: 0.625rem;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+}
+
+/* Tailwind の文字の大きさ(rem)に --text-scale を掛ける。行の高さは割合なので、そのままでよい。
+   10px・11px・9px の小さい文字も同じく大きくなるよう、text-2xs(11px)・text-3xs(10px)・text-4xs(9px)を足した
+   (text-[11px] のような px の指定は大きくならないので使わない) */
+@theme {
+  --text-4xs: calc(0.5625rem * var(--text-scale));
+  --text-4xs--line-height: calc(1 / 0.5625);
+  --text-3xs: calc(0.625rem * var(--text-scale));
+  --text-3xs--line-height: calc(1 / 0.625);
+  --text-2xs: calc(0.6875rem * var(--text-scale));
+  --text-2xs--line-height: calc(1 / 0.6875);
+  --text-xs: calc(0.75rem * var(--text-scale));
+  --text-sm: calc(0.875rem * var(--text-scale));
+  --text-base: calc(1rem * var(--text-scale));
+  --text-lg: calc(1.125rem * var(--text-scale));
+  --text-xl: calc(1.25rem * var(--text-scale));
+  --text-2xl: calc(1.5rem * var(--text-scale));
+  --text-3xl: calc(1.875rem * var(--text-scale));
+  --text-4xl: calc(2.25rem * var(--text-scale));
+  --text-5xl: calc(3rem * var(--text-scale));
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -35,7 +79,7 @@ body {
   padding: 0;
   /* 丸ゴシック(layout.tsx で読み込む M PLUS Rounded 1c)を太めに。読み込むまでは端末の日本語の書体 */
   font-family: var(--font-rounded), "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #3c2a14;

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchGameProfile, updateNickname } from "@/lib/game/mapPuzzleData";
 import PushSettings from "@/components/PushSettings";
+import DisplaySizeSettings from "@/components/DisplaySizeSettings";
 
 export default function NicknamePage() {
   const router = useRouter();
@@ -89,6 +90,7 @@ export default function NicknamePage() {
           {saving ? "保存中..." : isDelete ? "削除する" : "保存する"}
         </button>
       </div>
+      <DisplaySizeSettings />
       <PushSettings />
     </main>
   );

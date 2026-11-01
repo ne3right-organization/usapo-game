@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useMemo, useState } from "react";
 import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { GARDEN_DESIGNS, countPlaced, houseTierFor, type GardenDesignId, type GardenObject } from "@/lib/game/chizuTane/garden";
@@ -41,6 +42,7 @@ function newObjectId(): string {
 }
 
 function Garden() {
+  const display = useDisplaySize();
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [designId, setDesignId] = useState<GardenDesignId>("home");
   const [objects, setObjects] = useState<GardenObject[]>([]);
@@ -198,7 +200,7 @@ function Garden() {
           );
         })}
       </div>
-      <p className="text-[11px] text-[#a8937a] mb-2">
+      <p className="text-2xs text-[#a8937a] mb-2">
         家と柵: {tier.name}（Lv.{garden.level}）。新しい地区にタネをまくとガーデンが増え（いま{garden.plantedCount}地区）、レベルが上がると家と柵が立派になります
       </p>
       <div className="bg-[#eaf6ea] rounded-2xl p-2 mb-3">
@@ -266,7 +268,8 @@ function Garden() {
       ) : (
         <SwipePages
           items={garden.items.filter(({ itemId }) => TANE_ITEM_BY_ID.has(itemId))}
-          perPage={9}
+          perPage={display.itemGrid.columns * display.itemGrid.rows}
+          columns={display.itemGrid.columns}
           layout="grid"
           keyOf={({ itemId }) => itemId}
           render={({ itemId, quantity }) => {
@@ -283,11 +286,11 @@ function Garden() {
                 }}
                 className={`w-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
               >
-                <div className="h-9 flex items-center justify-center">
+                <div className="min-h-9 flex items-center justify-center">
                   <ItemIcon item={item} size={34} />
                 </div>
-                <p className="text-[10px] text-[#3c2a14] mt-1 truncate">{item.name}</p>
-                <p className="text-[10px] text-[#a8937a]">
+                <p className="text-3xs text-[#3c2a14] mt-1 leading-tight line-clamp-2">{item.name}</p>
+                <p className="text-3xs text-[#a8937a]">
                   {left}/{quantity}
                 </p>
               </button>

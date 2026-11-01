@@ -35,11 +35,11 @@ function MapPuzzleItem({ item }: { item: ChallengeRecord }) {
     <div className={card}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${DIFFICULTY_BADGE_CLASS[item.difficulty]}`}>
+          <span className={`text-3xs font-bold px-2 py-0.5 rounded-full shrink-0 ${DIFFICULTY_BADGE_CLASS[item.difficulty]}`}>
             {DIFFICULTY_LABELS[item.difficulty]}
           </span>
           <span className="text-sm font-semibold text-[#3c2a14] truncate">{areaText(item)}</span>
-          {item.isNewBest && <span className="text-[10px] font-bold text-amber-600 shrink-0">✨自己ベスト</span>}
+          {item.isNewBest && <span className="text-3xs font-bold text-amber-600 shrink-0">✨自己ベスト</span>}
         </div>
         <span className="text-xs text-[#a8937a] shrink-0">{formatRelativeTime(item.playedAt)}</span>
       </div>
@@ -67,11 +67,11 @@ function MapPackItem({ item }: { item: MapPackHistoryRecord }) {
     <div className={card}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${DIFFICULTY_BADGE_CLASS[item.difficulty]}`}>
+          <span className={`text-3xs font-bold px-2 py-0.5 rounded-full shrink-0 ${DIFFICULTY_BADGE_CLASS[item.difficulty]}`}>
             {MAP_PACK_LEVELS[item.difficulty]}
           </span>
           <span className="text-sm font-semibold text-[#3c2a14] truncate">{areaText(item)}</span>
-          {item.isNewBest && <span className="text-[10px] font-bold text-amber-600 shrink-0">✨自己ベスト</span>}
+          {item.isNewBest && <span className="text-3xs font-bold text-amber-600 shrink-0">✨自己ベスト</span>}
         </div>
         <span className="text-xs text-[#a8937a] shrink-0">{formatRelativeTime(item.playedAt)}</span>
       </div>

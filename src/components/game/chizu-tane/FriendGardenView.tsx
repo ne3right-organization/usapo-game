@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
@@ -163,7 +164,7 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
   return (
     <section className="mb-4">
       <h2 className="text-xs font-bold text-[#a8937a] mb-1">💧 {nickname}さんの畑に水をやる</h2>
-      <p className="text-[11px] text-[#a8937a] mb-2 leading-relaxed">
+      <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
         遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
       </p>
       {error && <ErrorText message={error} />}
@@ -204,7 +205,7 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
                       type="button"
                       onClick={() => handle(f)}
                       disabled={busy !== null || f.wateredThisSlot}
-                      className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
+                      className="shrink-0 rounded-lg px-2.5 py-1 text-2xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
                     >
                       {f.wateredThisSlot ? `${slot ? `${slot}の` : ""}水やりは済み` : busy === f.fieldId ? "水をやっています..." : "💧 遠くから水をやる"}
                     </button>
@@ -269,6 +270,7 @@ export function FollowingGardens() {
  * 自分のガーデンの画面のいちばん下に出す。農園を見せるかどうかはフォロワーの一覧(/profile/follows)で選ぶ
  */
 export function MyFollowers() {
+  const display = useDisplaySize();
   const [view, setView] = useState<{ userId: string; nickname: string | null; followers: FollowUser[]; shared: Set<string> } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -309,16 +311,16 @@ export function MyFollowers() {
       {view.followers.length > 0 && (
         <SwipePages
           items={view.followers}
-          perPage={3}
+          perPage={display.followersPerPage}
           layout="cols"
           keyOf={(u) => u.userId}
           render={(u) => (
             <Link href={`/profile/${u.userId}`} className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-2 py-3 text-center">
-              <span className="flex justify-center h-8 items-center mb-1">
+              <span className="flex justify-center min-h-8 items-center mb-1">
                 <UserIcon iconItemId={u.iconItemId} size={30} />
               </span>
               <span className="block text-xs font-semibold text-[#3c2a14] truncate">{u.nickname ?? "未設定"}</span>
-              <span className={`block text-[10px] mt-0.5 ${view.shared.has(u.userId) ? "text-emerald-700" : "text-[#a8937a]"}`}>
+              <span className={`block text-3xs mt-0.5 ${view.shared.has(u.userId) ? "text-emerald-700" : "text-[#a8937a]"}`}>
                 {view.shared.has(u.userId) ? "🌱 農園を見せている" : "🔒 見せていない"}
               </span>
             </Link>
@@ -326,11 +328,11 @@ export function MyFollowers() {
         />
       )}
       {view.followers.length > 0 && (
-        <Link href="/profile/follows" className="block text-right text-[11px] text-emerald-700 underline underline-offset-2 mt-1">
+        <Link href="/profile/follows" className="block text-right text-2xs text-emerald-700 underline underline-offset-2 mt-1">
           農園を見せる人を選ぶ →
         </Link>
       )}
-      <div className="text-[11px] text-[#a8937a] leading-relaxed mt-2 space-y-1">
+      <div className="text-2xs text-[#a8937a] leading-relaxed mt-2 space-y-1">
         <p>🌱 「農園を見せる」にしたフォロワーにだけ、次のことが分かるようになります。はじめは誰にも見せていません。</p>
         <ul className="list-disc pl-5">
           <li>あなたのガーデン</li>

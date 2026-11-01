@@ -49,7 +49,7 @@ export default function ReplantPicker({
 
   return (
     <div className="rounded-xl bg-[#f8f3ea] px-3 py-2 mt-1">
-      <p className="text-[11px] text-[#78716c]">
+      <p className="text-2xs text-[#78716c]">
         実が全部収穫されて、ランク{base.rank}になりました。タネをまき直すと、またタネから育ちます（{typeName}以外のタネをまくと、そのタネの畑になります。ランクはそのまま）
         {openAt && openAt.getTime() > openedAt ? (
           <span className="text-[#a16207]">
@@ -64,7 +64,7 @@ export default function ReplantPicker({
         )}
       </p>
       {usable.length === 0 ? (
-        <p className="text-[11px] text-[#a8937a] mt-1">
+        <p className="text-2xs text-[#a8937a] mt-1">
           まけるタネを持っていません（ご当地のタネは空き地にだけまけます）。ほかの人の畑に落ちているタネを拾うと、まき直せます
         </p>
       ) : open ? (
@@ -83,12 +83,12 @@ export default function ReplantPicker({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="mt-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-white border border-emerald-200"
+          className="mt-1.5 rounded-lg px-2.5 py-1 text-2xs font-semibold text-emerald-700 bg-white border border-emerald-200"
         >
           🌱 タネをまき直す
         </button>
       )}
-      {error && <p className="text-[10px] text-red-600 mt-1">{error}</p>}
+      {error && <p className="text-3xs text-red-600 mt-1">{error}</p>}
     </div>
   );
 }

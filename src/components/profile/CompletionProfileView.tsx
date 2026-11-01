@@ -199,7 +199,7 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
             key={l}
             type="button"
             onClick={() => select(game, l)}
-            className={`flex-1 text-[11px] font-semibold rounded-full py-1.5 border transition-colors ${
+            className={`flex-1 text-2xs font-semibold rounded-full py-1.5 border transition-colors ${
               level === l ? "text-white border-transparent" : "bg-white text-[#78716c] border-gray-200"
             }`}
             style={level === l ? { backgroundColor: meta.color } : undefined}

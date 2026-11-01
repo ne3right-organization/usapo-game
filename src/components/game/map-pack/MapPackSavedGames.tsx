@@ -48,7 +48,7 @@ export default function MapPackSavedGames() {
               <div className="text-sm font-semibold text-[#3c2a14] truncate">
                 {g.area.difficulty === "beginner" ? "日本" : areaLabelOf(g.area)}
               </div>
-              <div className="text-[11px] text-[#a8937a]">
+              <div className="text-2xs text-[#a8937a]">
                 {formatRelativeTime(new Date(g.savedAt).toISOString())}に中断・{g.dropped}個落とした
                 {g.source === "session" && "（このタブのみ）"}
               </div>

@@ -77,7 +77,7 @@ export default function MapPuzzlePage() {
                 <div className="text-3xl shrink-0">{d.emoji}</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${d.labelClass}`}>
+                    <span className={`text-3xs font-bold px-2 py-0.5 rounded-full ${d.labelClass}`}>
                       {d.label}
                     </span>
                     <span className="font-bold text-[#3c2a14] text-sm">{d.title}</span>
@@ -92,7 +92,7 @@ export default function MapPuzzlePage() {
         </div>
 
         {/* データ出典 */}
-        <p className="text-center text-[10px] text-[#c8b8a0] mt-12 leading-relaxed">
+        <p className="text-center text-3xs text-[#c8b8a0] mt-12 leading-relaxed">
           データ提供: e-stat（国勢調査小地域ポリゴン）<br />
           地図提供:{" "}
           <a

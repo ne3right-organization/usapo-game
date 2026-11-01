@@ -169,7 +169,7 @@ function TaneMap() {
       <div className="relative h-[400px] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(120,90,40,0.08)] bg-white mb-2">
         <div ref={containerRef} className="w-full h-full" />
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mb-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-[#78716c] mb-4">
         <GrowthLegend />
         <span>アイコンをタップすると詳しく見られます（地区の境目も出ます）</span>
       </div>
@@ -206,13 +206,13 @@ function TaneMap() {
           {selHidden && (
             <div className="shrink-0 w-24 flex flex-col items-center text-center">
               <span className="text-5xl leading-none">❓</span>
-              <span className="text-[10px] text-[#a8937a] mt-1 leading-tight">実ってから現地でチェックインすると分かります</span>
+              <span className="text-3xs text-[#a8937a] mt-1 leading-tight">実ってから現地でチェックインすると分かります</span>
             </div>
           )}
           {selFruit && (
             <div className="shrink-0 flex flex-col items-center">
               <ItemIcon item={selFruit} size={64} />
-              <span className="text-[10px] text-[#a8937a] mt-0.5">もらえる実</span>
+              <span className="text-3xs text-[#a8937a] mt-0.5">もらえる実</span>
             </div>
           )}
         </div>

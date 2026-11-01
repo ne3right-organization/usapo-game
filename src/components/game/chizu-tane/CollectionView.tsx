@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplaySize } from "@/lib/displaySize";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TANE_BASE_TYPE_BY_ID, TANE_COURSES, TANE_ITEM_BY_ID, fruitName, prototypeItems, type TaneItem } from "@/lib/game/chizuTane/courses";
@@ -39,6 +40,9 @@ export default function CollectionView() {
 }
 
 function Collection() {
+  // 列の数は設定の「表示の大きさ」で変わる(src/lib/displaySizes.ts)
+  const { collectionColumns } = useDisplaySize();
+  const gridColumns = { gridTemplateColumns: `repeat(${collectionColumns}, minmax(0, 1fr))` };
   const [owned, setOwned] = useState<Map<string, TaneOwnedItem> | null>(null);
   const [harvests, setHarvests] = useState<TaneHarvest[]>([]);
   const [openItem, setOpenItem] = useState<TaneItem | null>(null);
@@ -97,7 +101,7 @@ function Collection() {
             <h2 className="text-xs font-bold text-[#a8937a] mb-2">
               {course.emoji} {course.label}
             </h2>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid gap-2" style={gridColumns}>
               {items.map((item) => {
                 const mine = owned.get(item.itemId);
                 const type = TANE_BASE_TYPE_BY_ID.get(item.baseTypeId);
@@ -109,21 +113,21 @@ function Collection() {
                     onClick={() => setOpenItem(item)}
                     className="bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] enabled:active:scale-95 transition"
                   >
-                    <div className="h-12 flex items-center justify-center">
+                    <div className="min-h-12 flex items-center justify-center">
                       <ItemIcon item={item} size={44} silhouette={!mine} />
                     </div>
                     {mine ? (
                       <>
                         <p className="text-xs font-bold text-[#3c2a14] mt-1">{item.name}</p>
-                        <p className="text-[11px] text-emerald-700">×{mine.quantity}</p>
-                        <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">
+                        <p className="text-2xs text-emerald-700">×{mine.quantity}</p>
+                        <p className="text-3xs text-[#a8937a] mt-0.5 leading-tight">
                           {placeCount(item.itemId) > 0 ? `${placeCount(item.itemId)}か所で収穫` : "はじめから持っていた"}
                         </p>
                       </>
                     ) : (
                       <>
                         <p className="text-xs font-bold text-[#c8b8a0] mt-1">？？？</p>
-                        <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{type?.name ?? "タネ"}が実ったら収穫</p>
+                        <p className="text-3xs text-[#a8937a] mt-0.5 leading-tight">{type?.name ?? "タネ"}が実ったら収穫</p>
                       </>
                     )}
                   </button>
@@ -139,8 +143,8 @@ function Collection() {
           <h2 className="text-xs font-bold text-[#a8937a] mb-2">🗾 ご当地</h2>
           {localByPref.map((p) => (
             <div key={p.prefCode} className="mb-3">
-              <p className="text-[11px] font-semibold text-[#78716c] mb-1">{p.prefName}</p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-2xs font-semibold text-[#78716c] mb-1">{p.prefName}</p>
+              <div className="grid gap-2" style={gridColumns}>
                 {p.items.map((item) => (
                   <button
                     key={item.itemId}
@@ -148,11 +152,11 @@ function Collection() {
                     onClick={() => setOpenItem(item)}
                     className="bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] active:scale-95 transition"
                   >
-                    <div className="h-12 flex items-center justify-center">
+                    <div className="min-h-12 flex items-center justify-center">
                       <ItemIcon item={item} size={44} />
                     </div>
                     <p className="text-xs font-bold text-[#3c2a14] mt-1">{item.name}</p>
-                    <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{TANE_LOCAL_RANK_ROLES[item.rank - 1]}</p>
+                    <p className="text-3xs text-[#a8937a] mt-0.5 leading-tight">{TANE_LOCAL_RANK_ROLES[item.rank - 1]}</p>
                   </button>
                 ))}
               </div>
@@ -260,7 +264,7 @@ function HarvestSheet({
           >
             {isIcon ? "アイコンをやめる" : "これをアイコンにする"}
           </button>
-          <p className="text-[11px] text-[#a8937a] leading-tight">
+          <p className="text-2xs text-[#a8937a] leading-tight">
             {isIcon ? "いまのアイコンです。" : ""}フォローの一覧などで、ニックネームの横に出ます
           </p>
         </div>
@@ -276,7 +280,7 @@ function HarvestSheet({
                   {duplicated(short) ? fruitName(hs[0], item.name, true) : short}
                   <span className="text-emerald-700 font-normal ml-1">×{hs.length}</span>
                 </p>
-                <p className="text-[11px] text-[#a8937a]">{fruitName(hs[0], item.name, true)}</p>
+                <p className="text-2xs text-[#a8937a]">{fruitName(hs[0], item.name, true)}</p>
                 <p className="text-xs text-[#78716c] mt-1">
                   生産者:{" "}
                   {!owner ? (
@@ -293,7 +297,7 @@ function HarvestSheet({
                     <span className="text-[#c8b8a0]">ひみつ</span>
                   )}
                 </p>
-                <table className="w-full mt-2 text-[11px] text-[#78716c]">
+                <table className="w-full mt-2 text-2xs text-[#78716c]">
                   <thead>
                     <tr className="text-[#a8937a]">
                       <th className="text-left font-normal">実がなった日</th>

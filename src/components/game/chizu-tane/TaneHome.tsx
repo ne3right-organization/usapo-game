@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
@@ -138,7 +139,7 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
                 <span className="text-3xl">{c.emoji}</span>
                 <div className="flex-1 min-w-0">
                   <span className="font-bold text-[#3c2a14] text-sm">{c.label}コース</span>
-                  {counts && <span className="ml-2 text-[11px] text-emerald-700">👥 {counts.get(c.id) ?? 0}人が遊んでいます</span>}
+                  {counts && <span className="ml-2 text-2xs text-emerald-700">👥 {counts.get(c.id) ?? 0}人が遊んでいます</span>}
                   <p className="text-xs text-[#78716c] mt-0.5">{c.description}</p>
                   <p className="text-xs text-[#a8937a] mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     最初のタネ:
@@ -169,6 +170,7 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
 }
 
 function Home({ course }: { course: TaneCourse }) {
+  const display = useDisplaySize();
   const [bases, setBases] = useState<TaneBase[] | null>(null);
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [visits, setVisits] = useState<{ visited: number; official: number; helps: number } | null>(null);
@@ -285,7 +287,7 @@ function Home({ course }: { course: TaneCourse }) {
       {bases && bases.length > 0 && (
         <SwipePages
           items={bases}
-          perPage={3}
+          perPage={display.myFieldsPerPage}
           layout="rows"
           keyOf={(b) => b.areaKey}
           render={(b) => {
@@ -394,11 +396,11 @@ function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (ne
         type="button"
         onClick={handle}
         disabled={busy || done}
-        className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
+        className="rounded-lg px-2.5 py-1 text-2xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
       >
         {done ? `${slot ? `${slot}の` : ""}水やりは済み` : busy ? "水をやっています..." : "💧 遠くから水をやる"}
       </button>
-      {error && <span className="block text-[10px] text-red-600 mt-0.5">{error}</span>}
+      {error && <span className="block text-3xs text-red-600 mt-0.5">{error}</span>}
     </span>
   );
 }

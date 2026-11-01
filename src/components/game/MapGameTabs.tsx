@@ -52,7 +52,7 @@ function Tabs({ onPlayPath }: { onPlayPath: boolean }) {
               <Link
                 href={t.href}
                 aria-current={t.active ? "page" : undefined}
-                className={`h-16 flex flex-col items-center justify-center gap-0.5 text-[10px] ${
+                className={`h-16 flex flex-col items-center justify-center gap-0.5 text-3xs ${
                   t.active ? "text-teal-700 font-bold" : "text-[#a8937a]"
                 }`}
               >

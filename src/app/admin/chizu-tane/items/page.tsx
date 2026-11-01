@@ -56,8 +56,8 @@ export default function ChizuTaneItemsPage() {
                       <td rowSpan={rows} className="px-2 py-1.5 align-top">
                         <span className="mr-1">{type.emoji}</span>
                         {type.name}
-                        <div className="text-[10px] text-[#a8937a]">{type.id}</div>
-                        {inPrototype && <div className="text-[10px] text-emerald-700">試作で使う</div>}
+                        <div className="text-3xs text-[#a8937a]">{type.id}</div>
+                        {inPrototype && <div className="text-3xs text-emerald-700">試作で使う</div>}
                       </td>
                     </>
                   );
@@ -75,7 +75,7 @@ export default function ChizuTaneItemsPage() {
                     <tr key={item.itemId} className="border-t border-[#f0e6d2]">
                       {idx === 0 && typeCell(items.length)}
                       <td className="px-2 py-1.5 text-xs">{item.rank}</td>
-                      <td className="px-2 py-1.5 text-[11px] font-mono text-[#78716c]">{item.itemId}</td>
+                      <td className="px-2 py-1.5 text-2xs font-mono text-[#78716c]">{item.itemId}</td>
                       <td className="px-2 py-1.5">{item.name}</td>
                       {/* 定義の絵文字(絵があると画面には出ないが、絵の無い所の代わりや文章の中で使う) */}
                       <td className="px-2 py-1.5 text-center text-xl">{item.emoji}</td>
@@ -85,7 +85,7 @@ export default function ChizuTaneItemsPage() {
                       <td className="px-2 py-1.5 text-center">
                         <SeedIcon item={item} size={36} />
                       </td>
-                      <td className="px-2 py-1.5 text-[11px]">
+                      <td className="px-2 py-1.5 text-2xs">
                         {item.imageUrl ? (
                           // 元の大きさ(96px)で、ガーデンの芝に近い色の上に出す(白いふちや背景の消し残しが見分けられる)
                           // eslint-disable-next-line @next/next/no-img-element
@@ -149,7 +149,7 @@ export default function ChizuTaneItemsPage() {
                                 {item.name}
                                 {item.imageUrl && <span className="ml-1">{item.emoji}</span>}
                               </div>
-                              <div className="text-[10px] font-mono text-[#a8937a]">{item.itemId}</div>
+                              <div className="text-3xs font-mono text-[#a8937a]">{item.itemId}</div>
                             </div>
                           </div>
                         </td>
