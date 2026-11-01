@@ -517,7 +517,7 @@ export async function placeBase(loc: Location, district: TownDistrict, itemId: s
   return base;
 }
 
-/** タネ待ちの自分の畑に、同じ種類の畑のタネ(itemId)をまき直す(遠くからでもよい)。まき直したあとのタネを返す */
+/** タネ待ちの自分の畑に、タネ(itemId)をまき直す(遠くからでもよい。どのタネでもよく、畑はそのタネの種類になる)。まき直したあとのタネを返す */
 export async function replantBase(areaKey: string, itemId: string): Promise<TaneBase> {
   await requireUserId();
   const base = unwrap(await data.mutations.replantTaneBase({ areaKey, itemId }));
@@ -540,6 +540,8 @@ export interface CheckInResult {
   gainedItems: number | null;
   /** ほかの人のタネに初めて来た(拠点にタネが1個落ちた) */
   firstVisit: boolean;
+  /** 前にタネが落ちたときから畑の種類が変わっていたので、またタネが1個落ちた */
+  typeChanged: boolean;
   /** チェックインのあとのたまった水と、残っている実の数 */
   water: number;
   fruits: number;
@@ -568,6 +570,7 @@ export async function checkIn(loc: Location, district: TownDistrict): Promise<Ch
     quantity: res.quantity ?? null,
     gainedItems: res.gainedItems ?? null,
     firstVisit: res.firstVisit ?? false,
+    typeChanged: res.typeChanged ?? false,
     water: res.water ?? 0,
     fruits: res.fruits ?? 0,
     level: res.level ?? null,

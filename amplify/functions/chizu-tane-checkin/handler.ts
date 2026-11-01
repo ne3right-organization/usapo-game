@@ -15,6 +15,7 @@ import {
   listOfficialVisits,
   locateTownDistrict,
   rememberPosition,
+  removeHarvestedBase,
   requirePlayer,
   resetAfterFruits,
   takeFruit,
@@ -75,11 +76,13 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
 
 /**
  * 現地のチェックイン。持ち主でもほかの人でも同じで、1人1つの時間帯(朝・昼・夜)に1回(dev は5分ごと)。まいた直後からできる。
- * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個ならランクが1つ上がり、タネ待ちになる(持ち主がまき直すまで育たない)
+ * - 実が残っていれば、実を1個もらう(早い者勝ち)。最後の1個ならランクが1つ上がり、タネ待ちになる(持ち主がまき直すまで育たない)。
+ *   ご当地の畑はまき直せないので、最後の1個が取られたら畑を消す(すぐ空き地に戻る)
  * - タネ待ちの畑では、水も実も無い(ほかの人の初めてのチェックインなら、タネが落ちて訪問にも数える)。1週間たって空き地に戻った畑は無いのと同じ
  * - 実っていなければ、水をやる(現地は10)。たまったら実って、実ができる(ランク×10個)。実ったら、持ち主に「生産者の取り分」が1個届き、
  *   ほかの人が実らせたときは、実らせた人もそのまま1個もらう(持ち主が自分で実らせたときは取り分の1個だけ)
  * - ほかの人のタネに初めてチェックインしたときだけ、拠点にタネが1個落ちる(3個まで。直接はもらわず、拾うかどうかは選べる)。
+ *   前にタネが落ちたときから畑の種類が変わっていれば(まき直し・ほかの人の畑になった)、またタネが1個落ちる(たずねた数は増えない)。
  *   たずねた拠点の数が増えるので、レベルが上がることもある(自分のタネは訪問の記録に残さず、レベルにも数えない)
  * - ご当地の畑(docs/地図タネ_ご当地タネ設計書.md の 4章)は、実が1つの品につき1人1個(もう持っている人には渡さない)で、タネは落ちない。
  *   1個目の畑が実ったら持ち主に2個目のタネを、2個目の畑の実が全部収穫されたら3個目のタネを届ける
@@ -149,13 +152,18 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
       result.gainedItems = 1;
       result.fruits = left;
       result.quantity = unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }))?.quantity ?? 1;
-      if (left === 0) {
+      if (left === 0 && local) {
+        // 次のご当地のタネを届けてから、畑を消す
+        localSeed = await grantNextLocalSeed(c, ownerId, picked.itemId, "harvested");
+        await removeHarvestedBase(c, base.areaKey);
+        result.water = 0;
+        result.stage = 0;
+      } else if (left === 0) {
         const rank = Math.min(MAX_RANK, base.rank + 1);
         await resetAfterFruits(base.areaKey, rank);
         result.rank = rank;
         result.water = 0;
         result.stage = 0;
-        if (local) localSeed = await grantNextLocalSeed(c, ownerId, picked.itemId, "harvested");
       }
     }
   }
@@ -201,8 +209,8 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     ? {
         title: "実が全部収穫されました",
         body: local
-          ? `${who}が${place}の最後の実を収穫しました。${localSeedText}ご当地の畑はまき直せないので、1週間で空き地に戻ります`
-          : `${who}が${place}の最後の実を収穫しました。畑のランクが${result.rank}に上がりました。1週間以内にタネをまき直してください（まかないと空き地に戻ります）`,
+          ? `${who}が${place}の最後の実を収穫しました。${localSeedText}ご当地の畑はこれで役目を終えて、なくなりました`
+          : `${who}が${place}の最後の実を収穫しました。畑のランクが${result.rank}に上がりました。1日以内にタネをまき直してください（まかないと、現地に来たほかの人がタネをまけるようになります）`,
       }
     : result.status === "ripened"
       ? {
@@ -217,8 +225,15 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   // タネ待ちの畑に来ただけのときは知らせない(何も変わらないので)
   if (result.status !== "waiting") await notifyUsers(c, [ownerId], { ...notice, url: "/game/chizu-tane", tag: `tane-${base.areaKey}` });
 
-  // ほかの人のタネに初めて来たときだけ、拠点にタネが1個落ちる(直接はもらわない。要らなければ拾わずに置いていける)
+  // ほかの人のタネに初めて来たときだけ、拠点にタネが1個落ちる(直接はもらわない。要らなければ拾わずに置いていける)。
+  // 前にタネが落ちたときから畑の種類が変わっていれば、またタネが1個落ちる(dropTypeId が無い行も、変わったとみなす。
+  // 2026-11-02 より前の行は、前に来たのがいまの畑なら、その種類をデータで入れてある)
   const seedsGained: SeedGain[] = [];
+  if (visit && !local && visit.dropTypeId !== base.baseTypeId) {
+    result.typeChanged = true;
+    for (let i = 0; i < SEEDS_PER_CHECKIN; i++) await dropSeed(base.areaKey, DROPPED_SEEDS_MAX);
+    result.droppedSeeds = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey }))?.droppedSeeds ?? 0;
+  }
   if (!visit) {
     result.firstVisit = true;
     // 落とすのは DynamoDB の条件付きの書き込み(3個未満のときだけ増やす)。同時にチェックインしても数がずれない。
@@ -228,13 +243,20 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   }
   unwrap(
     visit
-      ? await c.models.GameTaneVisit.update({ userId, areaKey: base.areaKey, lastReceivedOn: today, visitCount: visit.visitCount + 1 })
+      ? await c.models.GameTaneVisit.update({
+          userId,
+          areaKey: base.areaKey,
+          lastReceivedOn: today,
+          visitCount: visit.visitCount + 1,
+          dropTypeId: base.baseTypeId,
+        })
       : await c.models.GameTaneVisit.create({
           userId,
           areaKey: base.areaKey,
           firstVisitedAt: now.toISOString(),
           lastReceivedOn: today,
           visitCount: 1,
+          dropTypeId: base.baseTypeId,
         })
   );
   // 初めての拠点なら、たずねた拠点の数が増えるのでレベルが上がることがある

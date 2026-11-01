@@ -1,5 +1,6 @@
 import {
   ConditionalCheckFailedException,
+  DeleteItemCommand,
   GetItemCommand,
   DynamoDBClient,
   PutItemCommand,
@@ -484,6 +485,30 @@ export async function resetAfterFruits(areaKey: string, newRank: number): Promis
   }
 }
 
+/**
+ * ご当地の畑の実が全部取られたら、畑を消す(ご当地の畑はまき直せないので、タネ待ちにせずその場で空き地に戻す。2026-11-02)。
+ * 実が0のときだけ消す。持ち主の行は消さず releasedAt を付ける(開拓した地区の数・まいたタネに数え続ける)
+ */
+export async function removeHarvestedBase(c: DataClient, areaKey: string): Promise<void> {
+  try {
+    await ddb.send(
+      new DeleteItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        ConditionExpression: "fruits = :zero",
+        ExpressionAttributeValues: { ":zero": { N: "0" } },
+      })
+    );
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return;
+    throw err;
+  }
+  const now = new Date().toISOString();
+  for (const row of unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey }))) {
+    if (!row.releasedAt) unwrap(await c.models.GameTaneOwnership.update({ ownerId: row.ownerId, areaKey, releasedAt: now }));
+  }
+}
+
 // ─── タネをまく・まき直す(DynamoDB を直接さわる) ─────────────────────────
 
 export interface NewBaseRow {
@@ -501,10 +526,11 @@ export interface NewBaseRow {
 }
 
 /**
- * 新しくタネをまいた拠点の行を書く。空き地(行が無い)か、タネ待ちのまま abandonedBefore より前から待っている(空き地に戻った)ときだけ書ける。
- * 同時にまこうとしても先に書いた方だけが通る。書けなければ false
+ * 新しくタネをまいた拠点の行を書く。空き地(行が無い)か、タネ待ちのまま waitingBefore より前から待っている
+ * (ほかの人もまけるようになった・空き地に戻った)ときだけ書ける。同時にまこうとしても(持ち主のまき直しとも)先に書いた方だけが通る。
+ * 書けなければ false
  */
-export async function putNewBase(row: NewBaseRow, abandonedBefore: string): Promise<boolean> {
+export async function putNewBase(row: NewBaseRow, waitingBefore: string): Promise<boolean> {
   const now = new Date().toISOString();
   try {
     await ddb.send(
@@ -532,7 +558,7 @@ export async function putNewBase(row: NewBaseRow, abandonedBefore: string): Prom
           updatedAt: { S: now },
         },
         ConditionExpression: "attribute_not_exists(areaKey) OR (attribute_exists(waitingSince) AND waitingSince < :cutoff)",
-        ExpressionAttributeValues: { ":cutoff": { S: abandonedBefore } },
+        ExpressionAttributeValues: { ":cutoff": { S: waitingBefore } },
       })
     );
     return true;
@@ -543,10 +569,10 @@ export async function putNewBase(row: NewBaseRow, abandonedBefore: string): Prom
 }
 
 /**
- * タネ待ちの拠点にタネをまき直す(タネから育ち直す。ランクはそのまま)。タネ待ちで、まだ空き地に戻っていない
+ * タネ待ちの拠点にタネをまき直す(タネから育ち直す。畑の種類はまいたタネのものになり、ランクはそのまま)。タネ待ちで、まだ空き地に戻っていない
  * (abandonedBefore 以降から待っている)ときだけ。書けなければ false
  */
-export async function replantBaseRow(areaKey: string, itemId: string, abandonedBefore: string): Promise<boolean> {
+export async function replantBaseRow(areaKey: string, itemId: string, baseTypeId: string, abandonedBefore: string): Promise<boolean> {
   const now = new Date().toISOString();
   try {
     await ddb.send(
@@ -554,9 +580,15 @@ export async function replantBaseRow(areaKey: string, itemId: string, abandonedB
         TableName: BASE_TABLE,
         Key: { areaKey: { S: areaKey } },
         UpdateExpression:
-          "SET seedItemId = :item, water = :zero, plantedAt = :now, updatedAt = :now REMOVE waitingSince, lastRemoteWaterOn, lastOwnerVisitOn",
+          "SET seedItemId = :item, baseTypeId = :type, water = :zero, plantedAt = :now, updatedAt = :now REMOVE waitingSince, lastRemoteWaterOn, lastOwnerVisitOn",
         ConditionExpression: "attribute_exists(waitingSince) AND waitingSince >= :cutoff",
-        ExpressionAttributeValues: { ":item": { S: itemId }, ":zero": { N: "0" }, ":now": { S: now }, ":cutoff": { S: abandonedBefore } },
+        ExpressionAttributeValues: {
+          ":item": { S: itemId },
+          ":type": { S: baseTypeId },
+          ":zero": { N: "0" },
+          ":now": { S: now },
+          ":cutoff": { S: abandonedBefore },
+        },
       })
     );
     return true;

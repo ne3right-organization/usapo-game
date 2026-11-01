@@ -45,7 +45,7 @@ export default function InstallHint() {
   const showNotify = canPushHere && pushEnabled === false;
   if (!showInstall && !showNotify) return null;
 
-  const what = "タネが実った・誰かが来た・実が全部収穫された（タネのまき直しは1週間以内）などを、通知で知らせます。";
+  const what = "タネが実った・誰かが来た・実が全部収穫された（タネのまき直しは1日以内に）などを、通知で知らせます。";
 
   return (
     <section className="mt-6">
