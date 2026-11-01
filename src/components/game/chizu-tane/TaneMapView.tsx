@@ -27,6 +27,9 @@ export default function TaneMapView() {
   );
 }
 
+// 「タネのある市区町村」の一覧(2026-11-01 に、いったん隠した。出すときは true にする)
+const SHOW_CITY_LIST = false;
+
 type PlacedBase = TaneBase & { repLng: number; repLat: number };
 
 function isPlaced(b: TaneBase): b is PlacedBase {
@@ -215,8 +218,8 @@ function TaneMap() {
         </div>
       )}
 
-      <h2 className="text-sm font-bold text-[#3c2a14] mb-2">タネのある市区町村</h2>
-      {cities.length === 0 ? (
+      {SHOW_CITY_LIST && <h2 className="text-sm font-bold text-[#3c2a14] mb-2">タネのある市区町村</h2>}
+      {!SHOW_CITY_LIST ? null : cities.length === 0 ? (
         <p className="text-sm text-[#78716c] bg-white rounded-2xl p-4">まだどこにもタネがありません。</p>
       ) : (
         <ul className="bg-white rounded-2xl divide-y divide-[#f3ece0]">

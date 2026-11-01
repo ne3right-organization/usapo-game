@@ -4,10 +4,10 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-// 地図パズルと地図ポットンを「地図ゲーム」としてまとめる、下に固定のタブ(うさぽ農園の TaneTabs と同じ形)。
+// 地図パズルと地図ポットンを「地図ゲーム」としてまとめるタブ(うさぽ農園の TaneTabs と同じ形)。サイトのヘッダーのすぐ下に出し、
+// ヘッダーと一緒にスクロールする(2026-11-01 まで画面の下に固定していたが、PWA でうまく動かないことがあったので上に移した)。
 // 各ゲームのトップ・ランキング・履歴(/history)・プロフィール(/profile)に出す。プレイ画面は画面全体を使うので出さない
 // (プレイ画面と同じ URL でエリアを選んでいる間は、ページ側が onPlayPath を付けて出す)。
-// Leaflet の地図(つまみが z-index 1000)より前、プレイ画面などの全画面表示(z-[1100])より後ろに置く。
 // ランキング・履歴・プロフィールは、いま見ているゲーム(パズルかポットンか)の画面を開く
 
 type MapGame = "map-puzzle" | "map-pack";
@@ -45,9 +45,7 @@ function Tabs({ onPlayPath }: { onPlayPath: boolean }) {
 
   return (
     <>
-      {/* 下のタブに隠れないよう、ページの下を空けておく(タブの高さ h-16 と同じにする。ずれると隙間が見える) */}
-      <div className="shrink-0 bg-[#fdf8f0] h-[calc(4rem+env(safe-area-inset-bottom))]" aria-hidden />
-      <nav className="fixed bottom-0 inset-x-0 z-[1050] bg-white/95 backdrop-blur border-t border-[#f3ece0] pb-[env(safe-area-inset-bottom)]">
+      <nav className="shrink-0 bg-white border-b border-[#f3ece0]">
         <ul className="max-w-lg mx-auto grid grid-cols-5">
           {tabs.map((t) => (
             <li key={t.label}>

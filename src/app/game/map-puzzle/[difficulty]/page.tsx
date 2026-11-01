@@ -355,6 +355,7 @@ function MapPuzzlePlay({ difficulty }: { difficulty: Difficulty }) {
   if (!pendingArea && !gameConfig) {
     return (
       <>
+        <MapGameTabs onPlayPath />
         <MapAreaSelector
           difficulty={difficulty as "intermediate" | "advanced"}
           description={
@@ -362,7 +363,6 @@ function MapPuzzlePlay({ difficulty }: { difficulty: Difficulty }) {
           }
           onConfirm={(url, label, area: AreaInfo) => setPendingArea({ geojsonUrl: url, areaLabel: label, ...area })}
         />
-        <MapGameTabs onPlayPath />
       </>
     );
   }

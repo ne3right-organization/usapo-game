@@ -117,7 +117,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 ## サイト共通の機能（2026-10-20〜）
 
 - **サイト共通ヘッダー**（`src/components/SiteHeader.tsx`）: 全ページ（トップも）に出す。左はサイトのトップへ、右はログイン・ログアウトとニックネーム（`src/components/AuthStatus.tsx`。ヘッダーはページを移っても作り直されないので、ページを移るたびにログインの状態を読み直す）
-- **地図ゲームの下のタブ**（`src/components/game/MapGameTabs.tsx`）: 地図パズルと地図ポットンを「地図ゲーム」としてまとめ、パズル・ポットン・ランキング・履歴・プロフィールを下のタブで切り替える（うさぽ農園のタブと同じ形）。各ゲームと `/history`・`/profile` の layout で出す。プレイ画面（`/game/{map-puzzle|map-pack}/{difficulty}`）では出さない。ランキング・履歴・プロフィールは、いま見ているゲームの画面を開く。エリア選択（`MapAreaSelector`）は画面全体を覆わず、ヘッダーとタブの間に出し、地図に地域の名前を出す
+- **地図ゲームのタブ**（`src/components/game/MapGameTabs.tsx`）: 地図パズルと地図ポットンを「地図ゲーム」としてまとめ、パズル・ポットン・ランキング・履歴・プロフィールをタブで切り替える（うさぽ農園のタブと同じ形）。**タブはサイトのヘッダーのすぐ下に出し、ヘッダーと一緒にスクロールする**（2026-11-01 まで画面の下に固定していたが、PWA でうまく動かないことがあったので上に移した。うさぽ農園も同じ）。各ゲームと `/history`・`/profile` の layout で出す。プレイ画面（`/game/{map-puzzle|map-pack}/{difficulty}`）では出さない。ランキング・履歴・プロフィールは、いま見ているゲームの画面を開く。エリア選択（`MapAreaSelector`）は画面全体を覆わず、ヘッダーとタブの間に出し、地図に地域の名前を出す
 - **遊んだ履歴**（`/history`、`?game=map-puzzle|map-pack`）
 - **ニックネーム設定**（`/nickname`）: 全ゲーム共通。Lambda `set-nickname` がベスト記録・合計のニックネームも書き直す
 - **エリアを指定してプレイ画面に直接飛ぶURL**（`src/lib/game/playLinks.ts`）: `/game/{map-puzzle|map-pack}/{difficulty}?prefCode=&prefName=&cityCode=&cityName=`
@@ -151,7 +151,7 @@ Supabase のデータを本番の Amplify に移した。Supabase のユーザ�
 
 - 設計書: `docs/地図タネ_全体設計書.md`（ルール・決定事項・コースの表）、`docs/地図タネ_初期試作設計書.md`（いま作っている範囲）、`docs/地図タネ_ご当地タネ設計書.md`（都道府県ごとのご当地もの。7都道府県ぶん）。検討のときは「箱庭コレクションゲーム」「地図コロ」と呼んでいた（名前の経緯は全体設計書の0章）
 - 画面での呼び名: 拠点＝タネ（種類ごとに果樹園・サイクルポート…）、箱庭＝ガーデン、町丁＝実際の地名と「地区」。**画面で「町丁」とは言わない**
-- 画面: `/game/chizu-tane`（トップ。ガーデンの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/map`（全国農地。全国のタネの地図）、`/collection`、`/garden`。下に固定のタブで切り替える（`TaneParts.tsx` の `TaneScreen`）。ログイン必須
+- 画面: `/game/chizu-tane`（トップ。ガーデンの絵・コース選び）、`/here`（おでかけ＝いまいる地区）、`/map`（全国農地。全国のタネの地図）、`/collection`、`/garden`。ヘッダーの下のタブで切り替える（`TaneParts.tsx` の `TaneScreen`）。ログイン必須
 - 実装: `src/lib/game/chizuTane/`（コースの表 `courses.ts`・地区の判定 `geo.ts`・箱庭の検証 `garden.ts`。画面と Lambda の両方から使う）、`src/lib/game/chizuTaneData.ts`、`src/components/game/chizu-tane/`
 - バックエンド: モデル `GameTane*`（クライアントは読むだけ）、Lambda `chizu-tane-player` / `chizu-tane-place` / `chizu-tane-checkin` / `chizu-tane-seeds`（落ちているタネを拾う）/ `chizu-tane-stats`（コースごとの人数）/ `chizu-tane-shelf`（おすそ分けの棚）（共通処理は `amplify/functions/shared/chizuTane.ts`）
 - **タネは持ち物**（`GameTaneHeldSeed`、もの単位: みかんの木のタネ…）で、まくと1つ減り、そのものの種類の拠点ができる。拠点の種類は1レベルに1つで、それぞれタネが3つ（色違いでもよい）。増え方（始めたとき・レベルアップ・拠点に落ちているタネを拾う。ほかの人のタネに初めてチェックインするとそこに1個落ちる）は全体設計書 6.4、数は `courses.ts`。持ち主の手元に直接増えたり、時間で増えたりはしない。持っているタネは新しく手に入れたものから並べる（`GameTaneHeldSeed.lastGainedAt`。それより前の行は `createdAt`）

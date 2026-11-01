@@ -147,9 +147,8 @@ export function TaneHeading({ title, children }: { title: string; children?: Rea
 export function TaneScreen({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-full bg-[#fdf8f0]">
-      {/* 下のタブに隠れないよう、下を空けておく */}
-      <div className="max-w-lg mx-auto px-4 pt-6 pb-28">{children}</div>
       <TaneTabs />
+      <div className="max-w-lg mx-auto px-4 pt-6 pb-10">{children}</div>
     </main>
   );
 }
@@ -170,11 +169,14 @@ export function setTaneLeaveGuard(guard: (() => string | null) | null): void {
   leaveGuard = guard;
 }
 
-/** 地図タネの画面を切り替える、下に固定のタブ(地図の Leaflet より前に出す) */
+/**
+ * 地図タネの画面を切り替えるタブ。サイトのヘッダーのすぐ下に出し、ヘッダーと一緒にスクロールする。
+ * 2026-11-01 まで画面の下に固定していたが、PWA(ホーム画面のアプリ)でうまく動かないことがあったので上に移した
+ */
 function TaneTabs() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-[1100] bg-white/95 backdrop-blur border-t border-[#f3ece0] pb-[env(safe-area-inset-bottom)]">
+    <nav className="bg-white border-b border-[#f3ece0]">
       <ul className="max-w-lg mx-auto grid grid-cols-5">
         {TANE_TABS.map((t) => {
           const active = pathname === t.href || (t.href !== "/game/chizu-tane" && pathname.startsWith(`${t.href}/`));

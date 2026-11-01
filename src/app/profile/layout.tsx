@@ -5,12 +5,12 @@ export const metadata: Metadata = {
   title: "プロフィール",
 };
 
-// 履歴・コンプリートは地図パズル・地図ポットンのものなので、地図ゲーム共通の下のタブを出す
+// 履歴・コンプリートは地図パズル・地図ポットンのものなので、地図ゲーム共通のタブを(ヘッダーの下に)出す
 export default function ProfileLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      {children}
       <MapGameTabs />
+      {children}
     </>
   );
 }
