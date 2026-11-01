@@ -19,13 +19,13 @@ import {
   fetchMyAreaKeys,
   fetchMyLocalGrantPrefs,
   fetchMySeeds,
-  getCurrentLocation,
   isLocationOverrideAllowed,
   locateTownDistrict,
   pickUpSeeds,
   placeBase,
   taneDayMs,
   townDistrictGeojsonUrl,
+  watchLocation,
   type Location,
   type CheckInResult,
   type TaneBase,
@@ -42,7 +42,7 @@ import { useTanePlayer } from "./useTanePlayer";
 // itemId があれば絵を出す。seed ならタネの絵、そうでなければ実(もの)の絵
 type Notice = { kind: "ok" | "info"; text: string; itemId?: string; seed?: boolean };
 
-// おでかけ(いまいる地区): 現在地から地区を判定して、その市区町村の地図とタネを出し、タネをまく・チェックインする
+// おでかけ(いまいる地区): 開くと現在地を受け取り続け、地区を判定して、その市区町村の地図とタネを出し、タネをまく・チェックインする
 export default function HereView() {
   const [state] = useTanePlayer();
   return (
@@ -74,18 +74,17 @@ function Here({ player }: { player: TanePlayer }) {
   const [bases, setBases] = useState<TaneBase[]>([]);
   // 自分のタネの地区(タネの行には持ち主を持たないので、本人しか読めない一覧から)。まいたら読み直す
   const [ownAreaKeys, setOwnAreaKeys] = useState<ReadonlySet<string>>(new Set());
-  const [locating, setLocating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // 現在地が取れない・地区が分からないとき(次の位置が来れば消す)
+  const [locError, setLocError] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const overrideAllowed = useMemo(() => isLocationOverrideAllowed(), []);
   const [manualInput, setManualInput] = useState("");
-  // 地区が分かったら、まく・チェックインのカードまで画面を動かす(地区名と地図はその上に見えている)
-  const actionRef = useRef<HTMLDivElement>(null);
-  const [located, setLocated] = useState(0);
-  useEffect(() => {
-    if (located > 0) actionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [located]);
+  // 開発用の位置指定で選んだ点にいる間は、実際の現在地を受け取らない(「現在地」で戻る)
+  const [pinned, setPinned] = useState(false);
+  // 「現在地」を押したら、いまいる地区が見えるように地図を寄せる
+  const [focusKey, setFocusKey] = useState(0);
   // 持っているタネ。まくと1つ減る(種類やレベルの制限は無い)
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [chosenItemId, setChosenItemId] = useState<string | null>(null);
@@ -138,58 +137,98 @@ function Here({ player }: { player: TanePlayer }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cityKey]);
 
-  const applyLocation = async (next: Location) => {
-    setError("");
-    setNotice(null);
-    setLocating(true);
+  // 位置が来るたびに地区を判定する(町丁の geojson は一度読めば使い回すので軽い)。判定の途中で次の位置が来たら、古いほうは捨てる。
+  // 地区が変わったときだけ、前の地区のお知らせとエラーを消す
+  const locateSeqRef = useRef(0);
+  const areaKeyRef = useRef<string | null>(null);
+  const applyLocation = useCallback(async (next: Location) => {
+    const seq = ++locateSeqRef.current;
     try {
       const d = await locateTownDistrict(next);
-      if (!d) throw new Error("この場所の地区が分かりませんでした（海の上など、地区のデータが無い場所かもしれません）");
+      if (seq !== locateSeqRef.current) return;
+      if (!d) {
+        setLocError("この場所の地区が分かりませんでした（海の上など、地区のデータが無い場所かもしれません）");
+        return;
+      }
+      setLocError("");
+      if (areaKeyRef.current !== d.areaKey) {
+        areaKeyRef.current = d.areaKey;
+        setNotice(null);
+        setError("");
+      }
       setLoc(next);
       setDistrict(d);
-      setLocated((n) => n + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLocating(false);
+      if (seq === locateSeqRef.current) setLocError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, []);
 
-  // 開発用: 全国農地の「ここへ行く」から ?lat=&lng= で来たら、その点にいることにする
+  // 現在地の受け取り。「現在地」を押したら、受け取りを止めて最初からやり直す(開き直したときと同じ。古い位置が返り続けるのを避ける)。
+  // 画面が裏に回ったら止め(電池のため)、表に戻ったらやり直す。開発用の位置指定の点にいる間は受け取らない
+  const stopWatchRef = useRef<(() => void) | null>(null);
+  const followRef = useRef(true);
+  const stopWatch = useCallback(() => {
+    stopWatchRef.current?.();
+    stopWatchRef.current = null;
+  }, []);
+  const startWatch = useCallback(() => {
+    stopWatch();
+    setLocError("");
+    stopWatchRef.current = watchLocation((next) => void applyLocation(next), setLocError);
+  }, [applyLocation, stopWatch]);
+
   useEffect(() => {
-    if (!overrideAllowed) return;
+    // 開発用: 全国農地の「ここへ行く」から ?lat=&lng= で来たら、その点にいることにする
     const q = new URLSearchParams(window.location.search);
     const lat = Number(q.get("lat"));
     const lng = Number(q.get("lng"));
-    if (!q.get("lat") || !q.get("lng") || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    void Promise.resolve().then(() => applyLocation({ lat, lng }));
-    // 開いたときに1回だけ
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleLocate = async () => {
-    setLocating(true);
-    try {
-      await applyLocation(await getCurrentLocation());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setLocating(false);
+    if (overrideAllowed && q.get("lat") && q.get("lng") && Number.isFinite(lat) && Number.isFinite(lng)) {
+      followRef.current = false;
+      void Promise.resolve().then(() => {
+        setPinned(true);
+        return applyLocation({ lat, lng });
+      });
+    } else {
+      void Promise.resolve().then(startWatch);
     }
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") stopWatch();
+      else if (followRef.current) startWatch();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopWatch();
+    };
+  }, [overrideAllowed, applyLocation, startWatch, stopWatch]);
+
+  const handleLocate = () => {
+    followRef.current = true;
+    setPinned(false);
+    setFocusKey((n) => n + 1);
+    startWatch();
   };
 
-  // 開発用: 地図でタップした点にいることにする(地区の境界のあたりも、実際の位置情報と同じように試せる)
+  // 開発用: 選んだ点にいることにする(地区の境界のあたりも、実際の位置情報と同じように試せる)
+  const pinLocation = (next: Location) => {
+    followRef.current = false;
+    stopWatch();
+    setPinned(true);
+    void applyLocation(next);
+  };
+
   const handleMapPoint = (lat: number, lng: number) => {
-    if (!overrideAllowed || locating || busy) return;
-    void applyLocation({ lat, lng });
+    if (!overrideAllowed || busy) return;
+    pinLocation({ lat, lng });
   };
 
-  const handleManual = async () => {
+  const handleManual = () => {
     const m = manualInput.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
     if (!m) {
       setError("「緯度,経度」の形で入力してください（例: 35.4007,139.5332）");
       return;
     }
-    await applyLocation({ lat: Number(m[1]), lng: Number(m[2]) });
+    pinLocation({ lat: Number(m[1]), lng: Number(m[2]) });
   };
 
   const baseHere = district ? bases.find((b) => b.areaKey === district.areaKey) ?? null : null;
@@ -346,21 +385,27 @@ function Here({ player }: { player: TanePlayer }) {
 
   return (
     <div>
-      {/* 地区が分かったあとは、調べ直すボタンを地区名のカードの中に出す */}
+      {/* 地区が分かるまでは、地図の場所に調べている様子(取れなければ理由)を出す */}
       {!district && (
-        <button
-          type="button"
-          onClick={handleLocate}
-          disabled={locating || busy}
-          className="w-full rounded-xl py-3 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 mb-3"
-        >
-          {locating ? "現在地を調べています..." : "📍 現在地を調べる"}
-        </button>
-      )}
-      {!district && !locating && (
-        <p className="text-xs text-[#a8937a] mb-3 leading-relaxed">
-          ボタンを押すと、ブラウザから位置情報の利用を求められます。位置は地区を調べるのに使うだけで、保存はしません。
-        </p>
+        <div className="h-[340px] rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] bg-white flex flex-col items-center justify-center gap-3 px-6 text-center mb-3">
+          {locError ? (
+            <>
+              <ErrorText message={locError} />
+              <button
+                type="button"
+                onClick={handleLocate}
+                className="rounded-full px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
+              >
+                📍 現在地をもう一度調べる
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-[#a8937a]">📍 現在地を調べています...</p>
+          )}
+          <p className="text-xs text-[#a8937a] leading-relaxed">
+            位置情報の利用を求められたら、許可してください。位置は地区を調べるのに使うだけで、保存はしません。
+          </p>
+        </div>
       )}
 
       {error && <ErrorText message={error} />}
@@ -368,21 +413,12 @@ function Here({ player }: { player: TanePlayer }) {
       {district && (
         <>
           <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-3">
-            <div className="flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-[#a8937a]">{district.cityName}</p>
-                <p className="text-lg font-bold text-[#3c2a14]">{district.townName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleLocate}
-                disabled={locating || busy}
-                className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-60"
-              >
-                {locating ? "調べています..." : "📍 調べ直す"}
-              </button>
-            </div>
-            <p className="text-[11px] text-[#a8937a] mt-1">位置情報には誤差があります。違う地区になっていたら、少し動いてから調べ直してください。</p>
+            <p className="text-xs text-[#a8937a]">{district.cityName}</p>
+            <p className="text-lg font-bold text-[#3c2a14]">{district.townName}</p>
+            {locError && <ErrorText message={locError} />}
+            <p className="text-[11px] text-[#a8937a] mt-1">
+              歩くと、いまいる地区も切り替わります。違う地区になっていたら、少し動くか、地図の右下の現在地ボタンを押してください。
+            </p>
           </div>
 
           <HereMap
@@ -392,6 +428,8 @@ function Here({ player }: { player: TanePlayer }) {
             bases={bases}
             ownAreaKeys={ownAreaKeys}
             onPointSelect={overrideAllowed ? handleMapPoint : undefined}
+            onLocate={handleLocate}
+            focusKey={focusKey}
           />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mt-2 mb-3">
             <GrowthLegend />
@@ -403,9 +441,13 @@ function Here({ player }: { player: TanePlayer }) {
               <span className="inline-block w-3 h-3 rounded-sm border-2 border-blue-700" />
               いまいる地区
             </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded-sm border border-orange-600 bg-orange-600/10" />
+              となりの地区
+            </span>
           </div>
 
-          <div ref={actionRef} className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4 scroll-mt-4">
+          <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4">
             {/* ご当地のタネ(1個目)。その都道府県で初めておでかけしたときに、Lv.3 以上なら1回だけもらえる */}
             {canClaimLocal && localFirst && (
               <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 mb-3">
@@ -557,7 +599,10 @@ function Here({ player }: { player: TanePlayer }) {
       {overrideAllowed && (
         <div className="border-2 border-dashed border-purple-200 rounded-2xl p-3 text-xs text-purple-800 bg-purple-50/50">
           <p className="font-bold mb-1">開発用（dev 環境と手元だけ）</p>
-          <p className="mb-2">地図をタップすると、その点にいることにします（となりの市区町村の上をタップすれば、そちらに移ります）。遠くへは緯度・経度で移れます。</p>
+          <p className="mb-2">
+            地図をタップすると、その点にいることにします（となりの市区町村の上をタップすれば、そちらに移ります）。遠くへは緯度・経度で移れます。
+            {pinned && " いまは選んだ点にいます。地図の右下の現在地ボタンで、実際の現在地に戻ります。"}
+          </p>
           <div className="flex gap-2">
             <input
               type="text"
@@ -566,7 +611,7 @@ function Here({ player }: { player: TanePlayer }) {
               placeholder="35.4007,139.5332"
               className="flex-1 min-w-0 border border-purple-200 rounded-lg px-2 py-1.5 bg-white text-[#3c2a14]"
             />
-            <button type="button" onClick={handleManual} disabled={locating} className="rounded-lg px-3 py-1.5 bg-purple-600 text-white font-semibold">
+            <button type="button" onClick={handleManual} className="rounded-lg px-3 py-1.5 bg-purple-600 text-white font-semibold">
               移動
             </button>
           </div>

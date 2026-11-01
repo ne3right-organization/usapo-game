@@ -5,10 +5,11 @@ import Link from "next/link";
 import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
-import { fetchAllBases, fetchMyAreaKeys, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
+import { fetchAllBases, fetchMyAreaKeys, fetchTownDistrictFeatures, isLocationOverrideAllowed, type TaneBase } from "@/lib/game/chizuTaneData";
 import { ErrorText, GrowthBadge, GrowthLegend, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { HIDDEN_LOCAL_BASE, isHiddenLocalBase } from "@/lib/game/chizuTane/localItems";
 import { taneMarkerIcon } from "./taneMarker";
+import { NEIGHBOR_STYLE, SELECTED_STYLE, districtWithNeighbors } from "./districtOutline";
 import { useTanePlayer } from "./useTanePlayer";
 
 
@@ -50,6 +51,8 @@ function TaneMap() {
   const overrideAllowed = useMemo(() => isLocationOverrideAllowed(), []);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; Lmod: typeof L } | null>(null);
+  // 地図を作り終えたら true(選んだ畑の地区の境目を描くのを待つため)
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +82,7 @@ function TaneMap() {
       const map = Lmod.map(containerRef.current, { center: [36.5, 137.0], zoom: 5, attributionControl: false });
       mapInstance = map;
       mapRef.current = { map, Lmod };
+      setMapReady(true);
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.6 }).addTo(map);
       for (const b of bases) {
         Lmod.marker([b.repLat, b.repLng], { icon: taneMarkerIcon(Lmod, b, isHiddenLocalBase(b, own.has(b.areaKey))) })
@@ -93,6 +97,7 @@ function TaneMap() {
       cancelled = true;
       mapInstance?.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, [bases, own]);
 
@@ -116,6 +121,38 @@ function TaneMap() {
   };
 
   const sel = selected ? bases?.find((b) => b.areaKey === selected) ?? null : null;
+
+  // 畑を選んだら、その地区(青)ととなりの地区(オレンジ)の境目を出し、地図をその地区に寄せる。
+  // 町丁の geojson はその市区町村の分だけ読む(全国の分は読まない)
+  const selPrefCode = sel?.prefCode;
+  const selCityCode = sel?.cityCode;
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!mapReady || !m || !selected || !selPrefCode || !selCityCode) return;
+    let cancelled = false;
+    let group: L.LayerGroup | null = null;
+    fetchTownDistrictFeatures(selPrefCode, selCityCode)
+      .then((features) => {
+        if (cancelled || !features) return;
+        const { selected: selectedFeatures, neighbors } = districtWithNeighbors(features, selected);
+        group = m.Lmod.layerGroup().addTo(m.map);
+        const draw = (fs: typeof features, style: L.PathOptions) =>
+          fs.map((f) => m.Lmod.geoJSON(f as unknown as Parameters<typeof L.geoJSON>[0], { style, interactive: false }).addTo(group!));
+        draw(neighbors, NEIGHBOR_STYLE);
+        const ownLayers = draw(selectedFeatures, SELECTED_STYLE);
+        let bounds: L.LatLngBounds | null = null;
+        for (const layer of ownLayers) {
+          const b = layer.getBounds();
+          if (b.isValid()) bounds = bounds ? bounds.extend(b) : m.Lmod.latLngBounds(b.getSouthWest(), b.getNorthEast());
+        }
+        if (bounds) m.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      group?.remove();
+    };
+  }, [mapReady, selected, selPrefCode, selCityCode]);
   // ほかの人のご当地の畑は、何の畑か(どこのご当地のものか)を地図では出さない(現地で、実ってからチェックインすると分かる)
   const selHidden = sel ? isHiddenLocalBase(sel, own.has(sel.areaKey)) : false;
   const selType = sel ? (selHidden ? HIDDEN_LOCAL_BASE : TANE_BASE_TYPE_BY_ID.get(sel.baseTypeId)) : undefined;
@@ -131,7 +168,7 @@ function TaneMap() {
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#78716c] mb-4">
         <GrowthLegend />
-        <span>アイコンをタップすると詳しく見られます</span>
+        <span>アイコンをタップすると詳しく見られます（地区の境目も出ます）</span>
       </div>
 
       {unplaced > 0 && <p className="text-xs text-red-600 mb-3">場所が分からず地図に出せないタネが{unplaced}個あります</p>}

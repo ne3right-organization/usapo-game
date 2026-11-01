@@ -475,27 +475,30 @@ export async function locateTownDistrict(loc: Location): Promise<TownDistrict | 
   return null;
 }
 
-/** ブラウザの位置情報。許可されなかったときなどは、理由が分かるメッセージで例外にする */
-export function getCurrentLocation(): Promise<Location> {
-  return new Promise((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
-      reject(new Error("このブラウザでは位置情報が使えません"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lng: pos.coords.longitude, lat: pos.coords.latitude }),
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          reject(new Error("位置情報の利用が許可されていません。ブラウザの設定で、このサイトに位置情報の利用を許可してください"));
-        } else if (err.code === err.TIMEOUT) {
-          reject(new Error("現在地を取得できませんでした（時間切れ）。屋外や窓の近くでもう一度試してください"));
-        } else {
-          reject(new Error("現在地を取得できませんでした。もう一度試してください"));
-        }
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-    );
-  });
+/**
+ * ブラウザの位置情報を受け取り続ける(地図アプリと同じ取り方)。止めるときは返り値を呼ぶ。
+ * 1回だけ聞く getCurrentPosition は、iPhone などで2回目以降に前と同じ古い位置が返ることがあるので使わない。
+ * 許可されなかったときなどは、理由が分かるメッセージを onError に渡す(受け取りは続くので、次の位置が来ることもある)
+ */
+export function watchLocation(onFix: (loc: Location) => void, onError: (message: string) => void): () => void {
+  if (!("geolocation" in navigator)) {
+    onError("このブラウザでは位置情報が使えません");
+    return () => {};
+  }
+  const id = navigator.geolocation.watchPosition(
+    (pos) => onFix({ lng: pos.coords.longitude, lat: pos.coords.latitude }),
+    (err) => {
+      if (err.code === err.PERMISSION_DENIED) {
+        onError("位置情報の利用が許可されていません。ブラウザの設定で、このサイトに位置情報の利用を許可してください");
+      } else if (err.code === err.TIMEOUT) {
+        onError("現在地を取得できませんでした（時間切れ）。屋外や窓の近くで地図の右下の現在地ボタンを押してください");
+      } else {
+        onError("現在地を取得できませんでした。地図の右下の現在地ボタンを押して、もう一度試してください");
+      }
+    },
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+  );
+  return () => navigator.geolocation.clearWatch(id);
 }
 
 /** 持っているタネ(itemId)をまく。そのものの種類の拠点ができる(梨の木のタネ → 果樹園) */
