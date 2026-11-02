@@ -136,7 +136,12 @@ function Collection() {
       {/* ご当地のもの(旅先で手に入れたもの)。持っているものだけ、都道府県ごとに出す */}
       {localByPref.length > 0 && (
         <section className="mb-5">
-          <h2 className="text-xs font-bold text-[#a8937a] mb-2">🗾 ご当地</h2>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h2 className="text-xs font-bold text-[#a8937a]">🗾 ご当地</h2>
+            <Link href="/game/chizu-tane/collection/local" className="text-xs text-emerald-700 underline underline-offset-2">
+              📖 ご当地コレクション →
+            </Link>
+          </div>
           {localByPref.map((p) => (
             <div key={p.prefCode} className="mb-3">
               <p className="text-2xs font-semibold text-[#78716c] mb-1">{p.prefName}</p>

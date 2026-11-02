@@ -22,7 +22,8 @@ import MapPuzzleScores from "@/components/profile/MapPuzzleScores";
 import { currentUser } from "@/lib/auth";
 import { UserIcon } from "@/components/game/chizu-tane/TaneParts";
 import TaneProfileLinks from "@/components/game/chizu-tane/TaneProfileLinks";
-import TaneLocalCompletion, { TANE_LOCAL_RANK_LABELS } from "@/components/profile/TaneLocalCompletion";
+import TaneLocalCompletion from "@/components/profile/TaneLocalCompletion";
+import { TANE_LOCAL_RANK_LABELS } from "@/lib/game/chizuTane/localItems";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`;

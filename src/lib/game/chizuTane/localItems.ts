@@ -30,6 +30,9 @@ export const TANE_LOCAL_BASE_TYPES: TaneBaseType[] = (Object.entries(TANE_LOCAL_
 
 export const TANE_LOCAL_RANK_ROLES = ["現地で", "お土産", "見せたい"] as const;
 
+/** 何個目ごとの呼び名(プロフィールのコンプリート状況・ご当地コレクションの見出し) */
+export const TANE_LOCAL_RANK_LABELS = ["現地", "お土産", "記念品"] as const;
+
 /** 1個目のご当地のタネをもらえるレベル */
 export const LOCAL_SEED_MIN_LEVEL = 3;
 

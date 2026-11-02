@@ -16,9 +16,6 @@ const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojso
 /** 地図に出す絵の大きさ(px) */
 const MARKER_SIZE = 30;
 
-/** 何個目ごとの呼び名(プロフィールのレベルのボタン) */
-export const TANE_LOCAL_RANK_LABELS = ["現地", "お土産", "記念品"] as const;
-
 function prefFeatureKey(feature: unknown): MapFeatureKey | null {
   const props = (feature as { properties?: Record<string, unknown> })?.properties;
   if (props?.pref == null) return null;
