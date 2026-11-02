@@ -11,3 +11,5 @@
   ```
 
 元の画像は大きいので git には入れない（`.gitignore`）。コミットするのはできあがった `public/chizu-tane/items/` と `src/lib/game/chizuTane/itemImages.generated.ts`。
+
+- アプリのアイコン（`scripts/make-app-icons.mts`）も、ここのシートから実の絵を切り抜いて作る

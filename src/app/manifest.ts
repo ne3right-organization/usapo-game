@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-// PWA(ホーム画面に追加)用のマニフェスト。アイコンの元画像から切り抜いたものを public/icons に置いている
+// PWA(ホーム画面に追加)用のマニフェスト。アイコン(public/icons)はうさぽ農園の実の絵を並べたもので、scripts/make-app-icons.mts で作る
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "うさぽ ゲームコーナー",
@@ -15,8 +15,8 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      // 端まで絵柄が入った正方形なので、端が少し切れてもよいマスカブルにも同じ画像を使う
-      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      // 端が丸く切れてもよいよう、実を中央に寄せて小さくしたもの
+      { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }
