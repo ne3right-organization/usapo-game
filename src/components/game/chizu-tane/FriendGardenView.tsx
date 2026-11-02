@@ -23,6 +23,7 @@ import { RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/growth";
 import { slotLabel } from "@/lib/game/chizuTane/geo";
 import { HIDDEN_LOCAL_BASE, isHiddenLocalBase } from "@/lib/game/chizuTane/localItems";
 import GardenSvg from "./GardenSvg";
+import GardenZoom from "./GardenZoom";
 import { FriendShelf } from "./ShelfParts";
 import SwipePages from "./SwipePages";
 import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen, UserIcon, WaterHint } from "./TaneParts";
@@ -102,13 +103,15 @@ function FriendGarden({ userId, helpCount }: { userId: string; helpCount: number
         </div>
       )}
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-2 mb-3">
-        <GardenSvg
-          width={garden.width}
-          height={garden.height}
-          design={designId}
-          houseTier={houseTierFor(garden.level).id}
-          objects={gardenObjectsOf(garden, designId)}
-        />
+        <GardenZoom>
+          <GardenSvg
+            width={garden.width}
+            height={garden.height}
+            design={designId}
+            houseTier={houseTierFor(garden.level).id}
+            objects={gardenObjectsOf(garden, designId)}
+          />
+        </GardenZoom>
       </div>
       <FriendShelf ownerId={userId} nickname={garden.nickname ?? "ニックネーム未設定"} />
       <HelpFields ownerId={userId} nickname={garden.nickname ?? "ニックネーム未設定"} initialHelpCount={helpCount} />

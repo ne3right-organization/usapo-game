@@ -23,6 +23,8 @@ export interface DisplaySizeConfig {
   myFieldsPerPage: number;
   /** ガーデンの画面のフォロワーの、1ページに横に並べる数 */
   followersPerPage: number;
+  /** ガーデン(飾る画面・見せてもらう画面)の絵を、画面の幅の何倍で出すか(はみ出たところは横にスクロール。画面の ＋ − でも変えられる) */
+  gardenZoom: number;
 }
 
 export const DISPLAY_SIZES: Record<DisplaySize, DisplaySizeConfig> = {
@@ -37,21 +39,10 @@ export const DISPLAY_SIZES: Record<DisplaySize, DisplaySizeConfig> = {
     seedPickerPerPage: 3,
     myFieldsPerPage: 3,
     followersPerPage: 3,
+    gardenZoom: 1,
   },
   large: {
     label: "大きめ",
-    note: "文字と絵が少し大きい",
-    textScale: 1.15,
-    iconScale: 1.15,
-    itemGrid: { columns: 3, rows: 3 },
-    officialFieldColumns: 3,
-    collectionColumns: 3,
-    seedPickerPerPage: 3,
-    myFieldsPerPage: 3,
-    followersPerPage: 3,
-  },
-  xlarge: {
-    label: "とても大きい",
     note: "並べる数を減らす",
     textScale: 1.3,
     iconScale: 1.3,
@@ -61,8 +52,25 @@ export const DISPLAY_SIZES: Record<DisplaySize, DisplaySizeConfig> = {
     seedPickerPerPage: 2,
     myFieldsPerPage: 3,
     followersPerPage: 2,
+    gardenZoom: 1.3,
+  },
+  xlarge: {
+    label: "とても大きい",
+    note: "1列ずつ並べる",
+    textScale: 1.5,
+    iconScale: 1.5,
+    itemGrid: { columns: 1, rows: 3 },
+    officialFieldColumns: 1,
+    collectionColumns: 1,
+    seedPickerPerPage: 1,
+    myFieldsPerPage: 3,
+    followersPerPage: 1,
+    gardenZoom: 1.6,
   },
 };
+
+/** ガーデンの ＋ − で選べる倍率 */
+export const GARDEN_ZOOM_STEPS = [1, 1.3, 1.6, 2, 2.5];
 
 /** 設定画面に並べる順 */
 export const DISPLAY_SIZE_ORDER: DisplaySize[] = ["normal", "large", "xlarge"];
