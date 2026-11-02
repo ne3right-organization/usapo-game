@@ -22,15 +22,26 @@ import MapPuzzleScores from "@/components/profile/MapPuzzleScores";
 import { currentUser } from "@/lib/auth";
 import { UserIcon } from "@/components/game/chizu-tane/TaneParts";
 import TaneProfileLinks from "@/components/game/chizu-tane/TaneProfileLinks";
+import TaneLocalCompletion, { TANE_LOCAL_RANK_LABELS } from "@/components/profile/TaneLocalCompletion";
 
 const CLOUDFRONT_URL = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ?? "";
 const PREFECTURES_URL = `${CLOUDFRONT_URL}/geojson/prefecture/prefectures.geojson`;
 const municipalitiesUrl = (prefCode: string) => `${CLOUDFRONT_URL}/geojson/municipality/2020/${prefCode}.geojson`;
 
-const GAME_META: Record<CompletionGame, { label: string; color: string; tab: string }> = {
+// うさぽ農園は、集めたご当地の実を出す(TaneLocalCompletion)。レベルのボタンは何個目(現地・お土産・記念品)に使い、全国の地図だけ。
+// 自分のプロフィールだけに出す
+type ProfileGame = CompletionGame | "chizu-tane";
+const PROFILE_GAMES: ProfileGame[] = [...COMPLETION_GAMES, "chizu-tane"];
+
+const GAME_META: Record<ProfileGame, { label: string; color: string; tab: string }> = {
   "map-puzzle": { label: "🗺️ 地図パズル", color: "#0f766e", tab: "bg-teal-700" },
   "map-pack": { label: "📦 地図ポットン", color: "#7e22ce", tab: "bg-purple-700" },
+  "chizu-tane": { label: "🌱 うさぽ農園", color: "#059669", tab: "bg-emerald-600" },
 };
+
+function levelLabel(game: ProfileGame, level: Difficulty): string {
+  return game === "chizu-tane" ? TANE_LOCAL_RANK_LABELS[COMPLETION_LEVELS.indexOf(level)] : completionLevelLabel(game, level);
+}
 
 function prefFeatureKey(feature: unknown): MapFeatureKey | null {
   const props = (feature as { properties?: Record<string, unknown> })?.properties;
@@ -70,8 +81,8 @@ export interface CompletionProfileViewProps {
 export default function CompletionProfileView({ targetUserId, initialGame, initialLevel }: CompletionProfileViewProps) {
   const router = useRouter();
   const [view, setView] = useState<ViewState>({ status: "loading" });
-  const [game, setGame] = useState<CompletionGame>(
-    COMPLETION_GAMES.includes(initialGame as CompletionGame) ? (initialGame as CompletionGame) : "map-puzzle",
+  const [selectedGame, setGame] = useState<ProfileGame>(
+    PROFILE_GAMES.includes(initialGame as ProfileGame) ? (initialGame as ProfileGame) : "map-puzzle",
   );
   const [level, setLevel] = useState<Difficulty>(
     COMPLETION_LEVELS.includes(initialLevel as Difficulty) ? (initialLevel as Difficulty) : "intermediate",
@@ -107,10 +118,12 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
   }, [targetUserId]);
 
   const userId = view.status === "ready" ? view.userId : null;
-  const data = dataByGame[game];
+  // うさぽ農園は自分のプロフィールだけ。ほかの人の URL に game=chizu-tane が付いていたら地図パズルを出す
+  const game: ProfileGame = view.status === "ready" && !view.isSelf && selectedGame === "chizu-tane" ? "map-puzzle" : selectedGame;
+  const data = game === "chizu-tane" ? undefined : dataByGame[game];
 
   useEffect(() => {
-    if (!userId || dataByGame[game]) return;
+    if (!userId || game === "chizu-tane" || dataByGame[game]) return;
     let cancelled = false;
     fetchCompletion(game, userId)
       .then((d) => {
@@ -124,7 +137,7 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
     };
   }, [userId, game, dataByGame]);
 
-  const select = (g: CompletionGame, l: Difficulty) => {
+  const select = (g: ProfileGame, l: Difficulty) => {
     setGame(g);
     setLevel(l);
     setLoadError("");
@@ -179,7 +192,7 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
       <TaneProfileLinks userId={view.userId} isSelf={view.isSelf} nickname={view.nickname} />
 
       <div className="flex gap-2">
-        {COMPLETION_GAMES.map((g) => (
+        {PROFILE_GAMES.filter((g) => g !== "chizu-tane" || view.isSelf).map((g) => (
           <button
             key={g}
             type="button"
@@ -204,14 +217,20 @@ export default function CompletionProfileView({ targetUserId, initialGame, initi
             }`}
             style={level === l ? { backgroundColor: meta.color } : undefined}
           >
-            {completionLevelLabel(game, l)}
+            {levelLabel(game, l)}
           </button>
         ))}
       </div>
 
-      {loadError && <p className="text-sm text-red-600 text-center py-6">{loadError}</p>}
-      {!loadError && !data && <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}
-      {!loadError && data && (
+      {game === "chizu-tane" && view.isSelf && (
+        <TaneLocalCompletion
+          rank={COMPLETION_LEVELS.indexOf(level) + 1}
+          color={meta.color}
+        />
+      )}
+      {game !== "chizu-tane" && loadError && <p className="text-sm text-red-600 text-center py-6">{loadError}</p>}
+      {game !== "chizu-tane" && !loadError && !data && <p className="text-sm text-[#a8937a] text-center py-10">読み込み中...</p>}
+      {game !== "chizu-tane" && !loadError && data && (
         <CompletionLevelView
           // ゲーム・レベルを切り替えたら選択や表示中の県をリセットする
           key={`${game}-${level}`}

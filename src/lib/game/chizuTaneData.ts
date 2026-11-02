@@ -5,6 +5,7 @@ import { data, unwrap, type Schema } from "@/lib/amplify/data";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { GardenDesignId, GardenLayouts, GardenObject } from "@/lib/game/chizuTane/garden";
 import { isAbandoned } from "@/lib/game/chizuTane/growth";
+import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
 import { OFFICIAL_OWNER_ID } from "@/lib/game/chizuTane/official";
 import {
   DAY_MS_DEV,
@@ -672,6 +673,11 @@ export async function fetchGardenOf(userId: string): Promise<FriendGarden> {
     level: g.level,
     plantedCount: g.plantedCount,
   };
+}
+
+/** 持っているご当地の実の itemId(自分のプロフィールのコンプリート状況) */
+export async function fetchMyLocalItemIds(): Promise<string[]> {
+  return (await fetchMyItems()).map((i) => i.itemId).filter((id) => TANE_LOCAL_ITEM_BY_ID.has(id));
 }
 
 /** 自分に農園を見せてくれている人の ID(見せてくれている側が作った行を、見せてもらっている側から引く) */
