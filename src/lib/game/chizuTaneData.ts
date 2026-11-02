@@ -527,7 +527,7 @@ export async function replantBase(areaKey: string, itemId: string): Promise<Tane
 
 export interface CheckInResult {
   /**
-   * watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / have: ご当地の実をもう持っているので、もらわなかった /
+   * watered: 水をやった / ripened: 水をやって実った / fruit: 実をもらった / have: この畑のご当地の実はもうもらったので、もらわなかった /
    * waiting: タネ待ちの畑 / already: この時間帯はもう来た
    */
   status: "watered" | "ripened" | "fruit" | "have" | "waiting" | "already";

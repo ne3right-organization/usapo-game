@@ -437,6 +437,17 @@ const schema = a
       .identifier(["takerId", "ownerId"])
       .authorization((allow) => [allow.group("admin")]),
 
+    // ご当地の実をもらった記録(ユーザー×「生産者のID#もの」)。ご当地の実は、生産者とものの組みにつき1人1個
+    // (Aさんの鳩サブレーとBさんの鳩サブレーは両方もらえる。生産者1人のご当地の畑は1つのものにつき1つなので、1つの畑の実はちがう人に行き渡る)。
+    // Lambda が実を渡すのと同じトランザクションで条件付きで書く。2026-11-02 より前にもらったものは収穫の記録(GameTaneHarvest)で見る
+    GameTaneLocalFruit: a
+      .model({
+        userId: a.id().required(),
+        sourceKey: a.string().required(),
+      })
+      .identifier(["userId", "sourceKey"])
+      .authorization((allow) => [allow.group("admin")]),
+
     // 持っているもの(実。ユーザー×アイテム)。収穫したときだけ増える(訪ねてもらえるのはタネだけ)。ガーデンに飾れる数はこれ。
     // firstAreaName は初めて収穫した地区(「○○区 ○○町」)。産地ごとの記録は GameTaneHarvest
     GameTaneItem: a
