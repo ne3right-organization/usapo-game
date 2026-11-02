@@ -21,12 +21,14 @@ import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import * as coursesModule from "../../src/lib/game/chizuTane/courses";
+import * as localItemsModule from "../../src/lib/game/chizuTane/localItems";
 import { GROWTH_ROWS, GROWTH_SHEET_ID, type Rgba, cutOut, cutSheet, findParts, loadRgba, removeWhiteBackground, sheetRows } from "./itemArt.mjs";
 
 // package.json が "type": "module" ではないので、tsx で動かすと courses.ts は CommonJS として読まれ、中身は default に入る。
 // 型の上(next build の型チェック)では ES モジュールなので、どちらでも取り出せるようにする
 const courses = (coursesModule as unknown as { default?: typeof coursesModule }).default ?? coursesModule;
 const { TANE_ITEM_BY_ID, TANE_ITEMS } = courses;
+const { TANE_LOCAL_ITEM_BY_ID } = ((localItemsModule as unknown as { default?: typeof localItemsModule }).default ?? localItemsModule);
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const SHEETS_DIR = join(ROOT, "art/chizu-tane/sheets");
@@ -61,7 +63,7 @@ async function writeItem(itemId: string, piece: Rgba, scale = fitScale(piece)): 
   console.log(`  ${itemId}.png`);
 }
 
-/** シート(行 × 3列)を切り分ける */
+/** シート(行 × 列)を切り分ける */
 async function processSheet(file: string, rows: string[][], sameScale = false): Promise<void> {
   const pieces: [string, Rgba][] = [];
   for (const [id, piece] of await cutSheet(file, rows)) {
@@ -103,7 +105,8 @@ function writeGenerated(): void {
       `// 絵のあるアイテム(アイテムID → 画像の URL)。courses.ts がアイテムの imageUrl にする\n` +
       `export const ITEM_IMAGE_URLS: Record<string, string> = {\n${body}${body ? "\n" : ""}};\n`
   );
-  console.log(`一覧を更新: 絵のあるアイテム ${urls.length} / ${TANE_ITEMS.length}`);
+  const local = urls.filter(([id]) => TANE_LOCAL_ITEM_BY_ID.has(id)).length;
+  console.log(`一覧を更新: 絵のあるアイテム ${urls.length - local} / ${TANE_ITEMS.length}、ご当地 ${local} / ${TANE_LOCAL_ITEM_BY_ID.size}`);
 }
 
 /** 育つ途中の絵の一覧を作り直す(growth_{段階}.png → 段階の番号か waiting) */
@@ -139,7 +142,7 @@ async function main(): Promise<void> {
       console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4、growth、ご当地の local-01-1 〜 local-47-3)`);
       continue;
     }
-    console.log(`sheets/${f}（${rows.length}行 × 3）`);
+    console.log(`sheets/${f}（${rows.length}行 × ${Math.max(...rows.map((r) => r.length))}）`);
     await processSheet(join(SHEETS_DIR, f), rows, sheetId === GROWTH_SHEET_ID);
   }
   for (const f of listImages(SINGLES_DIR)) {

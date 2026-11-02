@@ -29,6 +29,8 @@ export const GROWTH_ROWS = [
 // 白のほか、AI が「透明」のつもりで描き込んでくる市松模様の薄い灰色もこれで消える
 const BACKGROUND_MIN = 210;
 const BACKGROUND_MAX_SPREAD = 14;
+const HAZE_ALPHA = 128; // うすい半透明のもや(これより透明な画素)
+const HAZE_RATIO = 0.02; // うすい画素が画像全体のこれより多ければ、もやのあるシートとみなす
 const MIN_PART_RATIO = 0.0005; // これより小さいかたまり(画像全体に対する割合)はゴミとして捨てる
 
 export type Rgba = { data: Buffer; width: number; height: number };
@@ -109,14 +111,21 @@ export interface Part {
   cy: number;
 }
 
-/** 透明でない画素のかたまり(4近傍でつながったもの)。小さいゴミは捨てる */
+/**
+ * 透明でない画素のかたまり(4近傍でつながったもの)。小さいゴミは捨てる。
+ * AI が背景にうすい半透明のもやを残してくることがあり(となりの絵とつながって1つのかたまりになる)、
+ * うすい画素が多いシートでは、うすい画素も背景とみなす
+ */
 export function findParts(img: Rgba): Part[] {
   const { data, width, height } = img;
+  let faint = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] >= 16 && data[i] < HAZE_ALPHA) faint++;
+  const minAlpha = faint > width * height * HAZE_RATIO ? HAZE_ALPHA : 16;
   const label = new Int32Array(width * height).fill(-1);
   const parts: Part[] = [];
   const minSize = Math.max(4, width * height * MIN_PART_RATIO);
   for (let start = 0; start < width * height; start++) {
-    if (label[start] !== -1 || data[start * 4 + 3] < 16) continue;
+    if (label[start] !== -1 || data[start * 4 + 3] < minAlpha) continue;
     const pixels: number[] = [];
     const stack = [start];
     label[start] = parts.length;
@@ -130,7 +139,7 @@ export function findParts(img: Rgba): Part[] {
       sx += x;
       sy += y;
       for (const q of [x > 0 ? p - 1 : -1, x < width - 1 ? p + 1 : -1, y > 0 ? p - width : -1, y < height - 1 ? p + width : -1]) {
-        if (q >= 0 && label[q] === -1 && data[q * 4 + 3] >= 16) {
+        if (q >= 0 && label[q] === -1 && data[q * 4 + 3] >= minAlpha) {
           label[q] = parts.length;
           stack.push(q);
         }

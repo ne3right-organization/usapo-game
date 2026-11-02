@@ -6,16 +6,19 @@
 //   npx tsx scripts/chizu-tane/local-art-prompts.mts 13 14       # 都道府県を指定して(3枚ずつ)
 //   npx tsx scripts/chizu-tane/local-art-prompts.mts 13-2        # シートを指定して(東京都の2個目)
 //   npx tsx scripts/chizu-tane/local-art-prompts.mts --status    # 都道府県ごとの進み具合だけ
+//   npx tsx scripts/chizu-tane/local-art-prompts.mts --file      # 全部の頼む文を art/chizu-tane/local-prompts.md に書き出す
+//                                                                 (見本 art/chizu-tane/style-reference.png が無ければ作る)
 //
 // 1シート = 1都道府県の同じ何個目(現地で・お土産・見せたい)の5点を、横1列(植物・動物・趣味・乗り物・建物)に。
 // 同じ役目のものを並べるので、大きさの感じがそろう。見本は通常のアイテムと同じ style-reference.png を毎回添付する。
 // できた画像は art/chizu-tane/sheets/local-{都道府県コード}-{何個目}.png に置き、process-item-images.mts で切り分ける
 
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import sharp from "sharp";
 import * as localItemsModule from "../../src/lib/game/chizuTane/localItems";
-import { LOCAL_SHEET_COURSES, localSheetId, sheetRows } from "./itemArt.mjs";
+import { LOCAL_SHEET_COURSES, type Rgba, cutSheet, localSheetId, sheetRows } from "./itemArt.mjs";
 
 // package.json が "type": "module" ではないので、tsx で動かすと中身は default に入る(process-item-images.mts と同じ)
 const localItems = (localItemsModule as unknown as { default?: typeof localItemsModule }).default ?? localItemsModule;
@@ -55,7 +58,7 @@ const ROLES: Record<number, { title: string; courses: Record<(typeof LOCAL_SHEET
       animal: "立派な・珍しい生きもの",
       hobby: "大きく立派な工芸品・飾り",
       vehicle: "祭りの山車など。人は描かない",
-      building: "名所の建物・神社。そっくりにせず、それらしく",
+      building: "名所の建物。そっくりにせず、それらしく",
     },
   },
 };
@@ -146,8 +149,22 @@ const NOTES: Record<string, string> = {
   紅型の着物: "あざやかな色の染めの着物",
   那覇のハーリー船: "竜の頭の飾りのついた細長い舟",
   竹富島の水牛車: "水牛が引く、屋根つきの車",
-  "山寺（立石寺）": "岩山の上に建つお堂",
-  三徳山の投入堂: "崖にはりつくように建つお堂",
+  松島の五大堂: "海に浮かぶ小島の小さなお堂と、そこへ渡る赤い橋",
+  銀山温泉の木造の旅館: "川沿いに建つ、木造3階建てのレトロな温泉旅館",
+  会津の大内宿: "茅葺き屋根の宿場の家",
+  犬吠埼の灯台: "岬に立つ白い灯台",
+  佐渡金山の坑道: "岩山にあいた坑道の入口と、小さなトロッコ",
+  黒部ダム: "山あいのアーチ形の大きなダムと、勢いよく出る放水",
+  勝沼のワイン蔵: "ワインの樽が並ぶ石造りの蔵",
+  上高地の河童橋: "山を背にした、川にかかる木の吊り橋",
+  韮山反射炉: "れんが造りの高い煙突が並ぶ、昔の炉",
+  名古屋のテレビ塔: "鉄骨で組んだ電波塔",
+  近江八幡の堀の蔵: "堀沿いに並ぶ白壁の蔵と小舟",
+  金閣: "池のほとりの、金色の3階建てのお堂",
+  湯浅の醤油蔵: "瓦屋根の古い醤油蔵と大きな樽",
+  "鳥取の白い洋館（仁風閣）": "白い壁の、2階建ての明治時代の洋館",
+  "栗林公園の茶屋（掬月亭）": "池に面した、数寄屋造りの茶屋",
+  九重の夢大吊橋: "深い谷にかかる、長い歩行者用の吊り橋",
   "ちょうさ（太鼓台）": "赤い布団を重ねたような飾りの太鼓台",
 };
 
@@ -174,7 +191,7 @@ export function prompt(sheet: Sheet): string {
     const note = NOTES[item.name];
     return `${i + 1}. ${item.name}（${note ? `${note}。` : ""}${role.courses[course]}）`;
   });
-  return `添付した画像と同じ絵柄で、ゲーム用のアイテムの絵を、横1列に5つ並べた1枚の横長の画像で作ってください。
+  return `添付した画像と同じ絵柄で、ゲーム用のアイテムの絵を、横1列に5つ並べた1枚の横長（3:2）の画像で作ってください。
 視点・線の太さ・色合い・光の向きを添付の画像にそろえてください。添付の画像は絵柄の見本で、描くもの・並べ方はまねしないでください。
 
 【絵の決まり】
@@ -209,6 +226,83 @@ function printStatus(): void {
   }
 }
 
+const STYLE_REFERENCE = join(ROOT, "art/chizu-tane/style-reference.png");
+const PROMPTS_FILE = join(ROOT, "art/chizu-tane/local-prompts.md");
+
+/** 見本の画像に並べるもの(手順書の手順1と同じ9点。各コースの Lv.1 から)。シートから切り抜いて 3×3 に並べる */
+const STYLE_REFERENCE_ITEMS: [sheet: string, itemId: string][] = [
+  ["plant-1", "orchard_1"],
+  ["animal-1", "bird_woods_1"],
+  ["hobby-1", "photo_spot_1"],
+  ["vehicle-1", "cycle_port_1"],
+  ["building-1", "bakery_1"],
+  ["plant-1", "flower_field_1"],
+  ["animal-1", "petting_farm_1"],
+  ["vehicle-1", "work_vehicle_depot_1"],
+  ["building-1", "bakery_3"],
+];
+
+/** 見本の画像(白地に 3×3)を、通常のアイテムのシートから作る。ChatGPT に毎回添付する1枚 */
+async function makeStyleReference(): Promise<void> {
+  const CELL = 340;
+  const pieces = new Map<string, Rgba | null>();
+  for (const sheet of new Set(STYLE_REFERENCE_ITEMS.map(([s]) => s))) {
+    const file = join(SHEETS_DIR, `${sheet}.png`);
+    if (!existsSync(file)) throw new Error(`${file} がありません(見本は通常のアイテムのシートから作る)`);
+    for (const [id, piece] of await cutSheet(file, sheetRows(sheet)!)) pieces.set(id, piece);
+  }
+  const layers: sharp.OverlayOptions[] = [];
+  for (const [i, [, id]] of STYLE_REFERENCE_ITEMS.entries()) {
+    const piece = pieces.get(id);
+    if (!piece) throw new Error(`${id} の絵が見つかりません`);
+    const { data, info } = await sharp(piece.data, { raw: { width: piece.width, height: piece.height, channels: 4 } })
+      .resize(CELL - 40, CELL - 40, { fit: "inside" })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    // 下端の中央が地面に接するように、マスの下に寄せて左右中央に置く
+    const left = (i % 3) * CELL + Math.round((CELL - info.width) / 2);
+    const top = Math.floor(i / 3) * CELL + (CELL - 20 - info.height);
+    layers.push({ input: data, left, top });
+  }
+  await sharp({ create: { width: CELL * 3, height: CELL * 3, channels: 3, background: "#ffffff" } })
+    .composite(layers)
+    .png()
+    .toFile(STYLE_REFERENCE);
+  console.log("見本を作りました: art/chizu-tane/style-reference.png");
+}
+
+/** 全部の頼む文を1つのファイルに。無料版で少しずつ作れるよう、1シートごとに新しい会話で見本を添付して貼る形 */
+async function writePromptsFile(): Promise<void> {
+  if (!existsSync(STYLE_REFERENCE)) await makeStyleReference();
+  const out: string[] = [
+    "# ご当地のものの絵の頼む文（ChatGPT 用）",
+    "",
+    "`npx tsx scripts/chizu-tane/local-art-prompts.mts --file` が作るファイル。手で直さない（直すのは local-art-prompts.mts と localItems.ts）。",
+    "",
+    "1シートごとに:",
+    "",
+    "1. ChatGPT で**新しい会話**を開く",
+    "2. 見本 `art/chizu-tane/style-reference.png` を添付する",
+    "3. 下の枠の中を全部コピーして貼り、送る",
+    "4. できた画像を保存し、名前を「保存するファイル名」にして `art/chizu-tane/sheets/` に置く",
+    "5. `npx tsx scripts/chizu-tane/process-item-images.mts local-13-1` のように切り分ける（引数なしなら置いてあるもの全部）",
+    "",
+    "5つが2段になった・絵が重なった・違うものが描かれたときは、同じ会話で「横1列に5つで描き直して」「3つ目は○○なので描き直して」と頼む。",
+    "進み具合は `npx tsx scripts/chizu-tane/local-art-prompts.mts --status`（このファイルを作り直すと、絵のあるシートは ☑ になる）。",
+    "",
+  ];
+  for (const p of TANE_LOCAL_PREFS) {
+    out.push(`## ${p.prefCode} ${p.prefName}`, "");
+    for (const sheet of ALL_SHEETS.filter((s) => s.prefCode === p.prefCode)) {
+      const mark = isDone(sheet) ? "☑" : "□";
+      out.push(`### ${mark} ${sheet.prefName} ${sheet.rank}個目（${ROLES[sheet.rank].title}） → 保存するファイル名: \`${sheet.id}.png\``, "");
+      out.push("```", prompt(sheet), "```", "");
+    }
+  }
+  writeFileSync(PROMPTS_FILE, out.join("\n"));
+  console.log(`${ALL_SHEETS.length} シートの頼む文を書き出しました: art/chizu-tane/local-prompts.md`);
+}
+
 /**
  * 引数からシートを選ぶ。都道府県(13)・シート(13-2)を指定すればそれを、無ければまだ絵の無いシートを --next の数(3)だけ。
  * generate-local-art.mts でも使う
@@ -234,12 +328,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const args = process.argv.slice(2);
   if (args.includes("--status")) {
     printStatus();
+  } else if (args.includes("--file")) {
+    await writePromptsFile();
   } else {
     const sheets = selectSheets(args);
     if (sheets.length === 0) console.log("まだ絵の無いシートはありません");
     for (const s of sheets) printSheet(s);
     const unknown = Object.keys(NOTES).filter((name) => !ALL_SHEETS.some((s) => LOCAL_SHEET_COURSES.some((c) => localItemFor(s.prefCode, c, s.rank)?.name === name)));
-    if (unknown.length > 0) console.warn(`
-! NOTES にあるが、ご当地のものに無い名前: ${unknown.join("、")}`);
+    if (unknown.length > 0) console.warn(`\n! NOTES にあるが、ご当地のものに無い名前: ${unknown.join("、")}`);
   }
 }
