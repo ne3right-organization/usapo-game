@@ -56,3 +56,6 @@ amplifyconfiguration*
 /art/chizu-tane/singles/*
 !/art/chizu-tane/sheets/.gitkeep
 !/art/chizu-tane/singles/.gitkeep
+# 絵の見本(大きい)と、ご当地の頼む文(local-art-prompts.mts --file でいつでも作り直せる)
+/art/chizu-tane/style-reference.png
+/art/chizu-tane/local-prompts.md
