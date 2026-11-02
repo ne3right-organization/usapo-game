@@ -53,6 +53,7 @@ import {
 } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
+import { TANE_NEWS } from "@/lib/game/chizuTane/news";
 
 // 地図タネのトップ。初めてならコース選び、2回目からは自分のガーデンの絵と「おでかけ」(いまいる地区)への入口、自分のタネの一覧
 export default function TaneHome() {
@@ -79,14 +80,16 @@ export default function TaneHome() {
         </p>
       </div>
 
-      {/* お知らせ(本番はリリースなどの案内、開発環境は本番との違い) */}
-      {isDev ? (
+      {/* お知らせ(最新の1つ。src/lib/game/chizuTane/news.ts)。開発環境では、その下に本番との違いも出す */}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-4 leading-relaxed">
+        {TANE_NEWS[0].text}
+        <Link href="/game/chizu-tane/news" className="ml-1 underline underline-offset-2 whitespace-nowrap">
+          前のお知らせを見る →
+        </Link>
+      </div>
+      {isDev && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-4 leading-relaxed">
           🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。現在プレイできるレベルは{taneMaxLevel()}までです（本番は{MAX_LEVEL_PRODUCTION}まで）
-        </div>
-      ) : (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-4 leading-relaxed">
-          🎉 近くに畑が無くても遊べる「公式の畑」ができました！また知り合いを増やすと色々楽しめる機能も増えています！
         </div>
       )}
 
