@@ -11,18 +11,11 @@ export interface DisplaySizeConfig {
   textScale: number;
   /** うさぽ農園の絵(実・タネ・育ちの絵・人のアイコン)の大きさの倍率 */
   iconScale: number;
-  /** ます目に並べる列の数と、スワイプ1ページの段の数(おすそ分けの棚・ガーデンの持っているもの) */
-  itemGrid: { columns: number; rows: number };
-  /** 公式の畑(12か所。スワイプしない)の列の数 */
-  officialFieldColumns: number;
-  /** 集めたものの列の数 */
-  collectionColumns: number;
-  /** 持っているタネを選ぶところ(おでかけ)の、1ページに横に並べる数 */
-  seedPickerPerPage: number;
-  /** ホームの「あなたの畑」の、1ページに縦に並べる数 */
-  myFieldsPerPage: number;
-  /** ガーデンの画面のフォロワーの、1ページに横に並べる数 */
-  followersPerPage: number;
+  /** うさぽ農園のカード(あなたの畑・集めたもの・公式の畑・棚・ガーデンの持っているもの・タネを選ぶところ・フォロワー・手伝いの畑)の列の数。
+   *  2 以下にすると、カードが横長(絵が左・名前や数や説明が右)になる(src/components/game/chizu-tane/TaneCards.tsx) */
+  cardColumns: number;
+  /** スワイプでめくるカードの、1ページの段の数(あなたの畑・棚・ガーデンの持っているもの・手伝いの畑) */
+  cardRows: number;
   /** ガーデン(飾る画面・見せてもらう画面)の絵を、画面の幅の何倍で出すか(はみ出たところは横にスクロール。画面の ＋ − でも変えられる) */
   gardenZoom: number;
 }
@@ -33,12 +26,8 @@ export const DISPLAY_SIZES: Record<DisplaySize, DisplaySizeConfig> = {
     note: "これまでの大きさ",
     textScale: 1,
     iconScale: 1,
-    itemGrid: { columns: 3, rows: 3 },
-    officialFieldColumns: 3,
-    collectionColumns: 3,
-    seedPickerPerPage: 3,
-    myFieldsPerPage: 3,
-    followersPerPage: 3,
+    cardColumns: 3,
+    cardRows: 3,
     gardenZoom: 1,
   },
   large: {
@@ -46,12 +35,8 @@ export const DISPLAY_SIZES: Record<DisplaySize, DisplaySizeConfig> = {
     note: "並べる数を減らす",
     textScale: 1.3,
     iconScale: 1.3,
-    itemGrid: { columns: 2, rows: 3 },
-    officialFieldColumns: 2,
-    collectionColumns: 2,
-    seedPickerPerPage: 2,
-    myFieldsPerPage: 3,
-    followersPerPage: 2,
+    cardColumns: 2,
+    cardRows: 3,
     gardenZoom: 1.3,
   },
   xlarge: {
@@ -59,12 +44,8 @@ export const DISPLAY_SIZES: Record<DisplaySize, DisplaySizeConfig> = {
     note: "1列ずつ並べる",
     textScale: 1.5,
     iconScale: 1.5,
-    itemGrid: { columns: 1, rows: 3 },
-    officialFieldColumns: 1,
-    collectionColumns: 1,
-    seedPickerPerPage: 1,
-    myFieldsPerPage: 3,
-    followersPerPage: 1,
+    cardColumns: 1,
+    cardRows: 4,
     gardenZoom: 1.6,
   },
 };

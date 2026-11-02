@@ -16,7 +16,7 @@ import {
   type TaneShelfItem,
 } from "@/lib/game/chizuTaneData";
 import SwipePages from "./SwipePages";
-import { useDisplaySize } from "@/lib/displaySize";
+import { CardBody, useCardLayout } from "./TaneCards";
 import { ErrorText, ItemIcon, Loading, SeedIcon } from "./TaneParts";
 
 // おすそ分けの棚: 余ったタネや実を手元から棚に出しておくと、「農園を見せる」にしたフォロワーが遠くから1日1個持っていける
@@ -58,9 +58,16 @@ async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]
 
 const keyOf = (x: { kind: TaneShelfItem["kind"]; itemId: string }) => `${x.kind}#${x.itemId}`;
 
-/** 棚のものを 3×3(表示の大きさで変わる)ずつ並べて、横にスワイプでめくる。render は名前の下に出すもの(数とボタン) */
-function ShelfGrid({ items, render }: { items: TaneShelfItem[]; render: (x: TaneShelfItem, item: TaneItem) => ReactNode }) {
-  const { itemGrid } = useDisplaySize();
+/** 棚のものをカードで 3×3(表示の大きさで変わる。TaneCards)ずつ並べて、横にスワイプでめくる。render は名前の下に出すもの(数とボタン) */
+function ShelfGrid({
+  items,
+  render,
+}: {
+  items: TaneShelfItem[];
+  /** count は名前の下(数)、action は説明の位置(ボタン。2列・1列のときは右端) */
+  render: (x: TaneShelfItem, item: TaneItem) => { count: ReactNode; action: ReactNode };
+}) {
+  const cards = useCardLayout();
   const rows = items.flatMap((x) => {
     const item = TANE_ITEM_BY_ID.get(x.itemId);
     return item ? [{ x, item }] : [];
@@ -68,19 +75,20 @@ function ShelfGrid({ items, render }: { items: TaneShelfItem[]; render: (x: Tane
   return (
     <SwipePages
       items={rows}
-      perPage={itemGrid.columns * itemGrid.rows}
-      columns={itemGrid.columns}
+      perPage={cards.perPage}
+      columns={cards.columns}
       layout="grid"
       keyOf={({ x }) => keyOf(x)}
-      render={({ x, item }) => (
-        <div className="h-full bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-          <div className="min-h-9 flex items-center justify-center">
-            <ShelfIcon kind={x.kind} item={item} />
+      render={({ x, item }) => {
+        const { count, action } = render(x, item);
+        return (
+          <div className="relative h-full bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
+            <CardBody icon={<ShelfIcon kind={x.kind} item={item} />} title={label(x.kind, item)} note={action} noteBeside>
+              {count}
+            </CardBody>
           </div>
-          <p className="text-2xs font-bold text-[#3c2a14] leading-tight mt-1">{label(x.kind, item)}</p>
-          {render(x, item)}
-        </div>
-      )}
+        );
+      }}
     />
   );
 }
@@ -168,9 +176,9 @@ export function MyShelf() {
             <div className="mb-3">
               <ShelfGrid
                 items={stocked}
-                render={(x) => (
-                  <>
-                    <p className="text-2xs text-emerald-700">×{x.quantity}</p>
+                render={(x) => ({
+                  count: <span className="block text-2xs text-emerald-700">×{x.quantity}</span>,
+                  action: (
                     <button
                       type="button"
                       disabled={busy}
@@ -179,8 +187,8 @@ export function MyShelf() {
                     >
                       1個戻す
                     </button>
-                  </>
-                )}
+                  ),
+                })}
               />
             </div>
           )}
@@ -190,9 +198,9 @@ export function MyShelf() {
           ) : (
             <ShelfGrid
               items={spareNow}
-              render={(x) => (
-                <>
-                  <p className="text-3xs text-[#a8937a]">手元 {x.quantity}個</p>
+              render={(x) => ({
+                count: <span className="block text-3xs text-[#a8937a]">手元 {x.quantity}個</span>,
+                action: (
                   <button
                     type="button"
                     disabled={busy}
@@ -201,8 +209,8 @@ export function MyShelf() {
                   >
                     1個出す
                   </button>
-                </>
-              )}
+                ),
+              })}
             />
           )}
           <div className="flex gap-2 mt-3">
@@ -275,9 +283,9 @@ export function FriendShelf({ ownerId, nickname }: { ownerId: string; nickname: 
           {shelf.takenToday && <p className="text-2xs text-[#a16207] mb-1">今日はもうもらいました。また明日どうぞ</p>}
           <ShelfGrid
             items={shelf.items}
-            render={(x, item) => (
-              <>
-                <p className="text-2xs text-emerald-700">×{x.quantity}</p>
+            render={(x, item) => ({
+              count: <span className="block text-2xs text-emerald-700">×{x.quantity}</span>,
+              action: (
                 <button
                   type="button"
                   disabled={busy || shelf.takenToday}
@@ -286,8 +294,8 @@ export function FriendShelf({ ownerId, nickname }: { ownerId: string; nickname: 
                 >
                   もらう
                 </button>
-              </>
-            )}
+              ),
+            })}
           />
         </>
       )}

@@ -1,18 +1,17 @@
 "use client";
 
-import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import { growthStage } from "@/lib/game/chizuTane/growth";
 import { OFFICIAL_DAILY_LIMIT, officialDayKey, officialFieldsFor } from "@/lib/game/chizuTane/official";
 import { fetchOfficialVisits, taneDayMs, type TaneOfficialVisit } from "@/lib/game/chizuTaneData";
+import { CardBody, CardGrid } from "./TaneCards";
 import { ErrorText, GrowthStageIcon, ItemIcon, Loading } from "./TaneParts";
 
-// トップの「公式の畑」(src/lib/game/chizuTane/official.ts)。ほかのコースの Lv.1 のもの12か所を 3×4 に並べ、
+// トップの「公式の畑」(src/lib/game/chizuTane/official.ts)。ほかのコースの Lv.1 のもの12か所をカードで並べ(ふつうは 3×4。TaneCards)、
 // 押すとその畑の画面(OfficialFieldView)へ行く。畑ごとに、まだ行っていない・育ち・実っている・タネが落ちている・おしまい を出す
 export default function OfficialFields({ course }: { course: TaneCourse }) {
-  const display = useDisplaySize();
   const [visits, setVisits] = useState<TaneOfficialVisit[] | null>(null);
   const [error, setError] = useState("");
   const fields = officialFieldsFor(course);
@@ -51,7 +50,7 @@ export default function OfficialFields({ course }: { course: TaneCourse }) {
           <p className={`text-2xs mb-1 ${left > 0 ? "text-emerald-700" : "text-[#a16207]"}`}>
             {left > 0 ? `今日は、あと${left}か所の新しい畑に行けます` : "今日は新しい畑にはもう行けません（行ったことのある畑には行けます）"}
           </p>
-          <ul className="grid gap-2" style={{ gridTemplateColumns: `repeat(${display.officialFieldColumns}, minmax(0, 1fr))` }}>
+          <CardGrid as="ul">
             {fields.map((f) => {
               const v = byField.get(f.fieldId);
               const done = !!v?.harvestedAt;
@@ -65,28 +64,31 @@ export default function OfficialFields({ course }: { course: TaneCourse }) {
                       done ? "bg-[#f5f0e8]" : "bg-white shadow-[0_2px_8px_rgba(120,90,40,0.06)]"
                     }`}
                   >
-                    {(v?.droppedSeeds ?? 0) > 0 && (
-                      <span className="absolute top-1 right-1 text-xs" aria-label="タネが落ちている">
-                        🌰
-                      </span>
-                    )}
-                    <p className="text-2xs font-bold text-[#3c2a14] leading-tight line-clamp-2">
-                      {f.baseType.emoji} {f.baseType.name}
-                    </p>
-                    <div className="min-h-9 flex items-center justify-center mt-1">
-                      {v && !done ? (
-                        <GrowthStageIcon stage={growthStage(v)} seedItemId={f.item.itemId} size={30} />
-                      ) : (
-                        <ItemIcon item={f.item} size={30} silhouette={!v} />
-                      )}
-                    </div>
-                    <p className="text-3xs text-[#78716c] leading-tight line-clamp-2">{f.item.name}</p>
-                    <p className={`text-3xs mt-0.5 ${done ? "text-emerald-700" : ripe ? "text-amber-600 font-bold" : "text-[#a8937a]"}`}>{status}</p>
+                    <CardBody
+                      corner={(v?.droppedSeeds ?? 0) > 0 && <span aria-label="タネが落ちている">🌰</span>}
+                      icon={
+                        v && !done ? (
+                          <GrowthStageIcon stage={growthStage(v)} seedItemId={f.item.itemId} size={30} />
+                        ) : (
+                          <ItemIcon item={f.item} size={30} silhouette={!v} />
+                        )
+                      }
+                      title={`${f.baseType.emoji} ${f.baseType.name}`}
+                      // 大きめ(2列)で名前が2行になってカードの見た目がそろわないので、1行で切る
+                      titleLines={1}
+                      note={
+                        <span className={`block text-3xs mt-0.5 ${done ? "text-emerald-700" : ripe ? "text-amber-600 font-bold" : "text-[#a8937a]"}`}>
+                          {status}
+                        </span>
+                      }
+                    >
+                      <span className="block text-3xs text-[#78716c] leading-tight line-clamp-2">{f.item.name}</span>
+                    </CardBody>
                   </Link>
                 </li>
               );
             })}
-          </ul>
+          </CardGrid>
         </>
       )}
     </section>

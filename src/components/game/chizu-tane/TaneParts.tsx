@@ -55,7 +55,7 @@ export function GrowthStageIcon({ stage, seedItemId, size: baseSize = 20 }: { st
 }
 
 /** タネ待ち(実が全部取られたあと)の印。絵(空き地)があれば絵、無ければ茶色の枠の白い丸 */
-function WaitingIcon({ size }: { size: number }) {
+export function WaitingIcon({ size }: { size: number }) {
   const url = GROWTH_IMAGE_URLS.waiting;
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element

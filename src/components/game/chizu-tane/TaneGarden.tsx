@@ -1,6 +1,5 @@
 "use client";
 
-import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useMemo, useState } from "react";
 import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { GARDEN_DESIGNS, countPlaced, houseTierFor, type GardenDesignId, type GardenObject } from "@/lib/game/chizuTane/garden";
@@ -10,6 +9,7 @@ import GardenZoom from "./GardenZoom";
 import { FollowingGardens, MyFollowers } from "./FriendGardenView";
 import { MyShelf } from "./ShelfParts";
 import SwipePages from "./SwipePages";
+import { CardBody, useCardLayout } from "./TaneCards";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -43,7 +43,7 @@ function newObjectId(): string {
 }
 
 function Garden() {
-  const display = useDisplaySize();
+  const cards = useCardLayout();
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [designId, setDesignId] = useState<GardenDesignId>("home");
   const [objects, setObjects] = useState<GardenObject[]>([]);
@@ -287,8 +287,8 @@ function Garden() {
       ) : (
         <SwipePages
           items={garden.items.filter(({ itemId }) => TANE_ITEM_BY_ID.has(itemId))}
-          perPage={display.itemGrid.columns * display.itemGrid.rows}
-          columns={display.itemGrid.columns}
+          perPage={cards.perPage}
+          columns={cards.columns}
           layout="grid"
           keyOf={({ itemId }) => itemId}
           render={({ itemId, quantity }) => {
@@ -303,15 +303,13 @@ function Garden() {
                   setPaletteItemId(active ? null : itemId);
                   setSelectedObjectId(null);
                 }}
-                className={`w-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
+                className={`relative w-full h-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
               >
-                <div className="min-h-9 flex items-center justify-center">
-                  <ItemIcon item={item} size={34} />
-                </div>
-                <p className="text-3xs text-[#3c2a14] mt-1 leading-tight line-clamp-2">{item.name}</p>
-                <p className="text-3xs text-[#a8937a]">
-                  {left}/{quantity}
-                </p>
+                <CardBody icon={<ItemIcon item={item} size={34} />} title={item.name}>
+                  <span className="block text-3xs text-[#a8937a]">
+                    {left}/{quantity}
+                  </span>
+                </CardBody>
               </button>
             );
           }}

@@ -1,6 +1,5 @@
 "use client";
 
-import { useDisplaySize } from "@/lib/displaySize";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
@@ -34,10 +33,24 @@ import GardenSvg from "./GardenSvg";
 import { houseTierFor } from "@/lib/game/chizuTane/garden";
 import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem } from "@/lib/game/chizuTane/localItems";
 import SwipePages from "./SwipePages";
+import { CardBody, useCardLayout } from "./TaneCards";
+import { GROWTH_STAGES, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/growth";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
-import { ErrorText, GrowthBadge, ItemIcon, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
+import {
+  ErrorText,
+  GrowthBadge,
+  GrowthStageIcon,
+  ItemIcon,
+  Loading,
+  NextLevelHint,
+  NoSeedsHelp,
+  SeedIcon,
+  TaneScreen,
+  WaitingIcon,
+  WaterHint,
+} from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -174,8 +187,10 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
 }
 
 function Home({ course }: { course: TaneCourse }) {
-  const display = useDisplaySize();
+  const cards = useCardLayout();
   const [bases, setBases] = useState<TaneBase[] | null>(null);
+  // 詳しいことを出している畑
+  const [openAreaKey, setOpenAreaKey] = useState<string | null>(null);
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [visits, setVisits] = useState<{ visited: number; official: number; helps: number } | null>(null);
   // レベルの条件に使う数(公式の畑は1か所ずつ、手伝いの水やりは HELPS_PER_VISIT 回で1か所)
@@ -188,6 +203,12 @@ function Home({ course }: { course: TaneCourse }) {
 
   // 新しく手に入れたものから順(fetchMySeeds で並べてある)
   const loadSeeds = () => fetchMySeeds().then(setSeeds);
+
+  // 遠くから水をやったあと: その畑を入れ替える。ご当地の1個目の畑が実ると、次のご当地のタネが届いている
+  const handleWatered = (next: TaneBase) => {
+    setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null);
+    if ((next.fruits ?? 0) > 0) loadSeeds().catch(() => {});
+  };
 
   // タネ待ちの畑にまき直したあと: その畑と、持っているタネ・まいたことのあるタネを読み直す
   const handleReplanted = async (next: TaneBase) => {
@@ -289,51 +310,115 @@ function Home({ course }: { course: TaneCourse }) {
         </p>
       )}
       {bases && bases.length > 0 && (
-        <SwipePages
-          items={bases}
-          perPage={display.myFieldsPerPage}
-          layout="rows"
-          keyOf={(b) => b.areaKey}
-          render={(b) => {
+        <>
+          {/* ほかのカードと同じ形で並べ(TaneCards。ふつうは 3×3 でスワイプ)、遠くからの水やりはカードの中で押せる。
+              タップすると下に詳しいこと(場所・タネ・あと何回・まき直し)を出す */}
+          <SwipePages
+            items={bases}
+            perPage={cards.perPage}
+            columns={cards.columns}
+            layout="grid"
+            keyOf={(b) => b.areaKey}
+            render={(b) => {
+              const type = TANE_BASE_TYPE_BY_ID.get(b.baseTypeId);
+              const stage = growthStage(b);
+              const active = openAreaKey === b.areaKey;
+              // 絵の左に育ち(芽・花など)、右にランク(★)を出す。タネ待ちは短く「空き」(詳しくはタップで出す)
+              const status = b.waitingSince
+                ? { text: "空き", className: "text-[#a16207] font-bold" }
+                : stage === RIPE_STAGE
+                  ? { text: "実り", className: "text-amber-600 font-bold" }
+                  : { text: GROWTH_STAGES[stage].label, className: "text-emerald-700" };
+              return (
+                <div
+                  className={`relative h-full bg-white rounded-2xl p-2 border-2 shadow-[0_2px_8px_rgba(120,90,40,0.06)] ${
+                    active ? "border-emerald-500" : "border-transparent"
+                  }`}
+                >
+                  {/* 1列: 名前は2行まで、右端に「実○個」か水やりのボタン(ボタンはタップで開くところの外に置く) */}
+                  <div className={cards.columns === 1 ? "flex items-center gap-2" : undefined}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenAreaKey(active ? null : b.areaKey)}
+                      aria-expanded={active}
+                      className={`relative block text-center ${cards.columns === 1 ? "flex-1 min-w-0" : "w-full"}`}
+                    >
+                      <CardBody
+                        icon={
+                          <span className="flex items-center gap-1">
+                            {/* 1列は、育ちの言葉の長さで名前の位置がずれないよう、いちばん長い「つぼみ」の幅にそろえる */}
+                            <span
+                              className={`text-3xs leading-tight whitespace-nowrap text-right ${cards.columns === 1 ? "w-[3em]" : "min-w-7"} ${status.className}`}
+                            >
+                              {status.text}
+                            </span>
+                            {b.waitingSince ? (
+                              <WaitingIcon size={30} />
+                            ) : (
+                              <GrowthStageIcon stage={stage} seedItemId={b.seedItemId} size={30} />
+                            )}
+                            <span className="text-3xs leading-tight min-w-7 whitespace-nowrap text-left text-amber-500" aria-label={`ランク${b.rank}`}>
+                              ★{b.rank}
+                            </span>
+                          </span>
+                        }
+                        title={`${b.townName}の${type?.name ?? "タネ"}`}
+                        // 大きめ(2列)では名前が2行・3行になるので、いつも3行ぶんの高さを取ってカードの見た目をそろえる。1列は2行まで
+                        titleLines={cards.columns === 1 ? 2 : 3}
+                        note={
+                          cards.columns !== 1 &&
+                          stage === RIPE_STAGE &&
+                          !b.waitingSince && <span className="block text-3xs mt-0.5 text-amber-600 font-bold">実{b.fruits ?? 0}個</span>
+                        }
+                      />
+                    </button>
+                    {cards.columns === 1 ? (
+                      // 右端は「実○個」でもボタンでも同じ幅にして、名前の折り返し方をそろえる
+                      <span className="shrink-0 w-[7em] text-2xs text-center">
+                        {stage === RIPE_STAGE && !b.waitingSince ? (
+                          <span className="text-sm text-amber-600 font-bold">実{b.fruits ?? 0}個</span>
+                        ) : (
+                          <RemoteWaterButton base={b} compact="side" onWatered={handleWatered} />
+                        )}
+                      </span>
+                    ) : (
+                      <RemoteWaterButton base={b} compact="card" onWatered={handleWatered} />
+                    )}
+                  </div>
+                </div>
+              );
+            }}
+          />
+          {(() => {
+            const b = bases.find((x) => x.areaKey === openAreaKey);
+            if (!b) return <p className="text-3xs text-[#a8937a] mt-1">畑をタップすると、くわしいことが出ます</p>;
             const type = TANE_BASE_TYPE_BY_ID.get(b.baseTypeId);
             return (
-              <div className="bg-white rounded-2xl px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{type?.emoji}</span>
+              <div className="bg-white rounded-2xl px-4 py-3 mt-2 border-2 border-emerald-500">
+                <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#3c2a14] truncate">
-                      {b.townName}の{type?.name ?? "タネ"}
+                    <p className="text-sm font-semibold text-[#3c2a14]">
+                      {type?.emoji} {b.townName}の{type?.name ?? "タネ"}
                     </p>
-                    <p className="text-xs text-[#a8937a] truncate">
+                    <p className="text-xs text-[#a8937a]">
                       {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
                     </p>
                   </div>
-                  <span className="shrink-0">
-                    <GrowthBadge base={b} />
-                  </span>
+                  <button type="button" onClick={() => setOpenAreaKey(null)} className="shrink-0 text-xs text-[#a8937a] underline underline-offset-2">
+                    とじる
+                  </button>
                 </div>
-                <div className="flex items-center gap-2 mt-1 pl-9">
-                  <div className="flex-1 min-w-0">
-                    <WaterHint base={b} />
-                  </div>
-                  <RemoteWaterButton
-                    base={b}
-                    onWatered={(next) => {
-                      setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null);
-                      // ご当地の1個目の畑が実ると、次のご当地のタネが届いている
-                      if ((next.fruits ?? 0) > 0) loadSeeds().catch(() => {});
-                    }}
-                  />
+                <div className="mt-1">
+                  <GrowthBadge base={b} />
                 </div>
-                {b.waitingSince && (
-                  <div className="pl-9">
-                    <ReplantPicker base={b} seeds={seeds ?? []} onReplanted={handleReplanted} />
-                  </div>
-                )}
+                <div className="mt-1">
+                  <WaterHint base={b} />
+                </div>
+                {b.waitingSince && <ReplantPicker base={b} seeds={seeds ?? []} onReplanted={handleReplanted} />}
               </div>
             );
-          }}
-        />
+          })()}
+        </>
       )}
 
       <OfficialFields course={course} />
@@ -346,8 +431,19 @@ function Home({ course }: { course: TaneCourse }) {
 
 const noopSubscribe = () => () => {};
 
-/** 自分のタネに遠くから水をやるボタン(タネごとに朝・昼・夜に1回、効き目は現地の10分の1)。実っている間とタネ待ちの間は出さない */
-function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (next: TaneBase) => void }) {
+/**
+ * 自分のタネに遠くから水をやるボタン(タネごとに朝・昼・夜に1回、効き目は現地の10分の1)。実っている間とタネ待ちの間は出さない。
+ * compact はあなたの畑のカードの中に出すとき(短い言葉で)。"card" はカードの下に幅いっぱい、"side" は1列のカードの右端
+ */
+function RemoteWaterButton({
+  base,
+  onWatered,
+  compact,
+}: {
+  base: TaneBase;
+  onWatered: (next: TaneBase) => void;
+  compact?: "card" | "side";
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   if ((base.fruits ?? 0) > 0 || base.waitingSince) return null;
@@ -376,6 +472,24 @@ function RemoteWaterButton({ base, onWatered }: { base: TaneBase; onWatered: (ne
     }
   };
 
+  if (compact) {
+    return (
+      <span className={compact === "card" ? "block mt-1.5" : "block"}>
+        <button
+          type="button"
+          onClick={handle}
+          disabled={busy || done}
+          className={`w-full rounded-lg py-1.5 text-2xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50 ${
+            compact === "card" ? "px-1" : "px-2"
+          }`}
+        >
+          {/* 1列の右端は幅が決まっているので、朝・昼・夜を付けない */}
+          {done ? `${slot && compact === "card" ? `${slot}の` : ""}水やり済み` : busy ? "水やり中..." : "💧 水をやる"}
+        </button>
+        {error && <span className="block text-3xs text-red-600 mt-0.5">{error}</span>}
+      </span>
+    );
+  }
   return (
     <span className="shrink-0 text-right">
       <button
