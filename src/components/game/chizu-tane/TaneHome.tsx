@@ -37,7 +37,6 @@ import SwipePages from "./SwipePages";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
-import { OFFICIAL_DAILY_LIMIT } from "@/lib/game/chizuTane/official";
 import { ErrorText, GrowthBadge, ItemIcon, Loading, NextLevelHint, NoSeedsHelp, SeedIcon, TaneScreen, WaterHint } from "./TaneParts";
 import { slotKey, slotLabel } from "@/lib/game/chizuTane/geo";
 import { useTanePlayer } from "./useTanePlayer";
@@ -50,7 +49,7 @@ export default function TaneHome() {
 
   return (
     <TaneScreen>
-      <div className="text-center mb-8">
+      <div className="text-center mb-4">
         <div className="text-5xl mb-3">🌱</div>
         <h1 className="text-2xl font-bold text-[#3c2a14] tracking-wide">
           うさぽ農園
@@ -60,15 +59,20 @@ export default function TaneHome() {
           <br />
           タネを分けてもらって、育てて収穫しよう
         </p>
+        <p className="text-sm mt-2">
+          <Link href="/game/chizu-tane/how-to-play" className="text-emerald-700 underline underline-offset-2">
+            📖 あそびかた
+          </Link>
+        </p>
       </div>
 
       {/* お知らせ(本番はリリースなどの案内、開発環境は本番との違い) */}
       {isDev ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-6 leading-relaxed">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800 mb-4 leading-relaxed">
           🚧 この画面は開発用です。時間の進み方（水やりは{Math.round(taneDayMs() / 60_000)}分ごと）や位置情報の取り方（地図をタップした場所にいることにできます）などが、本番とは違います。現在プレイできるレベルは{taneMaxLevel()}までです（本番は{MAX_LEVEL_PRODUCTION}まで）
         </div>
       ) : (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-6 leading-relaxed">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-4 leading-relaxed">
           🎉 近くに畑が無くても遊べる「公式の畑」ができました！また知り合いを増やすと色々楽しめる機能も増えています！
         </div>
       )}
@@ -333,24 +337,6 @@ function Home({ course }: { course: TaneCourse }) {
       )}
 
       <OfficialFields course={course} />
-
-      <div className="mt-8 bg-white rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">
-        <h2 className="text-sm font-bold text-[#3c2a14] mb-2">あそびかた</h2>
-        <ol className="list-decimal pl-5 space-y-1">
-          <li>「おでかけ」で現在地の地区を調べます。位置情報が、その地区（○○一丁目のような町の区切り）の中にあるかどうかで判定します</li>
-          <li>まだタネの無い地区なら、持っているタネを1つまけます（1つの地区に1つ、早い者勝ち）。タネをまいて開拓した地区の数で、ガーデンが増えます</li>
-          <li>まいたタネは、水をやると タネ → 芽 → 若葉 → つぼみ → 花 → 実り と育ちます（時間がたつだけでは育ちません）</li>
-          <li>現地でチェックインすると水やりになります（実っていれば、水やりの代わりに実をもらいます。自分のタネでもほかの人のタネでも、1つのタネに朝・昼・夜それぞれ1回）。自分のタネには、このページから遠くから水をやることもできます（朝・昼・夜それぞれ1回、効き目は現地の10分の1）。あなたに「農園を見せる」にしているフォロー中の人の畑にも、その人のガーデンの画面から遠くから水をやれます</li>
-          <li>実ると実がなり（ランク1は10個。ランクが上がるほど多くなります）、あなたの手元に生産者の取り分として1個届きます（遠くから水をやって実らせても、ほかの人が実らせても）。残りは現地でチェックインした人が誰でも1個もらえます（早い者勝ち。現地で水をやって実らせた人は、そのまま1個もらえます）</li>
-          <li>実が全部収穫されると、畑のランクが1つ上がり（次はもっと多く実ります）、「タネ待ち」になります。持っているタネを、このページから（遠くからでも）まき直すと、またタネから育ちます（ほかの種類のタネをまくと、その畑になります。ランクはそのまま）。1日まき直さないと、現地に来たほかの人も自分のタネをまけるようになり、まかれるとその人の畑になります（1週間で空き地に戻ります）</li>
-          <li>ほかの人のタネに初めてチェックインすると、そこにタネが1個落ちます（3個まで）。欲しければ拾い、要らなければ次の人のために置いていけます（誰でも早い者勝ち）</li>
-          <li>収穫した実が「集めたもの」になり、「ガーデン」に飾れます</li>
-          <li>下の「全国農地」で、全国のどこにタネがあるか見られます</li>
-          <li>ホーム画面に追加してアプリにし、設定で通知をオンにすると、タネが実った・誰かが来た・実が全部収穫された（まき直しは1日以内に）などを知らせます（iPhone はホーム画面のアプリでだけ通知を受け取れます）</li>
-          <li>近くにほかの人のタネが無くても、このページの「公式の畑」（ほかのコースの Lv.1 のもの12か所）に遠くからチェックインできます。ほかの人の畑と同じように、水をやって実らせて実をもらい、落ちているタネを拾えます。初めての畑はたずねたタネ1か所と数えます（新しい畑は1日{OFFICIAL_DAILY_LIMIT}か所まで）</li>
-          <li>ほかの人のタネをたずねた数（自分のタネは数えません。公式の畑も1か所ずつ数え、フォロー中の人の畑への遠くからの水やり10回も、1か所と数えます）と、今のレベルのタネを3つともまいたことで、レベルが上がります（いまは Lv.{taneMaxLevel()} まで）。新しい種類のタネがもらえ、ガーデンの家と柵が立派になります</li>
-        </ol>
-      </div>
 
       {/* ホーム画面への追加と通知の案内(状態ごとに出し分ける。済んでいれば出さない) */}
       <InstallHint />
