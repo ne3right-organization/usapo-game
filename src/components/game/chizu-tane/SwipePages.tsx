@@ -101,7 +101,7 @@ export default function SwipePages<T>({
               className={`h-1.5 rounded-full transition-all ${p === page ? "w-4 bg-emerald-500" : "w-1.5 bg-[#e3d8c5]"}`}
             />
           ))}
-          <span className="ml-1 text-[10px] text-[#a8937a]">
+          <span className="ml-1 text-3xs text-[#a8937a]">
             {page + 1} / {pages.length}・左右にスワイプ
           </span>
         </div>

@@ -3,6 +3,7 @@ import { env } from "$amplify/env/chizu-tane-place";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
 import {
   assertNotTooFast,
+  baseOwnerId,
   grantLevelSeeds,
   locateTownDistrict,
   putNewBase,
@@ -13,7 +14,8 @@ import {
 } from "../shared/chizuTane";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
 import { DAY_MS_PRODUCTION } from "../../../src/lib/game/chizuTane/geo";
-import { REPLANT_LIMIT_SLOTS, isAbandoned } from "../../../src/lib/game/chizuTane/growth";
+import { REPLANT_LIMIT_SLOTS, isAbandoned, openToOthersAt } from "../../../src/lib/game/chizuTane/growth";
+import { notifyUsers } from "../shared/push";
 import { TANE_LOCAL_ITEM_BY_ID, TANE_LOCAL_PREFS, isLocalBaseTypeId } from "../../../src/lib/game/chizuTane/localItems";
 
 // 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。タネ待ちの畑が空き地に戻るまでは REPLANT_LIMIT_SLOTS 区切り
@@ -49,8 +51,15 @@ function withPastSeed(own: { seedItemId: string; pastSeedItemIds?: (string | nul
   return [...new Set([...(own.pastSeedItemIds ?? []).filter((x): x is string => !!x), own.seedItemId])];
 }
 
+/** 日時を「11月2日 14:30」の形に(日本時間) */
+function jstLabel(d: Date): string {
+  return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 /**
  * いまいる地区にタネ(拠点)をまく。1地区に1つ、早い者勝ち。タネ待ちのまま1週間たって空き地に戻った畑にもまける。
+ * タネ待ちの畑は、持ち主がまき直さないまま1日たつと、現地に来たほかの人もまけて、まいた人の畑になる
+ * (growth.ts の OWNER_PRIORITY_SLOTS。前の持ち主は手放したことになり、通知で知らせる)。
  * 持っているタネ(もの)を1つ使い、そのものの種類の拠点を作る(梨の木のタネ → 果樹園)。種類やレベルの制限は無い。
  * ランク1から始まり、実って収穫するたびに上がる(src/lib/game/chizuTane/growth.ts)。
  * 1個目のご当地のタネは、その都道府県でしかまけない(旅の記念。docs/地図タネ_ご当地タネ設計書.md の 3章)
@@ -61,8 +70,23 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
   const player = await requirePlayer(c, userId);
   assertNotTooFast(player, district, now);
 
-  const existing = unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
-  if (existing && !isAbandoned(existing, now, DAY_MS)) throw new Error("この地区にはもうタネがあります");
+  const found = unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
+  // 空き地に戻った畑は、無いのと同じ
+  const existing = found && !isAbandoned(found, now, DAY_MS) ? found : null;
+  // タネ待ちの畑に、ほかの人として(持ち主から取って)まくときの前の持ち主
+  let previousOwnerId: string | null = null;
+  // ほかの人もまけるようになった境目(これより前からタネ待ちの畑にまける)
+  let waitingBefore = abandonedBefore(now);
+  if (existing) {
+    if (!existing.waitingSince) throw new Error("この地区にはもうタネがあります");
+    previousOwnerId = await baseOwnerId(c, existing.areaKey);
+    if (previousOwnerId === userId) throw new Error("自分の畑は、ホームかこの画面の「タネをまき直す」からまき直してください");
+    const openAt = openToOthersAt(existing, DAY_MS)!;
+    if (openAt.getTime() > now.getTime()) {
+      throw new Error(`持ち主がまき直すのを待っています。${jstLabel(openAt)}から、あなたのタネもまけるようになります`);
+    }
+    waitingBefore = openAt.toISOString();
+  }
   const item = TANE_ITEM_BY_ID.get(args.itemId);
   const baseType = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
   if (!item || !baseType) throw new Error("そのタネはまけません");
@@ -71,9 +95,12 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
     const prefName = TANE_LOCAL_PREFS.find((p) => p.prefCode === local.local)?.prefName ?? "その都道府県";
     throw new Error(`「${item.name}」のタネは、${prefName}でしかまけません`);
   }
+  // ご当地のタネは空き地にだけまける(ほかの人のタネ待ちの畑を取るのには使えない)
+  if (local && existing) throw new Error("ご当地のタネは、空き地にだけまけます");
   const seed = await requireHeldSeed(c, userId, item.itemId, item.name);
 
-  // 空き地か、空き地に戻った畑のときだけ書ける(同時にまこうとしても、先に書いた方だけが通る)
+  // 空き地か、空き地に戻った畑か、ほかの人もまけるようになったタネ待ちの畑のときだけ書ける
+  // (同時にまこうとしても、持ち主のまき直しとも、先に書いた方だけが通る)
   const ok = await putNewBase(
     {
       areaKey: district.areaKey,
@@ -88,12 +115,14 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
       repLng: district.repLng,
       repLat: district.repLat,
     },
-    abandonedBefore(now)
+    // ちょうど境目の時刻でも通るよう、1ミリ秒あとにする
+    new Date(Date.parse(waitingBefore) + 1).toISOString()
   );
-  if (!ok) throw new Error("この地区にはもうタネがあります");
+  if (!ok) throw new Error("この地区にはもうタネがあります（先にまき直されたかもしれません）");
 
-  // 空き地に戻った畑なら、前の持ち主の行に「手放した」と書く(行は消さない。開拓した地区の数とまいたタネに数え続ける)
-  if (existing) {
+  // 前にまかれていた畑(空き地に戻った・タネ待ちの)なら、前の持ち主の行に「手放した」と書く
+  // (行は消さない。開拓した地区の数とまいたタネに数え続ける)
+  if (found) {
     for (const row of unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey: district.areaKey }))) {
       if (!row.releasedAt && row.ownerId !== userId) {
         unwrap(await c.models.GameTaneOwnership.update({ ownerId: row.ownerId, areaKey: row.areaKey, releasedAt: now.toISOString() }));
@@ -120,11 +149,23 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
   await grantLevelSeeds(c, player);
 
   await rememberPosition(c, userId, district, now);
+
+  // タネ待ちの畑をほかの人が取ったら、前の持ち主に知らせる(まいた人の名前は出さない)
+  if (existing && previousOwnerId) {
+    const place = `${existing.townName}の${TANE_BASE_TYPE_BY_ID.get(existing.baseTypeId)?.name ?? "畑"}`;
+    await notifyUsers(c, [previousOwnerId], {
+      title: "畑がほかの人の畑になりました",
+      body: `タネ待ちのまままき直さなかった${place}に、現地に来た人がタネをまきました`,
+      url: "/game/chizu-tane",
+      tag: `tane-${existing.areaKey}`,
+    });
+  }
   return unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
 }
 
 /**
- * タネ待ちの自分の畑に、同じ種類の畑のタネをまき直す。遠くからでもよい(位置は使わない)。ランクはそのままで、タネから育ち直す。
+ * タネ待ちの自分の畑に、タネをまき直す。遠くからでもよい(位置は使わない)。ランクはそのままで、タネから育ち直す。
+ * どのタネでもよく(2026-11-02 までは同じ種類の畑のタネだけ)、畑はまいたタネの種類になる。ご当地のタネは空き地にだけまける。
  * まき直しは開拓した地区の数(ガーデン)には数えないが、まいたことのあるタネ(レベルの条件)には入る
  */
 async function replant(c: DataClient, userId: string, areaKey: string, itemId: string) {
@@ -132,16 +173,17 @@ async function replant(c: DataClient, userId: string, areaKey: string, itemId: s
   const player = await requirePlayer(c, userId);
   const own = unwrap(await c.models.GameTaneOwnership.get({ ownerId: userId, areaKey }));
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey }));
-  if (!own || own.releasedAt || !base) throw new Error("自分の畑にだけ、タネをまき直せます");
+  if (own?.releasedAt) throw new Error("この畑は、ほかの人のタネがまかれて、その人の畑になりました");
+  if (!own || !base) throw new Error("自分の畑にだけ、タネをまき直せます");
   if (!base.waitingSince) throw new Error("この畑はタネ待ちではありません（実が全部収穫されると、まき直せます）");
   if (isLocalBaseTypeId(base.baseTypeId)) throw new Error("ご当地の畑はまき直せません（1回かぎりの畑です）");
   if (isAbandoned(base, now, DAY_MS)) throw new Error("1週間たったので、この畑は空き地に戻りました");
   const item = TANE_ITEM_BY_ID.get(itemId);
-  const typeName = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "この畑";
-  if (!item || item.baseTypeId !== base.baseTypeId) throw new Error(`${typeName}にまけるのは、${typeName}のタネだけです`);
+  if (!item || !TANE_BASE_TYPE_BY_ID.has(item.baseTypeId)) throw new Error("そのタネはまけません");
+  if (TANE_LOCAL_ITEM_BY_ID.has(item.itemId)) throw new Error("ご当地のタネは、空き地にだけまけます");
   const seed = await requireHeldSeed(c, userId, item.itemId, item.name);
 
-  if (!(await replantBaseRow(areaKey, item.itemId, abandonedBefore(now)))) {
+  if (!(await replantBaseRow(areaKey, item.itemId, item.baseTypeId, abandonedBefore(now)))) {
     throw new Error("タネをまき直せませんでした。画面を読み直してください");
   }
   unwrap(await c.models.GameTaneOwnership.update({ ownerId: userId, areaKey, seedItemId: item.itemId, pastSeedItemIds: withPastSeed(own) }));

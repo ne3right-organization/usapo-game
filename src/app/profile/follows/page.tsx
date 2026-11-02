@@ -146,14 +146,14 @@ export default function FollowsPage({ searchParams }: Props) {
                         name
                       )}
                       <span className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] text-[#a8937a]">{formatRelativeTime(u.followedAt)}</span>
+                        <span className="text-2xs text-[#a8937a]">{formatRelativeTime(u.followedAt)}</span>
                         {tab === "followers" && (
                           <button
                             type="button"
                             onClick={() => toggleShare(u.userId)}
                             disabled={sharingBusy !== null}
                             aria-pressed={shared}
-                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border disabled:opacity-60 ${
+                            className={`rounded-full px-2.5 py-1 text-2xs font-semibold border disabled:opacity-60 ${
                               shared ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-[#78716c] border-gray-300"
                             }`}
                           >

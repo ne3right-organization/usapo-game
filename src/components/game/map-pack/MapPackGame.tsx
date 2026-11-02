@@ -1422,7 +1422,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
           }}
           className="px-4 py-1.5 rounded-full border border-teal-300 text-sm text-teal-700 bg-white active:scale-[0.97] disabled:opacity-40"
         >
-          🧱 積み直す<span className="ml-1 text-[10px]">-{RESTACK_PENALTY}点</span>
+          🧱 積み直す<span className="ml-1 text-3xs">-{RESTACK_PENALTY}点</span>
         </button>
         <button
           type="button"
@@ -1435,7 +1435,7 @@ function MapPackBoard({ data, geojsonUrl, areaLabel, unitLabel, area, initialSna
           }}
           className="px-4 py-1.5 rounded-full border border-rose-300 text-sm text-rose-700 bg-white active:scale-[0.97] disabled:opacity-40"
         >
-          ✂️ 割って積み直す<span className="ml-1 text-[10px]">-{SPLIT_PENALTY}点</span>
+          ✂️ 割って積み直す<span className="ml-1 text-3xs">-{SPLIT_PENALTY}点</span>
         </button>
         <button
           type="button"

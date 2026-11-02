@@ -5,9 +5,11 @@ import { TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
 import { GARDEN_DESIGNS, countPlaced, houseTierFor, type GardenDesignId, type GardenObject } from "@/lib/game/chizuTane/garden";
 import { gardenObjectsOf, openGarden, saveGarden, type GardenState } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
+import GardenZoom from "./GardenZoom";
 import { FollowingGardens, MyFollowers } from "./FriendGardenView";
 import { MyShelf } from "./ShelfParts";
 import SwipePages from "./SwipePages";
+import { CardBody, useCardLayout } from "./TaneCards";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen, setTaneLeaveGuard } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -41,6 +43,7 @@ function newObjectId(): string {
 }
 
 function Garden() {
+  const cards = useCardLayout();
   const [garden, setGarden] = useState<GardenState | null>(null);
   const [designId, setDesignId] = useState<GardenDesignId>("home");
   const [objects, setObjects] = useState<GardenObject[]>([]);
@@ -65,7 +68,7 @@ function Garden() {
     };
   }, []);
 
-  // 保存していない変更があるときは、画面を離れる前に確かめる(ブラウザを閉じる・再読み込みと、下のタブでの移動)
+  // 保存していない変更があるときは、画面を離れる前に確かめる(ブラウザを閉じる・再読み込みと、タブでの移動)
   useEffect(() => {
     if (!dirty) return;
     const handler = (e: BeforeUnloadEvent) => {
@@ -198,65 +201,83 @@ function Garden() {
           );
         })}
       </div>
-      <p className="text-[11px] text-[#a8937a] mb-2">
+      <p className="text-2xs text-[#a8937a] mb-2">
         家と柵: {tier.name}（Lv.{garden.level}）。新しい地区にタネをまくとガーデンが増え（いま{garden.plantedCount}地区）、レベルが上がると家と柵が立派になります
       </p>
       <div className="bg-[#eaf6ea] rounded-2xl p-2 mb-3">
-        <GardenSvg
-          width={garden.width}
-          height={garden.height}
-          design={designId}
-          houseTier={tier.id}
-          objects={objects}
-          onTileClick={handleTile}
-          selectedObjectId={selectedObjectId}
-          placing={placing}
-        />
+        <GardenZoom
+          overlay={(zoomButtons) => (
+            <>
+              {/* 左下: 選んでいるものを動かす矢印と、その右にズームの − ＋ */}
+              <div className="absolute bottom-1 left-1 flex items-end gap-2">
+                {selectedObjectId && (
+                  /* 画面の斜めの向き: ↖ は x-1、↗ は y-1、↙ は y+1、↘ は x+1(GardenSvg の at) */
+                  <div className="grid grid-cols-2 gap-1" aria-label="となりのマスへ動かす">
+                    {(
+                      [
+                        ["↖", -1, 0],
+                        ["↗", 0, -1],
+                        ["↙", 0, 1],
+                        ["↘", 1, 0],
+                      ] as const
+                    ).map(([arrow, dx, dy]) => (
+                      <button
+                        key={arrow}
+                        type="button"
+                        onClick={() => handleMove(dx, dy)}
+                        disabled={!moveTarget(dx, dy)}
+                        className="w-9 h-9 rounded-lg bg-white/90 border border-[#e7dccb] text-sm text-[#3c2a14] shadow-sm disabled:opacity-30"
+                      >
+                        {arrow}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {zoomButtons}
+              </div>
+              {/* 右下: しまう(選んでいるとき)と保存 */}
+              <div className="absolute bottom-1 right-1 flex items-center gap-1">
+                {selectedObjectId && (
+                  <button
+                    type="button"
+                    onClick={handleStore}
+                    className="rounded-xl px-3 py-2 text-sm font-semibold bg-white/90 border border-[#e7dccb] text-[#78716c] shadow-sm"
+                  >
+                    しまう
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={!dirty || saving}
+                  className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm disabled:opacity-50"
+                >
+                  {saving ? "保存中..." : "保存"}
+                </button>
+              </div>
+            </>
+          )}
+        >
+          <GardenSvg
+            width={garden.width}
+            height={garden.height}
+            design={designId}
+            houseTier={tier.id}
+            objects={objects}
+            onTileClick={handleTile}
+            selectedObjectId={selectedObjectId}
+            placing={placing}
+          />
+        </GardenZoom>
       </div>
 
-      <div className="flex items-center gap-2 mb-3 min-h-[40px]">
-        {selectedObjectId ? (
-          <>
-            <p className="flex-1 text-xs text-[#78716c]">矢印か、空いているマスをタップすると動かせます</p>
-            {/* 画面の斜めの向き: ↖ は x-1、↗ は y-1、↙ は y+1、↘ は x+1(GardenSvg の at) */}
-            <div className="grid grid-cols-2 gap-1 shrink-0" aria-label="となりのマスへ動かす">
-              {(
-                [
-                  ["↖", -1, 0],
-                  ["↗", 0, -1],
-                  ["↙", 0, 1],
-                  ["↘", 1, 0],
-                ] as const
-              ).map(([arrow, dx, dy]) => (
-                <button
-                  key={arrow}
-                  type="button"
-                  onClick={() => handleMove(dx, dy)}
-                  disabled={!moveTarget(dx, dy)}
-                  className="w-8 h-8 rounded-lg bg-white border border-[#e7dccb] text-sm text-[#3c2a14] disabled:opacity-30"
-                >
-                  {arrow}
-                </button>
-              ))}
-            </div>
-            <button type="button" onClick={handleStore} className="rounded-xl px-3 py-2 text-sm font-semibold bg-white border border-[#e7dccb] text-[#78716c]">
-              しまう
-            </button>
-          </>
-        ) : paletteItemId ? (
-          <p className="flex-1 text-xs text-[#78716c]">空いているマスをタップすると置けます</p>
-        ) : (
-          <p className="flex-1 text-xs text-[#78716c]">下の一覧から選んで置くか、置いたものをタップして動かせます</p>
-        )}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!dirty || saving}
-          className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {saving ? "保存中..." : "保存"}
-        </button>
-      </div>
+      <p className="text-xs text-[#78716c] mb-3">
+        {selectedObjectId
+          ? "矢印か、空いているマスをタップすると動かせます"
+          : paletteItemId
+            ? "空いているマスをタップすると置けます"
+            : "下の一覧から選んで置くか、置いたものをタップして動かせます"}
+      </p>
       {savedMessage && <p className="text-xs text-emerald-700 mb-2">{savedMessage}</p>}
       {error && <ErrorText message={error} />}
 
@@ -266,7 +287,8 @@ function Garden() {
       ) : (
         <SwipePages
           items={garden.items.filter(({ itemId }) => TANE_ITEM_BY_ID.has(itemId))}
-          perPage={9}
+          perPage={cards.perPage}
+          columns={cards.columns}
           layout="grid"
           keyOf={({ itemId }) => itemId}
           render={({ itemId, quantity }) => {
@@ -281,15 +303,13 @@ function Garden() {
                   setPaletteItemId(active ? null : itemId);
                   setSelectedObjectId(null);
                 }}
-                className={`w-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
+                className={`relative w-full h-full bg-white rounded-xl p-2 text-center border-2 disabled:opacity-40 ${active ? "border-emerald-500" : "border-transparent"}`}
               >
-                <div className="h-9 flex items-center justify-center">
-                  <ItemIcon item={item} size={34} />
-                </div>
-                <p className="text-[10px] text-[#3c2a14] mt-1 truncate">{item.name}</p>
-                <p className="text-[10px] text-[#a8937a]">
-                  {left}/{quantity}
-                </p>
+                <CardBody icon={<ItemIcon item={item} size={34} />} title={item.name}>
+                  <span className="block text-3xs text-[#a8937a]">
+                    {left}/{quantity}
+                  </span>
+                </CardBody>
               </button>
             );
           }}

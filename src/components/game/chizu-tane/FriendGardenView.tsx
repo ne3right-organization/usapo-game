@@ -22,9 +22,11 @@ import { RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/growth";
 import { slotLabel } from "@/lib/game/chizuTane/geo";
 import { HIDDEN_LOCAL_BASE, isHiddenLocalBase } from "@/lib/game/chizuTane/localItems";
 import GardenSvg from "./GardenSvg";
+import GardenZoom from "./GardenZoom";
 import { FriendShelf } from "./ShelfParts";
 import SwipePages from "./SwipePages";
-import { ErrorText, GrowthBadge, Loading, NeedStart, TaneHeading, TaneScreen, UserIcon, WaterHint } from "./TaneParts";
+import { CardBody, useCardLayout } from "./TaneCards";
+import { ErrorText, GrowthBadge, GrowthStageIcon, Loading, NeedStart, TaneHeading, TaneScreen, UserIcon, WaterHint } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
 // フォローしている人のガーデンを見る(見るだけ)。持ち主が自分に「農園を見せる」にしているときだけ見られる(確かめるのは Lambda)
@@ -101,13 +103,15 @@ function FriendGarden({ userId, helpCount }: { userId: string; helpCount: number
         </div>
       )}
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-2 mb-3">
-        <GardenSvg
-          width={garden.width}
-          height={garden.height}
-          design={designId}
-          houseTier={houseTierFor(garden.level).id}
-          objects={gardenObjectsOf(garden, designId)}
-        />
+        <GardenZoom>
+          <GardenSvg
+            width={garden.width}
+            height={garden.height}
+            design={designId}
+            houseTier={houseTierFor(garden.level).id}
+            objects={gardenObjectsOf(garden, designId)}
+          />
+        </GardenZoom>
       </div>
       <FriendShelf ownerId={userId} nickname={garden.nickname ?? "ニックネーム未設定"} />
       <HelpFields ownerId={userId} nickname={garden.nickname ?? "ニックネーム未設定"} initialHelpCount={helpCount} />
@@ -118,13 +122,16 @@ function FriendGarden({ userId, helpCount }: { userId: string; helpCount: number
 
 /**
  * その人の畑に遠くから水をやる(手伝い)。1つの畑に朝・昼・夜に1回、効き目は現地の10分の1。
- * 手伝いの水やり HELPS_PER_VISIT 回で、たずねたタネ1か所と数える
+ * 手伝いの水やり HELPS_PER_VISIT 回で、たずねたタネ1か所と数える。
+ * 畑はほかのカードと同じ形で並べ(TaneCards)、タップするとその下に詳しいこと(場所・育ち・あと何回)と水やりのボタンを出す
  */
 function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; nickname: string; initialHelpCount: number }) {
   const [fields, setFields] = useState<TaneHelpField[] | null>(null);
   const [helpCount, setHelpCount] = useState(initialHelpCount);
   const [busy, setBusy] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const cards = useCardLayout();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -163,7 +170,7 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
   return (
     <section className="mb-4">
       <h2 className="text-xs font-bold text-[#a8937a] mb-1">💧 {nickname}さんの畑に水をやる</h2>
-      <p className="text-[11px] text-[#a8937a] mb-2 leading-relaxed">
+      <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
         遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
       </p>
       {error && <ErrorText message={error} />}
@@ -171,49 +178,95 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
       {fields === null && !error && <Loading />}
       {fields?.length === 0 && <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">いまは畑がありません</p>}
       {fields && fields.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {fields.map((f) => {
+        <>
+          <SwipePages
+            items={fields}
+            perPage={cards.perPage}
+            columns={cards.columns}
+            layout="grid"
+            keyOf={(f) => f.fieldId}
+            render={(f) => {
+              const ripe = (f.fruits ?? 0) > 0;
+              // ご当地の畑は、実るまで何の畑か出さない(ほかの画面と同じ)
+              const hidden = isHiddenLocalBase(f, false) && growthStage(f) < RIPE_STAGE;
+              const type = hidden ? HIDDEN_LOCAL_BASE : TANE_BASE_TYPE_BY_ID.get(f.baseTypeId);
+              const status = f.waitingSince
+                ? { text: "タネ待ち", className: "text-[#a16207]" }
+                : ripe
+                  ? { text: "実っている", className: "text-amber-600 font-bold" }
+                  : f.wateredThisSlot
+                    ? { text: `${slot ? `${slot}の` : ""}水やりは済み`, className: "text-[#a8937a]" }
+                    : { text: "💧 水をやれる", className: "text-sky-700 font-bold" };
+              const active = openId === f.fieldId;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setOpenId(active ? null : f.fieldId)}
+                  aria-expanded={active}
+                  className={`relative w-full h-full bg-white rounded-2xl p-2 text-center border-2 shadow-[0_2px_8px_rgba(120,90,40,0.06)] ${
+                    active ? "border-emerald-500" : "border-transparent"
+                  }`}
+                >
+                  <CardBody
+                    icon={
+                      hidden || f.waitingSince ? (
+                        <span className="text-3xl">{type?.emoji}</span>
+                      ) : (
+                        <GrowthStageIcon stage={growthStage(f)} seedItemId={f.seedItemId} size={30} />
+                      )
+                    }
+                    title={f.townName}
+                    note={<span className={`block text-3xs mt-0.5 ${status.className}`}>{status.text}</span>}
+                  >
+                    <span className="block text-3xs text-[#78716c] leading-tight line-clamp-2">{type?.name ?? "タネ"}</span>
+                  </CardBody>
+                </button>
+              );
+            }}
+          />
+          {(() => {
+            const f = fields.find((x) => x.fieldId === openId);
+            if (!f) return <p className="text-3xs text-[#a8937a] mt-1">畑をタップすると、くわしいことと水やりのボタンが出ます</p>;
             const ripe = (f.fruits ?? 0) > 0;
-            // ご当地の畑は、実るまで何の畑か出さない(ほかの画面と同じ)
             const hidden = isHiddenLocalBase(f, false) && growthStage(f) < RIPE_STAGE;
             const type = hidden ? HIDDEN_LOCAL_BASE : TANE_BASE_TYPE_BY_ID.get(f.baseTypeId);
             const canWater = !ripe && !f.waitingSince;
             return (
-              <li key={f.fieldId} className="bg-white rounded-2xl px-4 py-3 shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{type?.emoji}</span>
+              <div className="bg-white rounded-2xl px-4 py-3 mt-2 border-2 border-emerald-500">
+                <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#3c2a14] truncate">
-                      {f.townName}の{type?.name ?? "タネ"}
+                    <p className="text-sm font-semibold text-[#3c2a14]">
+                      {type?.emoji} {f.townName}の{type?.name ?? "タネ"}
                     </p>
-                    <p className="text-xs text-[#a8937a] truncate">
+                    <p className="text-xs text-[#a8937a]">
                       {f.prefName}
                       {f.cityName}
                     </p>
                   </div>
-                  <span className="shrink-0">
-                    <GrowthBadge base={f} hidden={isHiddenLocalBase(f, false)} />
-                  </span>
+                  <button type="button" onClick={() => setOpenId(null)} className="shrink-0 text-xs text-[#a8937a] underline underline-offset-2">
+                    とじる
+                  </button>
                 </div>
-                <div className="flex items-center gap-2 mt-1 pl-9">
-                  <div className="flex-1 min-w-0">
-                    <WaterHint base={f} remote={false} />
-                  </div>
-                  {canWater && (
-                    <button
-                      type="button"
-                      onClick={() => handle(f)}
-                      disabled={busy !== null || f.wateredThisSlot}
-                      className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
-                    >
-                      {f.wateredThisSlot ? `${slot ? `${slot}の` : ""}水やりは済み` : busy === f.fieldId ? "水をやっています..." : "💧 遠くから水をやる"}
-                    </button>
-                  )}
+                <div className="mt-1">
+                  <GrowthBadge base={f} hidden={isHiddenLocalBase(f, false)} />
                 </div>
-              </li>
+                <div className="mt-1">
+                  <WaterHint base={f} remote={false} />
+                </div>
+                {canWater && (
+                  <button
+                    type="button"
+                    onClick={() => handle(f)}
+                    disabled={busy !== null || f.wateredThisSlot}
+                    className="w-full mt-2 rounded-xl py-2 text-sm font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
+                  >
+                    {f.wateredThisSlot ? `${slot ? `${slot}の` : ""}水やりは済み` : busy === f.fieldId ? "水をやっています..." : "💧 遠くから水をやる"}
+                  </button>
+                )}
+              </div>
             );
-          })}
-        </ul>
+          })()}
+        </>
       )}
     </section>
   );
@@ -222,6 +275,7 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
 /** フォローしていて、自分に農園を見せてくれている人のガーデンへのリンクの一覧(自分のガーデンの画面の下に出す) */
 export function FollowingGardens() {
   const [users, setUsers] = useState<FollowUser[] | null>(null);
+  const cards = useCardLayout();
 
   useEffect(() => {
     let cancelled = false;
@@ -235,7 +289,7 @@ export function FollowingGardens() {
 
   return (
     <section className="mt-6">
-      <h2 className="text-xs font-bold text-[#a8937a] mb-2">見せてもらえるガーデン</h2>
+      <h2 className="text-xs font-bold text-[#a8937a] mb-2">見に行けるガーデン</h2>
       {users === null && <Loading />}
       {users?.length === 0 && (
         <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">
@@ -243,22 +297,25 @@ export function FollowingGardens() {
         </p>
       )}
       {users && users.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {users.map((u) => (
-            <li key={u.userId}>
-              <Link
-                href={`/game/chizu-tane/garden/${u.userId}`}
-                className="flex items-center justify-between bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-4 py-3 text-sm text-[#3c2a14]"
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <UserIcon iconItemId={u.iconItemId} size={24} />
-                  <span className="truncate">{u.nickname}さんのガーデン</span>
-                </span>
-                <span className="text-[#c8b8a0]">›</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        // フォロワーと同じカードで並べる(TaneCards)
+        <SwipePages
+          items={users}
+          perPage={cards.columns}
+          layout="cols"
+          keyOf={(u) => u.userId}
+          render={(u) => (
+            <Link
+              href={`/game/chizu-tane/garden/${u.userId}`}
+              className="relative block h-full bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-2 py-3 text-center"
+            >
+              <CardBody
+                icon={<UserIcon iconItemId={u.iconItemId} size={30} />}
+                title={<span className="block truncate">{u.nickname}</span>}
+                note={<span className="block text-3xs mt-0.5 text-emerald-700">🏡 ガーデンを見る ›</span>}
+              />
+            </Link>
+          )}
+        />
       )}
     </section>
   );
@@ -269,6 +326,7 @@ export function FollowingGardens() {
  * 自分のガーデンの画面のいちばん下に出す。農園を見せるかどうかはフォロワーの一覧(/profile/follows)で選ぶ
  */
 export function MyFollowers() {
+  const cards = useCardLayout();
   const [view, setView] = useState<{ userId: string; nickname: string | null; followers: FollowUser[]; shared: Set<string> } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -309,28 +367,33 @@ export function MyFollowers() {
       {view.followers.length > 0 && (
         <SwipePages
           items={view.followers}
-          perPage={3}
+          perPage={cards.columns}
           layout="cols"
           keyOf={(u) => u.userId}
           render={(u) => (
-            <Link href={`/profile/${u.userId}`} className="block bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-2 py-3 text-center">
-              <span className="flex justify-center h-8 items-center mb-1">
-                <UserIcon iconItemId={u.iconItemId} size={30} />
-              </span>
-              <span className="block text-xs font-semibold text-[#3c2a14] truncate">{u.nickname ?? "未設定"}</span>
-              <span className={`block text-[10px] mt-0.5 ${view.shared.has(u.userId) ? "text-emerald-700" : "text-[#a8937a]"}`}>
-                {view.shared.has(u.userId) ? "🌱 農園を見せている" : "🔒 見せていない"}
-              </span>
+            <Link
+              href={`/profile/${u.userId}`}
+              className="relative block h-full bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] px-2 py-3 text-center"
+            >
+              <CardBody
+                icon={<UserIcon iconItemId={u.iconItemId} size={30} />}
+                title={<span className="block truncate">{u.nickname ?? "未設定"}</span>}
+                note={
+                  <span className={`block text-3xs mt-0.5 ${view.shared.has(u.userId) ? "text-emerald-700" : "text-[#a8937a]"}`}>
+                    {view.shared.has(u.userId) ? "🌱 農園を見せている" : "🔒 見せていない"}
+                  </span>
+                }
+              />
             </Link>
           )}
         />
       )}
       {view.followers.length > 0 && (
-        <Link href="/profile/follows" className="block text-right text-[11px] text-emerald-700 underline underline-offset-2 mt-1">
+        <Link href="/profile/follows" className="block text-right text-2xs text-emerald-700 underline underline-offset-2 mt-1">
           農園を見せる人を選ぶ →
         </Link>
       )}
-      <div className="text-[11px] text-[#a8937a] leading-relaxed mt-2 space-y-1">
+      <div className="text-2xs text-[#a8937a] leading-relaxed mt-2 space-y-1">
         <p>🌱 「農園を見せる」にしたフォロワーにだけ、次のことが分かるようになります。はじめは誰にも見せていません。</p>
         <ul className="list-disc pl-5">
           <li>あなたのガーデン</li>

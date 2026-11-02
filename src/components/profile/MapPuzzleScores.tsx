@@ -32,11 +32,11 @@ export default function MapPuzzleScores({ userId }: { userId: string }) {
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] px-3 py-2.5">
-          <div className="text-[11px] text-[#a8937a]">合計スコア</div>
+          <div className="text-2xs text-[#a8937a]">合計スコア</div>
           <div className="text-xl font-extrabold text-teal-700">{(profile?.totalScore ?? 0).toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] px-3 py-2.5">
-          <div className="text-[11px] text-[#a8937a]">遊んだエリア</div>
+          <div className="text-2xs text-[#a8937a]">遊んだエリア</div>
           <div className="text-xl font-extrabold text-teal-700">{(profile?.areasPlayedCount ?? 0).toLocaleString()}</div>
         </div>
       </div>
@@ -54,7 +54,7 @@ export default function MapPuzzleScores({ userId }: { userId: string }) {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${DIFFICULTY_BADGE_CLASS[b.difficulty]}`}>
+                    <span className={`text-3xs font-bold px-2 py-0.5 rounded-full shrink-0 ${DIFFICULTY_BADGE_CLASS[b.difficulty]}`}>
                       {DIFFICULTY_LABELS[b.difficulty]}
                     </span>
                     <span className="text-sm font-semibold text-[#3c2a14] truncate">{areaLabelOf(b)}</span>
@@ -66,7 +66,7 @@ export default function MapPuzzleScores({ userId }: { userId: string }) {
                     {b.bestScore.toLocaleString()}
                     <span className="text-xs font-normal text-[#a8937a]">pt</span>
                   </div>
-                  <div className="text-[11px] text-[#a8937a]">{formatRelativeTime(b.lastPlayedAt)}</div>
+                  <div className="text-2xs text-[#a8937a]">{formatRelativeTime(b.lastPlayedAt)}</div>
                 </div>
               </div>
             ))}

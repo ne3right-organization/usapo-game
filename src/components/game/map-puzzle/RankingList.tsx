@@ -54,12 +54,12 @@ export default function RankingList({
               {showArea && <div className="text-xs text-[#a8937a] truncate">{item.detail ?? areaLabelOf(item)}</div>}
             </div>
             <div className="text-right shrink-0">
-              {item.scoreCaption && <div className="text-[10px] text-[#a8937a] leading-none">{item.scoreCaption}</div>}
+              {item.scoreCaption && <div className="text-3xs text-[#a8937a] leading-none">{item.scoreCaption}</div>}
               <div className="text-lg font-extrabold text-amber-600">
                 {item.bestScore.toLocaleString()}
                 <span className="text-xs font-normal text-[#a8937a]">pt</span>
               </div>
-              <div className="text-[11px] text-[#a8937a]">{formatRelativeTime(item.lastPlayedAt)}</div>
+              <div className="text-2xs text-[#a8937a]">{formatRelativeTime(item.lastPlayedAt)}</div>
             </div>
             {renderExpanded && <span className="shrink-0 text-[#c8b8a0] text-sm">{expanded ? "▲" : "▼"}</span>}
             {!renderExpanded && playLinks && !(item.nickname && profileBasePath) && (
@@ -68,7 +68,7 @@ export default function RankingList({
                   <Link
                     key={l.href}
                     href={l.href}
-                    className="text-center text-[11px] font-semibold text-teal-700 border border-teal-300 rounded-full px-2.5 py-0.5"
+                    className="text-center text-2xs font-semibold text-teal-700 border border-teal-300 rounded-full px-2.5 py-0.5"
                   >
                     {l.label}
                   </Link>

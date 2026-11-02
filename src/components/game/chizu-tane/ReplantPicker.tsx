@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
-import { replantDeadline } from "@/lib/game/chizuTane/growth";
-import { isLocalBaseTypeId } from "@/lib/game/chizuTane/localItems";
+import { TANE_BASE_TYPE_BY_ID } from "@/lib/game/chizuTane/courses";
+import { openToOthersAt, replantDeadline } from "@/lib/game/chizuTane/growth";
+import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
 import { replantBase, taneDayMs, type TaneBase, type TaneSeedCount } from "@/lib/game/chizuTaneData";
 import SeedPicker from "./SeedPicker";
 import { remainingLabel } from "./TaneParts";
 
 /**
- * タネ待ちの自分の畑に、同じ種類の畑のタネをまき直す(遠くからでもよい)。ホームの「あなたがまいたタネ」と、おでかけの画面で使う。
- * 期限(1週間)までにまかないと空き地に戻る
+ * タネ待ちの自分の畑に、タネをまき直す(遠くからでもよい。どのタネでもよく、畑はまいたタネの種類になる。ご当地のタネは空き地にだけまける)。ホームの「あなたがまいたタネ」と、おでかけの画面で使う。
+ * 1日まかないと現地に来たほかの人もまけるようになり(まかれたらその人の畑になる)、1週間で空き地に戻る
  */
 export default function ReplantPicker({
   base,
@@ -28,20 +28,9 @@ export default function ReplantPicker({
   // 残り時間は開いたときの時刻で出す(描画のたびに時刻を読まない)
   const [openedAt] = useState(() => Date.now());
   const typeName = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "この畑";
-  const usable = seeds.filter((s) => TANE_ITEM_BY_ID.get(s.itemId)?.baseTypeId === base.baseTypeId);
+  const usable = seeds.filter((s) => !TANE_LOCAL_ITEM_BY_ID.has(s.itemId));
   const deadline = replantDeadline(base, taneDayMs());
-
-  // ご当地の畑は1回かぎり(まき直せない)。役目を終えたので、期限が来たら空き地に戻る
-  if (isLocalBaseTypeId(base.baseTypeId)) {
-    return (
-      <div className="rounded-xl bg-[#f8f3ea] px-3 py-2 mt-1">
-        <p className="text-[11px] text-[#78716c]">
-          実が全部収穫されました。ご当地の畑はまき直せない1回かぎりの畑なので、これで役目を終えました
-          {deadline && <span className="text-[#a16207]">（{remainingLabel(deadline.getTime() - openedAt)}で空き地に戻ります）</span>}
-        </p>
-      </div>
-    );
-  }
+  const openAt = openToOthersAt(base, taneDayMs());
 
   const handle = async () => {
     if (!chosen || busy) return;
@@ -60,13 +49,23 @@ export default function ReplantPicker({
 
   return (
     <div className="rounded-xl bg-[#f8f3ea] px-3 py-2 mt-1">
-      <p className="text-[11px] text-[#78716c]">
-        実が全部収穫されて、ランク{base.rank}になりました。{typeName}のタネをまき直すと、またタネから育ちます
-        {deadline && <span className="text-[#a16207]">（{remainingLabel(deadline.getTime() - openedAt)}まかないと空き地に戻ります）</span>}
+      <p className="text-2xs text-[#78716c]">
+        実が全部収穫されて、ランク{base.rank}になりました。タネをまき直すと、またタネから育ちます（{typeName}以外のタネをまくと、そのタネの畑になります。ランクはそのまま）
+        {openAt && openAt.getTime() > openedAt ? (
+          <span className="text-[#a16207]">
+            （{remainingLabel(openAt.getTime() - openedAt)}、まき直していなければ、現地に来たほかの人もタネをまけるようになります。まかれると、その人の畑になります）
+          </span>
+        ) : (
+          deadline && (
+            <span className="text-[#a16207]">
+              （現地に来たほかの人もタネをまけるようになっています。まかれると、その人の畑になります。{remainingLabel(deadline.getTime() - openedAt)}空き地に戻ります）
+            </span>
+          )
+        )}
       </p>
       {usable.length === 0 ? (
-        <p className="text-[11px] text-[#a8937a] mt-1">
-          {typeName}のタネを持っていません。ほかの人の{typeName}に落ちているタネを拾うと、まき直せます
+        <p className="text-2xs text-[#a8937a] mt-1">
+          まけるタネを持っていません（ご当地のタネは空き地にだけまけます）。ほかの人の畑に落ちているタネを拾うと、まき直せます
         </p>
       ) : open ? (
         <div className="mt-2">
@@ -84,12 +83,12 @@ export default function ReplantPicker({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="mt-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-white border border-emerald-200"
+          className="mt-1.5 rounded-lg px-2.5 py-1 text-2xs font-semibold text-emerald-700 bg-white border border-emerald-200"
         >
           🌱 タネをまき直す
         </button>
       )}
-      {error && <p className="text-[10px] text-red-600 mt-1">{error}</p>}
+      {error && <p className="text-3xs text-red-600 mt-1">{error}</p>}
     </div>
   );
 }

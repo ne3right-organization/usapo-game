@@ -49,14 +49,14 @@ export default function MapPackUserAreas({ userId, difficulty }: { userId: strin
             <span className="w-5 shrink-0 text-center">{i === 0 ? "🏅" : ""}</span>
             <span className="flex-1 min-w-0 truncate text-[#3c2a14]">
               {difficulty === "beginner" ? "全国" : areaLabelOf(a)}
-              {a.cleared && <span className="ml-1.5 text-[10px] font-bold text-teal-700">✓完成</span>}
+              {a.cleared && <span className="ml-1.5 text-3xs font-bold text-teal-700">✓完成</span>}
             </span>
             <span className={`shrink-0 text-xs font-semibold ${i === 0 ? "text-amber-600" : "text-[#78716c]"}`}>
               {a.bestScore.toLocaleString()}点
             </span>
             <Link
               href={mapPackPlayHref(a)}
-              className="shrink-0 text-[11px] font-semibold text-teal-700 border border-teal-300 rounded-full px-2 py-0.5"
+              className="shrink-0 text-2xs font-semibold text-teal-700 border border-teal-300 rounded-full px-2 py-0.5"
             >
               ▶ 遊ぶ
             </Link>

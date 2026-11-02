@@ -322,7 +322,8 @@ const schema = a
         // 持ち主が最後に自分のタネにチェックインした時間帯(slotKey)。朝・昼・夜に1回(自分のタネは訪問の記録に残さず、レベルにも数えない)
         lastOwnerVisitOn: a.string(),
         // 実が全部取られて、持ち主がタネをまき直すのを待ち始めた日時(まき直したら消す)。
-        // 1週間(growth.ts の REPLANT_LIMIT_SLOTS)まかなければ空き地に戻り、誰でもまける(行は新しくまいた人が上書きする)
+        // 1日(growth.ts の OWNER_PRIORITY_SLOTS)まき直さなければ、現地に来たほかの人もまけて、まいた人の畑になる(ご当地の畑はタネ待ちにならず、消える)。
+        // 1週間(REPLANT_LIMIT_SLOTS)まかなければ空き地に戻り、誰でもまける(どちらも行は新しくまいた人が上書きする)
         waitingSince: a.datetime(),
       })
       .identifier(["areaKey"])
@@ -374,6 +375,9 @@ const schema = a
         firstVisitedAt: a.datetime().required(),
         lastReceivedOn: a.string(),
         visitCount: a.integer().required(),
+        // この人のチェックインで、最後にタネが落ちたときの畑の種類(baseTypeId)。畑の種類が変わったら(まき直し・ほかの人の畑になった)、
+        // またタネが1個落ちる(たずねたタネの数は増えない)。2026-11-02 より前の行には無い
+        dropTypeId: a.string(),
       })
       .identifier(["userId", "areaKey"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
@@ -516,6 +520,7 @@ const schema = a
       quantity: a.integer(), // 実をもらったとき: もらったあとに持っている数
       gainedItems: a.integer(), // このチェックインでもらった実の数(1か0)
       firstVisit: a.boolean(), // ほかの人のタネに初めてチェックインした(拠点にタネが1個落ちた)
+      typeChanged: a.boolean(), // 前にタネが落ちたときから畑の種類が変わっていたので、またタネが1個落ちた
       water: a.integer(), // チェックインのあとのたまった水
       fruits: a.integer(), // チェックインのあとに残っている実の数
       level: a.integer(), // もらえたときのレベル
@@ -672,7 +677,7 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlace)),
 
-    // 地図タネ: タネ待ちの自分の畑に、同じ種類の畑のタネをまき直す(遠くからでもよい)。持っているタネが1つ減る
+    // 地図タネ: タネ待ちの自分の畑に、タネをまき直す(遠くからでもよい。どのタネでもよく、畑はそのタネの種類になる)。持っているタネが1つ減る
     replantTaneBase: a
       .mutation()
       .arguments({ areaKey: a.string().required(), itemId: a.string().required() })

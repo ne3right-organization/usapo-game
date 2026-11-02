@@ -135,7 +135,7 @@ function OfficialField({ course, fieldId }: { course: TaneCourse; fieldId: strin
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-3">
         <p className="text-xs text-[#a8937a]">うさぽ農園</p>
         <p className="text-lg font-bold text-[#3c2a14]">公式の畑</p>
-        <p className="text-[11px] text-[#a8937a] mt-1">遠くからチェックインできます。畑の育ちはあなた専用で、ほかの人とは分け合いません。</p>
+        <p className="text-2xs text-[#a8937a] mt-1">遠くからチェックインできます。畑の育ちはあなた専用で、ほかの人とは分け合いません。</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(120,90,40,0.08)] p-4 mb-4">
@@ -151,7 +151,7 @@ function OfficialField({ course, fieldId }: { course: TaneCourse; fieldId: strin
             <span className="text-xs text-[#a8937a]">まだ来たことがありません</span>
           )}
           {!done && (
-            <p className={`text-[11px] ${ripe ? "text-amber-700" : "text-[#78716c]"}`}>
+            <p className={`text-2xs ${ripe ? "text-amber-700" : "text-[#78716c]"}`}>
               {ripe ? (
                 "チェックインすると、実を1個もらえます"
               ) : (
@@ -184,9 +184,9 @@ function OfficialField({ course, fieldId }: { course: TaneCourse; fieldId: strin
                 "💧 チェックインして水をやる"
               )}
             </button>
-            {cameThisSlot && <p className="text-[11px] text-[#a16207] mt-1">{alreadyText()}</p>}
+            {cameThisSlot && <p className="text-2xs text-[#a16207] mt-1">{alreadyText()}</p>}
             {limitReached && (
-              <p className="text-[11px] text-[#a16207] mt-1">新しい公式の畑に行けるのは1日{OFFICIAL_DAILY_LIMIT}か所までです。また明日どうぞ</p>
+              <p className="text-2xs text-[#a16207] mt-1">新しい公式の畑に行けるのは1日{OFFICIAL_DAILY_LIMIT}か所までです。また明日どうぞ</p>
             )}
           </>
         )}
@@ -204,7 +204,7 @@ function OfficialField({ course, fieldId }: { course: TaneCourse; fieldId: strin
             >
               1個拾う
             </button>
-            <p className="text-[11px] text-amber-700 mt-2">ほかの人の畑では、落ちているタネは誰でも拾えます（早い者勝ち）。要らなければ次の人のために残しておけます</p>
+            <p className="text-2xs text-amber-700 mt-2">ほかの人の畑では、落ちているタネは誰でも拾えます（早い者勝ち）。要らなければ次の人のために残しておけます</p>
           </div>
         )}
 

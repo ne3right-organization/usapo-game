@@ -20,6 +20,7 @@ import {
   type TaneOwnedItem,
   type TaneOwnerView,
 } from "@/lib/game/chizuTaneData";
+import { CardBody, CardGrid } from "./TaneCards";
 import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
@@ -97,7 +98,8 @@ function Collection() {
             <h2 className="text-xs font-bold text-[#a8937a] mb-2">
               {course.emoji} {course.label}
             </h2>
-            <div className="grid grid-cols-3 gap-2">
+            {/* 列の数は設定の「表示の大きさ」で変わる(TaneCards) */}
+            <CardGrid>
               {items.map((item) => {
                 const mine = owned.get(item.itemId);
                 const type = TANE_BASE_TYPE_BY_ID.get(item.baseTypeId);
@@ -107,29 +109,27 @@ function Collection() {
                     type="button"
                     disabled={!mine}
                     onClick={() => setOpenItem(item)}
-                    className="bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] enabled:active:scale-95 transition"
+                    className="relative bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] enabled:active:scale-95 transition"
                   >
-                    <div className="h-12 flex items-center justify-center">
-                      <ItemIcon item={item} size={44} silhouette={!mine} />
-                    </div>
-                    {mine ? (
-                      <>
-                        <p className="text-xs font-bold text-[#3c2a14] mt-1">{item.name}</p>
-                        <p className="text-[11px] text-emerald-700">×{mine.quantity}</p>
-                        <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">
-                          {placeCount(item.itemId) > 0 ? `${placeCount(item.itemId)}か所で収穫` : "はじめから持っていた"}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-xs font-bold text-[#c8b8a0] mt-1">？？？</p>
-                        <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{type?.name ?? "タネ"}が実ったら収穫</p>
-                      </>
-                    )}
+                    <CardBody
+                      icon={<ItemIcon item={item} size={44} silhouette={!mine} />}
+                      title={mine ? item.name : <span className="text-[#c8b8a0]">？？？</span>}
+                      note={
+                        <span className="block text-3xs text-[#a8937a] mt-0.5 leading-tight">
+                          {mine
+                            ? placeCount(item.itemId) > 0
+                              ? `${placeCount(item.itemId)}か所で収穫`
+                              : "はじめから持っていた"
+                            : `${type?.name ?? "タネ"}が実ったら収穫`}
+                        </span>
+                      }
+                    >
+                      {mine && <span className="block text-2xs text-emerald-700">×{mine.quantity}</span>}
+                    </CardBody>
                   </button>
                 );
               })}
-            </div>
+            </CardGrid>
           </section>
         );
       })}
@@ -139,23 +139,23 @@ function Collection() {
           <h2 className="text-xs font-bold text-[#a8937a] mb-2">🗾 ご当地</h2>
           {localByPref.map((p) => (
             <div key={p.prefCode} className="mb-3">
-              <p className="text-[11px] font-semibold text-[#78716c] mb-1">{p.prefName}</p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-2xs font-semibold text-[#78716c] mb-1">{p.prefName}</p>
+              <CardGrid>
                 {p.items.map((item) => (
                   <button
                     key={item.itemId}
                     type="button"
                     onClick={() => setOpenItem(item)}
-                    className="bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] active:scale-95 transition"
+                    className="relative bg-white rounded-2xl p-3 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)] active:scale-95 transition"
                   >
-                    <div className="h-12 flex items-center justify-center">
-                      <ItemIcon item={item} size={44} />
-                    </div>
-                    <p className="text-xs font-bold text-[#3c2a14] mt-1">{item.name}</p>
-                    <p className="text-[10px] text-[#a8937a] mt-0.5 leading-tight">{TANE_LOCAL_RANK_ROLES[item.rank - 1]}</p>
+                    <CardBody
+                      icon={<ItemIcon item={item} size={44} />}
+                      title={item.name}
+                      note={<span className="block text-3xs text-[#a8937a] mt-0.5 leading-tight">{TANE_LOCAL_RANK_ROLES[item.rank - 1]}</span>}
+                    />
                   </button>
                 ))}
-              </div>
+              </CardGrid>
             </div>
           ))}
         </section>
@@ -260,7 +260,7 @@ function HarvestSheet({
           >
             {isIcon ? "アイコンをやめる" : "これをアイコンにする"}
           </button>
-          <p className="text-[11px] text-[#a8937a] leading-tight">
+          <p className="text-2xs text-[#a8937a] leading-tight">
             {isIcon ? "いまのアイコンです。" : ""}フォローの一覧などで、ニックネームの横に出ます
           </p>
         </div>
@@ -276,7 +276,7 @@ function HarvestSheet({
                   {duplicated(short) ? fruitName(hs[0], item.name, true) : short}
                   <span className="text-emerald-700 font-normal ml-1">×{hs.length}</span>
                 </p>
-                <p className="text-[11px] text-[#a8937a]">{fruitName(hs[0], item.name, true)}</p>
+                <p className="text-2xs text-[#a8937a]">{fruitName(hs[0], item.name, true)}</p>
                 <p className="text-xs text-[#78716c] mt-1">
                   生産者:{" "}
                   {!owner ? (
@@ -293,7 +293,7 @@ function HarvestSheet({
                     <span className="text-[#c8b8a0]">ひみつ</span>
                   )}
                 </p>
-                <table className="w-full mt-2 text-[11px] text-[#78716c]">
+                <table className="w-full mt-2 text-2xs text-[#78716c]">
                   <thead>
                     <tr className="text-[#a8937a]">
                       <th className="text-left font-normal">実がなった日</th>

@@ -4,6 +4,8 @@ import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
 import ReturnPathTracker from "@/components/ReturnPathTracker";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import Script from "next/script";
+import { DISPLAY_SIZE_INIT_SCRIPT } from "@/lib/displaySizeInit";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,8 +51,12 @@ export default function RootLayout({
     <html
       lang="ja"
       className={`${geistSans.variable} ${geistMono.variable} ${rounded.variable} h-full antialiased`}
+      // 表示の大きさ(style の --text-scale)は、描く前に下のスクリプトが入れるので、サーバーの HTML と違ってよい
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        {/* 設定画面で選んだ表示の大きさ(文字の倍率)を、描く前に入れる(src/lib/displaySizeInit.ts。beforeInteractive は <head> に入る) */}
+        <Script id="display-size-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: DISPLAY_SIZE_INIT_SCRIPT }} />
         <SiteHeader />
         <ReturnPathTracker />
         {/* 各ページの main は min-h-full 前提なので、ヘッダーを除いた残りの高さを親にしてはみ出さないようにする */}

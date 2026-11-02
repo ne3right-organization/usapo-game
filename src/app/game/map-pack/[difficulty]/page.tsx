@@ -191,6 +191,7 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
   if (!config) {
     return (
       <>
+        <MapGameTabs onPlayPath />
         <MapAreaSelector
           difficulty={difficulty as "intermediate" | "advanced"}
           description={difficulty === "intermediate" ? "都道府県を選んで、市区町村をくっつけよう" : "市区町村を選んで、町丁をくっつけよう"}
@@ -198,7 +199,6 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
             setConfig({ geojsonUrl: url, areaLabel: area.cityName ?? area.prefName, area: { ...area, difficulty } })
           }
         />
-        <MapGameTabs onPlayPath />
       </>
     );
   }
@@ -235,7 +235,7 @@ function MapPackPlay({ difficulty }: { difficulty: Difficulty }) {
           <Link href="/game/map-pack" className="text-[#78716c] text-lg leading-none" title="戻る">
             ←
           </Link>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200">
+          <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200">
             {meta.label}
           </span>
           <h1 className="text-base font-bold text-[#3c2a14] truncate">

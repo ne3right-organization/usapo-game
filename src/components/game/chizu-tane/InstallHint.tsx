@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { isPushEnabled, pushAvailability } from "@/lib/push/client";
+import { DisplaySizeChooser } from "@/components/DisplaySizeSettings";
 
 const noopSubscribe = () => () => {};
 
@@ -15,11 +16,12 @@ function readEnv(): string {
 }
 
 /**
- * ホーム画面への追加と、通知をオンにすることの案内(うさぽ農園のトップの「あそびかた」の下に出す)。状態ごとに出し分ける:
+ * ホーム画面への追加と、通知をオンにすることの案内(うさぽ農園のトップの「公式の畑」の下に出す)。状態ごとに出し分ける:
  * - ブラウザで開いている → ホーム画面への追加をすすめる。iPhone はアプリでしか通知を受け取れないので、通知は追加したあとに。
  *   iPhone 以外は、通知がまだオフならブラウザのままでもオンにできることも添える
  * - アプリで開いていて通知がオフ → 通知をオンにするよう案内する
- * - アプリで開いていて通知もオン → 何も出さない
+ * - アプリで開いていて通知もオン → 出さない
+ * いちばん下に、表示の大きさ(文字や絵の大きさ)を選ぶところをいつも出す
  */
 export default function InstallHint() {
   const env = useSyncExternalStore(noopSubscribe, readEnv, () => null);
@@ -37,22 +39,22 @@ export default function InstallHint() {
     };
   }, [canPushHere]);
 
-  if (env === null) return null;
-  const inApp = env.startsWith("app");
-  const ios = env.endsWith("ios");
-  const showInstall = !inApp;
+  const inApp = env?.startsWith("app") ?? false;
+  const ios = env?.endsWith("ios") ?? false;
+  const showInstall = env !== null && !inApp;
   // 通知の案内は、この画面で通知を受け取れて、まだオフのとき(iPhone のブラウザでは受け取れないので出さない)
   const showNotify = canPushHere && pushEnabled === false;
-  if (!showInstall && !showNotify) return null;
 
-  const what = "タネが実った・誰かが来た・実が全部収穫された（タネのまき直しは1週間以内）などを、通知で知らせます。";
+  const what = "タネが実った・誰かが来た・実が全部収穫された（タネのまき直しは1日以内に）などを、通知で知らせます。";
 
   return (
     <section className="mt-6">
       <h2 className="text-sm font-bold text-[#3c2a14] mb-1">快適に遊ぶために</h2>
-      <p className="text-xs text-[#78716c] mb-3">
-        はじめは1人でも楽しめますが、遊ぶ人が増えてくると、知らない誰かがあなたの畑に来て水をやってくれたり、あなたが誰かの畑を育てたりと、人とのつながりが生まれます。誰かが来てくれたことを見逃さないように、ホーム画面に追加し、通知を有効にしておきましょう。
-      </p>
+      {(showInstall || showNotify) && (
+        <p className="text-xs text-[#78716c] mb-3">
+          はじめは1人でも楽しめますが、遊ぶ人が増えてくると、知らない誰かがあなたの畑に来て水をやってくれたり、あなたが誰かの畑を育てたりと、人とのつながりが生まれます。誰かが来てくれたことを見逃さないように、ホーム画面に追加し、通知を有効にしておきましょう。
+        </p>
+      )}
       <div className="flex flex-col gap-3">
       {showInstall && (
         <div className="bg-white border border-emerald-100 rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">
@@ -95,6 +97,11 @@ export default function InstallHint() {
           </Link>
         </div>
       )}
+      <div className="bg-white border border-[#f3ece0] rounded-2xl p-4 text-xs text-[#78716c] leading-relaxed">
+        <h3 className="text-sm font-bold text-[#3c2a14] mb-1">🔠 文字や絵の大きさ</h3>
+        <p className="mb-2">字が小さくて読みにくいときは、大きくできます（この端末だけ。設定の画面でも変えられます）。</p>
+        <DisplaySizeChooser />
+      </div>
       </div>
     </section>
   );

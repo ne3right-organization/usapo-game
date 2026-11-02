@@ -276,6 +276,18 @@ export function seedsForLevel(course: TaneCourse, level: number): TaneItem[] {
   return type ? TANE_ITEMS.filter((i) => i.baseTypeId === type.id && i.rank <= 3) : [];
 }
 
+/**
+ * レベルを上げるのにまく必要があるのに、まだ一度もまいていない自分のコースのタネ(levelFor の条件 (2))。
+ * おすそ分けの棚に出すとき、これは1個は手元に残す(全部出してしまうとレベルが上がらなくなる)
+ */
+export function seedsNeededToLevelUp(course: TaneCourse, plantedItemIds: ReadonlySet<string>): Set<string> {
+  const needed = new Set<string>();
+  for (let level = 1; level < maxLevel(); level++) {
+    for (const i of seedsForLevel(course, level)) if (!plantedItemIds.has(i.itemId)) needed.add(i.itemId);
+  }
+  return needed;
+}
+
 export function baseTypesOf(course: TaneCourse): TaneBaseType[] {
   return TANE_BASE_TYPES.filter((t) => t.course === course);
 }

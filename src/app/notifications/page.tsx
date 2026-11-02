@@ -62,7 +62,7 @@ export default function NotificationsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-[#3c2a14] truncate">{n.title}</span>
-                      <span className="shrink-0 text-[11px] text-[#a8937a]">{formatRelativeTime(n.notifiedAt)}</span>
+                      <span className="shrink-0 text-2xs text-[#a8937a]">{formatRelativeTime(n.notifiedAt)}</span>
                     </div>
                     <p className="text-xs text-[#78716c] mt-1 leading-relaxed">{n.body}</p>
                   </Link>

@@ -6,11 +6,12 @@ import "leaflet/dist/leaflet.css";
 import type { TaneBase } from "@/lib/game/chizuTaneData";
 import { isHiddenLocalBase } from "@/lib/game/chizuTane/localItems";
 import { taneMarkerIcon } from "./taneMarker";
+import { NEIGHBOR_STYLE, SELECTED_STYLE, collectVertexKeys } from "./districtOutline";
 
 // おでかけの地図: その市区町村の町丁 geojson を読み、現在地・いまいる地区・まかれているタネ(全国農地と同じアイコン)を出す。
-// 地区は線も塗りも透明にして下の地図をそのまま見せ、いまいる地区だけ縁取る(透明でもタップは効く)
+// いまいる地区は青く、となりの地区(境目が接している地区。同じ市区町村の中だけ)はオレンジで薄く覆い、
+// ほかの地区は線も塗りも透明にして下の地図をそのまま見せる(透明でもタップは効く)
 
-const SELECTED_STYLE = { color: "#1d4ed8", weight: 3, opacity: 1, fillColor: "#1d4ed8", fillOpacity: 0.08 };
 const HIDDEN_STYLE = { color: "#000000", weight: 1, opacity: 0, fillOpacity: 0 };
 
 export interface HereMapProps {
@@ -24,12 +25,18 @@ export interface HereMapProps {
   ownAreaKeys: ReadonlySet<string>;
   /** 地図のどこかをタップしたとき(開発用の位置指定)。渡さなければタップしても何もしない */
   onPointSelect?: (lat: number, lng: number) => void;
+  /** 右下の「現在地」ボタン(現在地を取り直す) */
+  onLocate: () => void;
+  /** 変わるたびに、いまいる地区が見えるように地図を寄せる(「現在地」を押したとき) */
+  focusKey: number;
 }
 
-export default function HereMap({ geojsonUrl, selectedCode, location, bases, ownAreaKeys, onPointSelect }: HereMapProps) {
+export default function HereMap({ geojsonUrl, selectedCode, location, bases, ownAreaKeys, onPointSelect, onLocate, focusKey }: HereMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; Lmod: typeof L } | null>(null);
   const layersRef = useRef<Map<string, L.GeoJSON[]>>(new Map());
+  // 地区ごとの頂点(境目の頂点を共有している地区を、となりの地区とする)
+  const verticesRef = useRef<Map<string, string[]>>(new Map());
   const markersRef = useRef<L.LayerGroup | null>(null);
   const hereRef = useRef<L.CircleMarker | null>(null);
   const onPointSelectRef = useRef(onPointSelect);
@@ -45,6 +52,7 @@ export default function HereMap({ geojsonUrl, selectedCode, location, bases, own
     let cancelled = false;
     let mapInstance: L.Map | null = null;
     layersRef.current = new Map();
+    verticesRef.current = new Map();
 
     (async () => {
       const leaflet = await import("leaflet");
@@ -79,6 +87,8 @@ export default function HereMap({ geojsonUrl, selectedCode, location, bases, own
         if (typeof code !== "string") continue;
         const layer = Lmod.geoJSON(feature as Parameters<typeof L.geoJSON>[0], { style: HIDDEN_STYLE }).addTo(map);
         layersRef.current.set(code, [...(layersRef.current.get(code) ?? []), layer]);
+        const coords = (feature as { geometry?: { coordinates?: unknown } }).geometry?.coordinates;
+        verticesRef.current.set(code, collectVertexKeys(coords, verticesRef.current.get(code) ?? []));
         const b = layer.getBounds();
         if (b.isValid()) bounds = bounds ? bounds.extend(b) : Lmod.latLngBounds(b.getSouthWest(), b.getNorthEast());
       }
@@ -97,17 +107,33 @@ export default function HereMap({ geojsonUrl, selectedCode, location, bases, own
     };
   }, [geojsonUrl]);
 
-  // いまいる地区を縁取る
+  // いまいる地区ととなりの地区を塗り、いまいる地区が見えるように地図を寄せる(歩いて地区が変わったときと、「現在地」を押したとき)
   useEffect(() => {
     if (loading) return;
-    for (const [code, layers] of layersRef.current) {
-      const selected = code === selectedCode;
+    const boundsOf = (layers: L.GeoJSON[]) => {
+      let bounds: L.LatLngBounds | null = null;
       for (const layer of layers) {
-        layer.setStyle(selected ? SELECTED_STYLE : HIDDEN_STYLE);
-        if (selected) layer.bringToFront();
+        const b = layer.getBounds();
+        if (b.isValid()) bounds = bounds ? bounds.extend(b) : mapRef.current!.Lmod.latLngBounds(b.getSouthWest(), b.getNorthEast());
       }
+      return bounds;
+    };
+    const selectedBounds = selectedCode ? boundsOf(layersRef.current.get(selectedCode) ?? []) : null;
+    const selectedVertices = new Set(selectedCode ? verticesRef.current.get(selectedCode) ?? [] : []);
+    // 境目の頂点を1つでも共有していれば、となりの地区(範囲が重ならない地区は頂点を見ずに外す)
+    const isNeighbor = (code: string, layers: L.GeoJSON[]) => {
+      if (!selectedBounds || code === selectedCode) return false;
+      const b = boundsOf(layers);
+      if (!b || !b.intersects(selectedBounds)) return false;
+      return (verticesRef.current.get(code) ?? []).some((v) => selectedVertices.has(v));
+    };
+    for (const [code, layers] of layersRef.current) {
+      const style = code === selectedCode ? SELECTED_STYLE : isNeighbor(code, layers) ? NEIGHBOR_STYLE : HIDDEN_STYLE;
+      for (const layer of layers) layer.setStyle(style);
     }
-  }, [loading, selectedCode]);
+    for (const layer of selectedCode ? layersRef.current.get(selectedCode) ?? [] : []) layer.bringToFront();
+    if (selectedBounds) mapRef.current?.map.fitBounds(selectedBounds, { padding: [40, 40], maxZoom: 16 });
+  }, [loading, selectedCode, focusKey]);
 
   // まかれているタネ。開発用の位置指定があるときは、アイコンをタップするとそのタネの地区に移る
   useEffect(() => {
@@ -145,6 +171,20 @@ export default function HereMap({ geojsonUrl, selectedCode, location, bases, own
   return (
     <div className="relative h-[340px] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(120,90,40,0.08)] bg-white">
       <div ref={containerRef} className="w-full h-full" />
+      <button
+        type="button"
+        onClick={onLocate}
+        aria-label="現在地"
+        title="現在地"
+        className="absolute right-3 bottom-6 z-[600] w-11 h-11 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] flex items-center justify-center active:bg-slate-100"
+      >
+        {/* 地図アプリの現在地ボタンと同じ照準の形 */}
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#1a73e8" strokeWidth="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="7" />
+          <circle cx="12" cy="12" r="3" fill="#1a73e8" stroke="none" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round" />
+        </svg>
+      </button>
       {loading && !error && (
         <div className="absolute inset-0 z-[500] flex items-center justify-center bg-[#fdf8f0]/80">
           <p className="text-sm text-[#a8937a]">地図を読み込み中...</p>

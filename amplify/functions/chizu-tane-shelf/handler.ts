@@ -3,16 +3,17 @@ import type { AppSyncIdentityCognito, AppSyncResolverHandler } from "aws-lambda"
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-shelf";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { addSeeds, requirePlayer } from "../shared/chizuTane";
+import { addSeeds, plantedItemIds, requirePlayer } from "../shared/chizuTane";
 import { notifyUsers } from "../shared/push";
-import { TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
+import { TANE_ITEM_BY_ID, seedsNeededToLevelUp, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/localItems";
 import { DAY_MS_PRODUCTION, jstDate, slotKey } from "../../../src/lib/game/chizuTane/geo";
 import { countPlaced, type GardenLayouts, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
 
 // おすそ分けの棚(2026-10-31)。持ち主が余ったタネや実を手元から棚に出しておき、持ち主が「農園を見せる」にしたフォロワー
 // (ガーデンを見られる人と同じ)が、遠くから1人1日1個持っていく。持ち主はいちいち渡さなくてよい。
-// - 棚に出すと手元から減る。実は、ガーデンに飾っている分は出せない。ご当地のタネは出せない(決まった3つの方法でしか増えない)
+// - 棚に出すと手元から減る。実は、ガーデンに飾っている分は出せない。ご当地のタネは出せない(決まった3つの方法でしか増えない)。
+//   レベルを上げるのにまだまいていない自分のコースのタネは、1個は手元に残す(全部出すとレベルが上がらなくなる。seedsNeededToLevelUp)
 // - ご当地の実は、もう持っている人はもらえない(1つの品につき1人1個)
 // - もらった実の産地は、持ち主がその実を最後に収穫した畑のものを引き継ぐ(集めたものに「谷塚一丁目のりんご」と出る)
 
@@ -137,7 +138,7 @@ async function addFruit(c: DataClient, userId: string, itemId: string, delta: nu
 /** 自分の棚に、手元のタネ・実を出す(count > 0)・手元に戻す(count < 0) */
 async function stock(c: DataClient, userId: string, kind: Kind, itemId: string, count: number): Promise<ShelfView> {
   if (!Number.isInteger(count) || count === 0 || Math.abs(count) > 100) throw new Error("数の指定が正しくありません");
-  await requirePlayer(c, userId);
+  const player = await requirePlayer(c, userId);
   const item = TANE_ITEM_BY_ID.get(itemId);
   if (!item) throw new Error("そのものは棚に出せません");
   if (kind === "seed" && TANE_LOCAL_ITEM_BY_ID.has(itemId)) throw new Error("ご当地のタネは棚に出せません");
@@ -146,7 +147,14 @@ async function stock(c: DataClient, userId: string, kind: Kind, itemId: string, 
     // 手元から減らしてから棚に足す
     if (kind === "seed") {
       const held = unwrap(await c.models.GameTaneHeldSeed.get({ userId, itemId }));
-      if (!held || held.quantity < count) throw new Error(`「${item.name}」のタネが足りません`);
+      const keep = seedsNeededToLevelUp(player.course as TaneCourse, await plantedItemIds(c, userId)).has(itemId) ? 1 : 0;
+      if (!held || held.quantity - keep < count) {
+        throw new Error(
+          keep > 0
+            ? `「${item.name}」のタネは、レベルを上げるのにまく必要があるので、1個は手元に残してください`
+            : `「${item.name}」のタネが足りません`
+        );
+      }
       unwrap(await c.models.GameTaneHeldSeed.update({ userId, itemId, quantity: held.quantity - count }));
     } else {
       const owned = unwrap(await c.models.GameTaneItem.get({ userId, itemId }));

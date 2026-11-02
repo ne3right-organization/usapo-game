@@ -194,7 +194,7 @@ export default function MapAreaSelector({ difficulty, description, onConfirm }: 
     });
   };
 
-  // 市区町村を選ぶ段階から、都道府県を選ぶ段階に戻る(ゲームのトップへはサイトのヘッダー・下のタブから戻る)
+  // 市区町村を選ぶ段階から、都道府県を選ぶ段階に戻る(ゲームのトップへはサイトのヘッダー・タブから戻る)
   const backToPrefecture = () => {
     setStep("prefecture");
     setSelectedCity(null);
@@ -203,9 +203,9 @@ export default function MapAreaSelector({ difficulty, description, onConfirm }: 
   const showingCityStep = difficulty === "advanced" && step === "city" && selectedPref;
 
   return (
-    // 画面全体は覆わず、サイトのヘッダー(h-10)と地図ゲームの下のタブ(4rem)の間に収める(エリアを選ぶ間もヘッダー・タブを使えるように)。
+    // 画面全体は覆わず、サイトのヘッダー(h-10)と地図ゲームのタブ(4rem)の下に収める(エリアを選ぶ間もヘッダー・タブを使えるように)。
     // 地図(Leaflet)は高さが決まっていないと潰れるので、画面の高さから引いて決める
-    <div className="h-[calc(100dvh-2.5rem-4rem-env(safe-area-inset-bottom))] min-h-[24rem] flex flex-col bg-[#fdf8f0]">
+    <div className="h-[calc(100dvh-2.5rem-4rem)] min-h-[24rem] flex flex-col bg-[#fdf8f0]">
       {/* 見出し: 何をする画面かの説明だけ。市区町村を選ぶ段階では、都道府県を選び直す「←」と都道府県名を出す */}
       <div className={`flex items-center gap-2 px-4 h-[44px] shrink-0 shadow-md ${theme.header}`}>
         {showingCityStep && (
