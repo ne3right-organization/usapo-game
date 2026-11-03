@@ -22,17 +22,18 @@ import { ErrorText, ItemIcon, Loading, SeedIcon } from "./TaneParts";
 // おすそ分けの棚: 余ったタネや実を手元から棚に出しておくと、「農園を見せる」にしたフォロワーが遠くから1日1個持っていける
 // (確かめるのは Lambda の chizu-tane-shelf)。自分の棚は自分のガーデンの画面、ほかの人の棚はその人のガーデンの画面に出す
 
-function ShelfIcon({ kind, item, size = 32 }: { kind: TaneShelfItem["kind"]; item: TaneItem; size?: number }) {
-  return kind === "seed" ? <SeedIcon item={item} size={size} /> : <ItemIcon item={item} size={size} />;
+function ShelfIcon({ kind, item, size = 32, haveFruit }: { kind: TaneShelfItem["kind"]; item: TaneItem; size?: number; haveFruit?: boolean }) {
+  return kind === "seed" ? <SeedIcon item={item} size={size} haveFruit={haveFruit} /> : <ItemIcon item={item} size={size} />;
 }
 
 const label = (kind: TaneShelfItem["kind"], item: TaneItem) => (kind === "seed" ? `${item.name}のタネ` : item.name);
 
 /**
  * 自分の棚と、棚に出せるもの(タネは持っている数、実はガーデンに飾っていない数)。
- * レベルを上げるのにまだまいていない自分のコースのタネは、1個は手元に残す(Lambda でも確かめる)
+ * レベルを上げるのにまだまいていない自分のコースのタネは、1個は手元に残す(Lambda でも確かめる)。
+ * haveFruit は実を持っているもの(飾っている分も含む)。そのタネは人にあげてもよいので、袋の色を変えて出す
  */
-async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[] }> {
+async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]; haveFruit: Set<string> }> {
   const [shelf, seeds, garden, player, planted] = await Promise.all([
     fetchShelf(),
     fetchMySeeds(),
@@ -44,6 +45,7 @@ async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]
   const needed = player ? seedsNeededToLevelUp(player.course as TaneCourse, planted) : new Set<string>();
   return {
     shelf,
+    haveFruit: new Set(garden.items.filter((x) => x.quantity > 0).map((x) => x.itemId)),
     spare: [
       ...seeds
         .filter((x) => !TANE_LOCAL_ITEM_BY_ID.has(x.itemId))
@@ -62,8 +64,11 @@ const keyOf = (x: { kind: TaneShelfItem["kind"]; itemId: string }) => `${x.kind}
 function ShelfGrid({
   items,
   render,
+  haveFruit,
 }: {
   items: TaneShelfItem[];
+  /** 実を持っているもの(そのタネは袋を緑にする) */
+  haveFruit?: ReadonlySet<string>;
   /** count は名前の下(数)、action は説明の位置(ボタン。2列・1列のときは右端) */
   render: (x: TaneShelfItem, item: TaneItem) => { count: ReactNode; action: ReactNode };
 }) {
@@ -83,7 +88,7 @@ function ShelfGrid({
         const { count, action } = render(x, item);
         return (
           <div className="relative h-full bg-white rounded-2xl p-2 text-center shadow-[0_2px_8px_rgba(120,90,40,0.06)]">
-            <CardBody icon={<ShelfIcon kind={x.kind} item={item} />} title={label(x.kind, item)} note={action} noteBeside>
+            <CardBody icon={<ShelfIcon kind={x.kind} item={item} haveFruit={haveFruit?.has(x.itemId)} />} title={label(x.kind, item)} note={action} noteBeside>
               {count}
             </CardBody>
           </div>
@@ -100,14 +105,16 @@ function ShelfGrid({
 export function MyShelf() {
   const [shelf, setShelf] = useState<TaneShelf | null>(null);
   const [spare, setSpare] = useState<TaneShelfItem[]>([]);
+  const [haveFruit, setHaveFruit] = useState<Set<string>>(new Set());
   // まだ保存していない変更(棚に出す数。戻すときはマイナス)
   const [pending, setPending] = useState<Map<string, number>>(new Map());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const apply = (v: { shelf: TaneShelf; spare: TaneShelfItem[] }) => {
+  const apply = (v: { shelf: TaneShelf; spare: TaneShelfItem[]; haveFruit: Set<string> }) => {
     setShelf(v.shelf);
     setSpare(v.spare);
+    setHaveFruit(v.haveFruit);
   };
 
   useEffect(() => {
@@ -193,11 +200,18 @@ export function MyShelf() {
             </div>
           )}
           <p className="text-2xs font-semibold text-[#78716c] mb-1">手元から出す</p>
+          {spareNow.some((x) => x.kind === "seed" && haveFruit.has(x.itemId)) && (
+            <p className="flex items-center gap-1 text-3xs text-[#a8937a] mb-1">
+              <span className="inline-block w-2.5 h-3 rounded-sm border border-emerald-300 bg-emerald-100" aria-hidden />
+              緑の袋は、実をもう持っているタネです
+            </p>
+          )}
           {spareNow.length === 0 ? (
             <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">出せるものがありません</p>
           ) : (
             <ShelfGrid
               items={spareNow}
+              haveFruit={haveFruit}
               render={(x) => ({
                 count: <span className="block text-3xs text-[#a8937a]">手元 {x.quantity}個</span>,
                 action: (

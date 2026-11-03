@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { TANE_COURSES } from "@/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEMS, TANE_LOCAL_PREFS, TANE_LOCAL_RANK_LABELS } from "@/lib/game/chizuTane/localItems";
@@ -9,12 +10,39 @@ import { ErrorText, ItemIcon, Loading, NeedStart, TaneHeading, TaneScreen } from
 import { useTanePlayer } from "./useTanePlayer";
 
 // ご当地コレクション: 都道府県を選ぶと、その県のご当地のもの 15種類(5コース × 現地・お土産・記念品)を表で出す。
-// 集めたものの画面の「ご当地」から開く。持っていないものは影絵で、名前は出す(どんなものがあるかを見て、提案してもらえるように)
+// 集めたものの画面の「ご当地」から開く。持っていないものは影絵で、名前は出す(どんなものがあるかを見て、提案してもらえるように)。
+// ?pref=13 で最初に開く都道府県を選べる。?mode=secret(秘密モード。どこからもリンクしない)を付けると、ログインしていなくても、
+// 持っているかに関係なく全部の絵を出す(絵の見直しや紹介に使う。例: ?pref=13&mode=secret)
 
 /** ご当地のものへの提案の送り先(本体のお問い合わせ) */
 const SUGGESTION_URL = "https://usapo.net/info/bug-report";
 
+/** URL の ?pref= (2桁の都道府県コード。1桁でもよい)。ご当地のものがある都道府県でなければ "" */
+function prefFromQuery(value: string | null): string {
+  const code = (value ?? "").padStart(2, "0");
+  return TANE_LOCAL_PREFS.some((p) => p.prefCode === code) ? code : "";
+}
+
 export default function LocalCollectionView() {
+  const params = useSearchParams();
+  const initialPref = prefFromQuery(params.get("pref"));
+  const secret = params.get("mode") === "secret";
+  return secret ? <SecretCollectionView initialPref={initialPref} /> : <PlayerCollectionView initialPref={initialPref} />;
+}
+
+/** 秘密モード: ログインしなくても、全部の絵を出す */
+function SecretCollectionView({ initialPref }: { initialPref: string }) {
+  return (
+    <TaneScreen>
+      <div className="mt-2">
+        <TaneHeading title="📖 ご当地コレクション">🔑 秘密モード（全部の絵を出しています）</TaneHeading>
+      </div>
+      <LocalCollection initialPref={initialPref} reveal />
+    </TaneScreen>
+  );
+}
+
+function PlayerCollectionView({ initialPref }: { initialPref: string }) {
   const [state] = useTanePlayer();
   return (
     <TaneScreen>
@@ -27,30 +55,32 @@ export default function LocalCollectionView() {
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}
-      {state.status === "ready" && <LocalCollection />}
+      {state.status === "ready" && <LocalCollection initialPref={initialPref} />}
     </TaneScreen>
   );
 }
 
-function LocalCollection() {
-  const [owned, setOwned] = useState<Set<string> | null>(null);
-  const [prefCode, setPrefCode] = useState("");
+/** reveal なら持っているかを読まず、全部持っているように出す(秘密モード) */
+function LocalCollection({ initialPref, reveal = false }: { initialPref: string; reveal?: boolean }) {
+  const [owned, setOwned] = useState<Set<string> | null>(() => (reveal ? new Set(TANE_LOCAL_ITEMS.map((i) => i.itemId)) : null));
+  const [prefCode, setPrefCode] = useState(initialPref || (reveal ? TANE_LOCAL_PREFS[0].prefCode : ""));
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (reveal) return;
     let cancelled = false;
     fetchMyLocalItemIds()
       .then((ids) => {
         if (cancelled) return;
         setOwned(new Set(ids));
-        // はじめは、持っているものがある最初の都道府県を開く
-        setPrefCode(TANE_LOCAL_ITEMS.find((i) => ids.includes(i.itemId))?.local ?? "");
+        // URL で選んでいなければ、持っているものがある最初の都道府県を開く
+        setPrefCode((cur) => cur || (TANE_LOCAL_ITEMS.find((i) => ids.includes(i.itemId))?.local ?? ""));
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reveal]);
 
   if (error) return <ErrorText message={error} />;
   if (!owned) return <Loading />;
@@ -61,9 +91,11 @@ function LocalCollection() {
 
   return (
     <div>
-      <p className="text-sm text-[#78716c] mb-3">
-        全国で {TANE_LOCAL_ITEMS.length}種類のうち <span className="font-bold text-[#3c2a14]">{owned.size}</span> 種類を集めました
-      </p>
+      {!reveal && (
+        <p className="text-sm text-[#78716c] mb-3">
+          全国で {TANE_LOCAL_ITEMS.length}種類のうち <span className="font-bold text-[#3c2a14]">{owned.size}</span> 種類を集めました
+        </p>
+      )}
       <select
         value={prefCode}
         onChange={(e) => setPrefCode(e.target.value)}

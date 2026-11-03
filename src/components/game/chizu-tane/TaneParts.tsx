@@ -77,18 +77,21 @@ export function UserIcon({ iconItemId, size: baseSize = 24 }: { iconItemId?: str
 }
 
 /**
- * タネの絵。実(もの)と見分けがつくよう、タネ袋の形にして、何のタネかを小さく出す(絵があれば絵、無ければ絵文字。実の絵はそのまま ItemIcon)
+ * タネの絵。実(もの)と見分けがつくよう、タネ袋の形にして、何のタネかを小さく出す(絵があれば絵、無ければ絵文字。実の絵はそのまま ItemIcon)。
+ * haveFruit なら袋を緑にする(その実をもう持っているので、人にあげてもよいタネ。おすそ分けの棚に出すところ)
  */
-export function SeedIcon({ item, size: baseSize = 40 }: { item: TaneItem; size?: number }) {
+export function SeedIcon({ item, size: baseSize = 40, haveFruit = false }: { item: TaneItem; size?: number; haveFruit?: boolean }) {
   const size = baseSize * useDisplaySize().iconScale;
   return (
     <span
       role="img"
-      aria-label={`${item.name}のタネ`}
-      className="relative inline-flex flex-col items-center justify-start rounded-b-md rounded-t-sm border border-amber-300 bg-amber-100 shrink-0"
+      aria-label={`${item.name}のタネ${haveFruit ? "（実を持っている）" : ""}`}
+      className={`relative inline-flex flex-col items-center justify-start rounded-b-md rounded-t-sm border shrink-0 ${
+        haveFruit ? "border-emerald-300 bg-emerald-100" : "border-amber-300 bg-amber-100"
+      }`}
       style={{ width: size * 0.78, height: size, paddingTop: size * 0.1 }}
     >
-      <span className="absolute inset-x-0 top-0 h-[12%] rounded-t-sm bg-amber-300/70" aria-hidden />
+      <span className={`absolute inset-x-0 top-0 h-[12%] rounded-t-sm ${haveFruit ? "bg-emerald-300/70" : "bg-amber-300/70"}`} aria-hidden />
       {item.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={item.imageUrl} alt="" width={size * 0.5} height={size * 0.5} style={{ marginTop: size * 0.02 }} aria-hidden />
@@ -97,7 +100,7 @@ export function SeedIcon({ item, size: baseSize = 40 }: { item: TaneItem; size?:
           {item.emoji}
         </span>
       )}
-      <span className="font-bold text-amber-800" style={{ fontSize: Math.max(8, size * 0.2), lineHeight: 1.3 }} aria-hidden>
+      <span className={`font-bold ${haveFruit ? "text-emerald-800" : "text-amber-800"}`} style={{ fontSize: Math.max(8, size * 0.2), lineHeight: 1.3 }} aria-hidden>
         タネ
       </span>
     </span>
