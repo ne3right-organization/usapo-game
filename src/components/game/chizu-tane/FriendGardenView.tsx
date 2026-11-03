@@ -12,6 +12,7 @@ import {
   fetchTaneSharerIds,
   gardenObjectsOf,
   helpWater,
+  helpWaterAll,
   taneDayMs,
   type FriendGarden as FriendGardenData,
   type TaneHelpField,
@@ -124,7 +125,7 @@ function FriendGarden({ userId, helpCount }: { userId: string; helpCount: number
  * その人の畑に遠くから水をやる(手伝い)。1つの畑に朝・昼・夜に1回、効き目は現地の10分の1。
  * 手伝いの水やり HELPS_PER_VISIT 回で、たずねたタネ1か所と数える。
  * 畑はほかのカードと同じ形で並べ(TaneCards)、タップするとその下に詳しいこと(場所・育ち・あと何回)と水やりのボタンを出す。
- * 見出しの横の「まとめて水をやる」で、水をやれる畑に1か所ずつ順に水をやる(1か所ずつのボタンと同じ)
+ * 見出しの横の「まとめて水をやる」で、水をやれる畑にまとめて水をやる(Lambda が1回で。持ち主への知らせは1つ)
  */
 function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; nickname: string; initialHelpCount: number }) {
   const [fields, setFields] = useState<TaneHelpField[] | null>(null);
@@ -174,37 +175,28 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
     setBusy("all");
     setError("");
     setMessage("");
-    let watered = 0;
-    let ripened = 0;
-    let level: number | null = null;
-    let count = helpCount;
-    const gained: string[] = [];
-    const errors: string[] = [];
-    for (const f of targets) {
-      try {
-        const res = await helpWater(ownerId, f.fieldId);
-        setFields((cur) => cur?.map((x) => (x.fieldId === f.fieldId ? res.field : x)) ?? null);
-        setHelpCount(res.helpCount);
-        watered++;
-        if (res.ripened) ripened++;
-        if (res.leveledUp) {
-          level = res.level;
-          gained.push(...res.seedsGained.map((g) => TANE_ITEM_BY_ID.get(g.itemId)?.name ?? g.itemId));
-        }
-        count = res.helpCount;
-      } catch (err) {
-        errors.push(`${f.townName}: ${err instanceof Error ? err.message : String(err)}`);
+    try {
+      // 1回で全部の畑に水をやる(持ち主への知らせが1つにまとまるよう、Lambda でまとめてやる)
+      const res = await helpWaterAll(ownerId);
+      const byId = new Map(res.fields.map((x) => [x.fieldId, x]));
+      setFields((cur) => cur?.map((x) => byId.get(x.fieldId) ?? x) ?? null);
+      setHelpCount(res.helpCount);
+      const lines = [`💧 ${res.watered}か所に水をやりました`];
+      if (res.ripened > 0) lines.push(`${res.ripened}か所が実りました！ ${nickname}さんに生産者の取り分が届きました。実は現地でもらえます`);
+      // この水やりで HELPS_PER_VISIT 回の区切りをまたいだら知らせる
+      const visitsGained = Math.floor(res.helpCount / HELPS_PER_VISIT) - Math.floor(helpCount / HELPS_PER_VISIT);
+      if (visitsGained > 0) lines.push(`手伝いが${res.helpCount}回になり、たずねたタネ${visitsGained}か所ぶん増えました`);
+      if (res.leveledUp) {
+        const names = res.seedsGained.map((g) => TANE_ITEM_BY_ID.get(g.itemId)?.name ?? g.itemId).join("・");
+        lines.push(`🎉 Lv.${res.level} になりました！ ${names}のタネをもらいました`);
       }
+      setMessage(lines.join("\n"));
+      if (res.errors.length > 0) setError(`水をやれなかった畑: ${res.errors.join(" / ")}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
     }
-    const lines = [`💧 ${watered}か所に水をやりました`];
-    if (ripened > 0) lines.push(`${ripened}か所が実りました！ ${nickname}さんに生産者の取り分が届きました。実は現地でもらえます`);
-    // この水やりで HELPS_PER_VISIT 回の区切りをまたいだら知らせる
-    const visitsGained = Math.floor(count / HELPS_PER_VISIT) - Math.floor(helpCount / HELPS_PER_VISIT);
-    if (visitsGained > 0) lines.push(`手伝いが${count}回になり、たずねたタネ${visitsGained}か所ぶん増えました`);
-    if (level !== null) lines.push(`🎉 Lv.${level} になりました！ ${gained.join("・")}のタネをもらいました`);
-    setMessage(lines.join("\n"));
-    if (errors.length > 0) setError(`水をやれなかった畑: ${errors.join(" / ")}`);
-    setBusy(null);
   };
 
   const slot = slotLabel(new Date(), taneDayMs());

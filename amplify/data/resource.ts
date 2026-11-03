@@ -567,6 +567,18 @@ const schema = a
       seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
     }),
 
+    // まとめて手伝いの水やり。fields は水をやった畑(水をやったあと)、errors は水をやれなかった畑と理由
+    TaneHelpAllResult: a.customType({
+      fields: a.ref("TaneHelpField").required().array().required(),
+      watered: a.integer().required(), // 水をやった畑の数
+      ripened: a.integer().required(), // この水やりで実った畑の数
+      helpCount: a.integer().required(), // 手伝った回数(合計)
+      level: a.integer(),
+      leveledUp: a.boolean(),
+      seedsGained: a.json(), // 増えたタネ: { itemId, count, reason }[](reason: level)
+      errors: a.string().required().array().required(),
+    }),
+
     // 公式の畑へのチェックイン。status は watered(水をやった)/ ripened(水をやって実り、実をもらった)/ fruit(実っていた実をもらった)/ already(この時間帯はもう来た)。
     // water・fruits・droppedSeeds はチェックインのあとの畑。quantity はもらった実の手元の数。todayCount はこの日に初めて来た公式の畑の数
     TaneOfficialResult: a.customType({
@@ -730,6 +742,15 @@ const schema = a
       .mutation()
       .arguments({ ownerId: a.id().required(), fieldId: a.string().required() })
       .returns(a.ref("TaneHelpResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: フォローしている人の畑のうち、水をやれる畑にまとめて手伝いの水をやる(1か所ずつと同じ決まり。持ち主への知らせは1つにまとめる)。
+    // waterAll は Lambda で見分けるための印(Gen2 の関数には event.info が来ないので)。いつも true
+    helpWaterAllTaneBases: a
+      .mutation()
+      .arguments({ ownerId: a.id().required(), waterAll: a.boolean().required() })
+      .returns(a.ref("TaneHelpAllResult"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
