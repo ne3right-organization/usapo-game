@@ -59,6 +59,13 @@ backend.chizuTanePlace.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tab
 const taneOfficialVisitTable = backend.data.resources.tables["GameTaneOfficialVisit"];
 taneOfficialVisitTable.grantReadWriteData(backend.chizuTaneCheckin.resources.lambda);
 backend.chizuTaneCheckin.addEnvironment("CHIZU_TANE_OFFICIAL_VISIT_TABLE", taneOfficialVisitTable.tableName);
+// 本物の畑の訪問と手伝いの水やりも、「1つの時間帯に1回」の印を条件付きで書く(2台で同時にチェックインしても1回分だけ進む)
+const taneVisitTable = backend.data.resources.tables["GameTaneVisit"];
+const taneHelpTable = backend.data.resources.tables["GameTaneHelp"];
+taneVisitTable.grantReadWriteData(backend.chizuTaneCheckin.resources.lambda);
+taneHelpTable.grantReadWriteData(backend.chizuTaneCheckin.resources.lambda);
+backend.chizuTaneCheckin.addEnvironment("CHIZU_TANE_VISIT_TABLE", taneVisitTable.tableName);
+backend.chizuTaneCheckin.addEnvironment("CHIZU_TANE_HELP_TABLE", taneHelpTable.tableName);
 
 // おすそ分けの棚の数も早い者勝ちなので、棚のテーブルを条件付きで書き換える(amplify/functions/chizu-tane-shelf/handler.ts)
 const taneShelfTable = backend.data.resources.tables["GameTaneShelf"];
