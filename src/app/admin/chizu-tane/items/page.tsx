@@ -100,6 +100,23 @@ export default function ChizuTaneItemsPage() {
             </a>
           ))}
         </p>
+        <h3 className="text-sm font-bold mb-1">🔑 監修用のリンク（ご当地コレクションの秘密モード）</h3>
+        <p className="text-xs text-[#78716c] mb-2">
+          地元の人に見てもらう用。ログインしなくても、その都道府県の15種類を全部（絵の無いものは絵文字で）出す。リンクをコピーして渡す
+        </p>
+        <p className="text-xs leading-loose">
+          {TANE_LOCAL_PREFS.map((p) => (
+            <a
+              key={p.prefCode}
+              href={`/game/chizu-tane/collection/local?pref=${p.prefCode}&mode=secret`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mr-3 text-emerald-700 underline whitespace-nowrap"
+            >
+              {p.prefName}
+            </a>
+          ))}
+        </p>
       </section>
 
       {TANE_COURSES.map((course) => (

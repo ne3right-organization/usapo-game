@@ -278,11 +278,12 @@ export function seedsForLevel(course: TaneCourse, level: number): TaneItem[] {
 
 /**
  * レベルを上げるのにまく必要があるのに、まだ一度もまいていない自分のコースのタネ(levelFor の条件 (2))。
- * おすそ分けの棚に出すとき、これは1個は手元に残す(全部出してしまうとレベルが上がらなくなる)
+ * おすそ分けの棚に出すとき、これは1個は手元に残す(全部出してしまうとレベルが上がらなくなる)。
+ * いまのレベルの上限(本番は Lv.3)では止めない。上限で止まっている人も、上限を上げたときに次のレベルに上がれるように
  */
 export function seedsNeededToLevelUp(course: TaneCourse, plantedItemIds: ReadonlySet<string>): Set<string> {
   const needed = new Set<string>();
-  for (let level = 1; level < maxLevel(); level++) {
+  for (let level = 1; level < TANE_LEVEL_THRESHOLDS.length; level++) {
     for (const i of seedsForLevel(course, level)) if (!plantedItemIds.has(i.itemId)) needed.add(i.itemId);
   }
   return needed;

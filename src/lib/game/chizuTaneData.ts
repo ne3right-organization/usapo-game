@@ -423,6 +423,36 @@ export async function helpWater(ownerId: string, fieldId: string): Promise<HelpW
   };
 }
 
+export interface HelpWaterAllResult {
+  /** 水をやった畑(水をやったあと) */
+  fields: TaneHelpField[];
+  watered: number;
+  ripened: number;
+  helpCount: number;
+  level: number | null;
+  leveledUp: boolean;
+  seedsGained: { itemId: string; count: number; reason: "level" }[];
+  /** 水をやれなかった畑と理由 */
+  errors: string[];
+}
+
+/** フォローしている人の畑のうち、水をやれる畑にまとめて水をやる(持ち主への知らせは1つ) */
+export async function helpWaterAll(ownerId: string): Promise<HelpWaterAllResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.helpWaterAllTaneBases({ ownerId, waterAll: true }));
+  if (!res) throw new Error("水をやれませんでした");
+  return {
+    fields: res.fields.filter((f): f is TaneHelpField => !!f),
+    watered: res.watered,
+    ripened: res.ripened,
+    helpCount: res.helpCount,
+    level: res.level ?? null,
+    leveledUp: res.leveledUp ?? false,
+    seedsGained: parseJson<HelpWaterAllResult["seedsGained"] | null>(res.seedsGained) ?? [],
+    errors: res.errors.filter((e): e is string => !!e),
+  };
+}
+
 // ─── いまいる地区 ─────────────────────────────────────────────────────────
 
 export interface Location {

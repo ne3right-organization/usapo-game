@@ -389,6 +389,28 @@ export async function addWater(areaKey: string, amount: number, toRipe: number, 
   }
 }
 
+/**
+ * 拠点の「1つの時間帯に1回」の印(持ち主のチェックイン lastOwnerVisitOn・遠くからの水やり lastRemoteWaterOn)を、
+ * まだその時間帯のものでないときだけ書く。水や実を動かす前に書くので、2台で同時に押しても進むのは1回分だけ。書けなければ false
+ */
+export async function claimBaseSlot(areaKey: string, attr: "lastOwnerVisitOn" | "lastRemoteWaterOn", slot: string): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression: `SET ${attr} = :slot, updatedAt = :now`,
+        ConditionExpression: `attribute_exists(areaKey) AND (attribute_not_exists(${attr}) OR ${attr} <> :slot)`,
+        ExpressionAttributeValues: { ":slot": { S: slot }, ":now": { S: new Date().toISOString() } },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
+}
+
 /** 実をもらう拠点(収穫の記録に写すもの) */
 export interface FruitSource {
   areaKey: string;
