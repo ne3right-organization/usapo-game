@@ -3,7 +3,7 @@ import type { AppSyncIdentityCognito, AppSyncResolverHandler } from "aws-lambda"
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-shelf";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { addSeeds, plantedItemIds, requirePlayer } from "../shared/chizuTane";
+import { addSeeds, hasLocalFruitFrom, localFruitSourceKey, plantedItemIds, requirePlayer } from "../shared/chizuTane";
 import { notifyUsers } from "../shared/push";
 import { TANE_ITEM_BY_ID, seedsNeededToLevelUp, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/localItems";
@@ -14,7 +14,7 @@ import { countPlaced, type GardenLayouts, type GardenObject } from "../../../src
 // (ガーデンを見られる人と同じ)が、遠くから1人1日1個持っていく。持ち主はいちいち渡さなくてよい。
 // - 棚に出すと手元から減る。実は、ガーデンに飾っている分は出せない。ご当地のタネは出せない(決まった3つの方法でしか増えない)。
 //   レベルを上げるのにまだまいていない自分のコースのタネは、1個は手元に残す(全部出すとレベルが上がらなくなる。seedsNeededToLevelUp)
-// - ご当地の実は、もう持っている人はもらえない(1つの品につき1人1個)
+// - ご当地の実は、同じ生産者のものをもうもらった人はもらえない(生産者とものの組みにつき1人1個。GameTaneLocalFruit)
 // - もらった実の産地は、持ち主がその実を最後に収穫した畑のものを引き継ぐ(集めたものに「谷塚一丁目のりんご」と出る)
 
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
@@ -182,10 +182,20 @@ async function take(c: DataClient, takerId: string, ownerId: string, kind: Kind,
   const today = dayKey(new Date());
   const last = unwrap(await c.models.GameTaneShelfTake.get({ takerId, ownerId }));
   if (last?.lastTakenOn === today) throw new Error("この人の棚からは、1日1個までです");
-  if (kind === "fruit" && TANE_LOCAL_ITEM_BY_ID.has(itemId) && unwrap(await c.models.GameTaneItem.get({ userId: takerId, itemId }))) {
-    throw new Error("ご当地の実は1つの品につき1人1個です（もう持っています）");
+  // 実の産地は、持ち主がその実を最後に収穫した畑のもの(生産者もその畑の持ち主)
+  const origin = kind === "fruit" ? await latestHarvest(c, ownerId, itemId) : null;
+  // ご当地の実は生産者とものの組みにつき1人1個。もらった記録を先に作っておき(同じ人が同時に押しても1回だけ)、棚に無ければ消す
+  const localKey = kind === "fruit" && TANE_LOCAL_ITEM_BY_ID.has(itemId) ? localFruitSourceKey(origin?.ownerId ?? ownerId, itemId) : null;
+  if (localKey) {
+    if (await hasLocalFruitFrom(c, takerId, origin?.ownerId ?? ownerId, itemId)) {
+      throw new Error("ご当地の実は、同じ生産者のものは1人1個です（この生産者のものは、もうもらっています）");
+    }
+    unwrap(await c.models.GameTaneLocalFruit.create({ userId: takerId, sourceKey: localKey }));
   }
-  if (!(await changeShelf(ownerId, kind, itemId, -1))) throw new Error("先にほかの人がもらっていきました");
+  if (!(await changeShelf(ownerId, kind, itemId, -1))) {
+    if (localKey) await c.models.GameTaneLocalFruit.delete({ userId: takerId, sourceKey: localKey });
+    throw new Error("先にほかの人がもらっていきました");
+  }
   unwrap(
     last
       ? await c.models.GameTaneShelfTake.update({ takerId, ownerId, lastTakenOn: today })
@@ -195,8 +205,6 @@ async function take(c: DataClient, takerId: string, ownerId: string, kind: Kind,
   if (kind === "seed") {
     await addSeeds(c, takerId, itemId, 1);
   } else {
-    // 産地は、持ち主がその実を最後に収穫した畑のもの(生産者もその畑の持ち主)
-    const origin = await latestHarvest(c, ownerId, itemId);
     await addFruit(c, takerId, itemId, 1, origin ? `${origin.cityName} ${origin.townName}` : null);
     if (origin) {
       unwrap(
@@ -215,8 +223,9 @@ async function take(c: DataClient, takerId: string, ownerId: string, kind: Kind,
     }
   }
 
-  // 持ち主に知らせる(名前は、もらった人が持ち主に「農園を見せる」にしていて、持ち主がもらった人をフォローしているときだけ)
-  const takerName = await takerNameFor(c, takerId, ownerId);
+  // 持ち主に知らせる。棚からもらえるのは持ち主が「農園を見せる」にしたフォロワーだけで、持ち主はフォロワーの一覧で誰か分かっているので、
+  // 畑に来た人の通知(居場所が分かるので見せ合っていなければ「誰か」)と違い、ニックネームがあればいつも名前を出す
+  const takerName = unwrap(await c.models.GameProfile.get({ userId: takerId }))?.nickname || null;
   const what = kind === "seed" ? `「${item.name}」のタネ` : `「${item.name}」`;
   await notifyUsers(c, [ownerId], {
     title: "おすそ分けの棚からもらわれました",
@@ -239,11 +248,3 @@ async function latestHarvest(c: DataClient, userId: string, itemId: string) {
   return latest;
 }
 
-async function takerNameFor(c: DataClient, takerId: string, ownerId: string): Promise<string | null> {
-  const [share, follow] = await Promise.all([
-    c.models.GameTaneShare.get({ ownerId: takerId, viewerId: ownerId }),
-    c.models.GameFollow.get({ followerId: ownerId, followeeId: takerId }),
-  ]);
-  if (!unwrap(share) || !unwrap(follow)) return null;
-  return unwrap(await c.models.GameProfile.get({ userId: takerId }))?.nickname || null;
-}

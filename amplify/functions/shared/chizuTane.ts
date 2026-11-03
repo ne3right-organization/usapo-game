@@ -239,6 +239,27 @@ const BASE_TABLE = process.env.CHIZU_TANE_BASE_TABLE ?? "";
 const HELD_SEED_TABLE = process.env.CHIZU_TANE_HELD_SEED_TABLE ?? "";
 const ITEM_TABLE = process.env.CHIZU_TANE_ITEM_TABLE ?? "";
 const HARVEST_TABLE = process.env.CHIZU_TANE_HARVEST_TABLE ?? "";
+const LOCAL_FRUIT_TABLE = process.env.CHIZU_TANE_LOCAL_FRUIT_TABLE ?? "";
+
+/** ご当地の実をもらった記録(GameTaneLocalFruit)のキー。生産者とものの組み */
+export function localFruitSourceKey(producerId: string, itemId: string): string {
+  return `${producerId}#${itemId}`;
+}
+
+/**
+ * この生産者のこのご当地の実を、もうもらったか(ご当地の実は生産者とものの組みにつき1人1個)。
+ * 2026-11-02 より前は「ものにつき1人1個」で記録を持っていなかったので、収穫の記録(生産者が写してある)でも見る
+ */
+export async function hasLocalFruitFrom(c: DataClient, userId: string, producerId: string, itemId: string): Promise<boolean> {
+  if (unwrap(await c.models.GameTaneLocalFruit.get({ userId, sourceKey: localFruitSourceKey(producerId, itemId) }))) return true;
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneHarvest.list({ userId, nextToken });
+    if (unwrap(page).some((h) => h.itemId === itemId && h.ownerId === producerId)) return true;
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return false;
+}
 
 /**
  * 拠点に落ちているタネを count 個拾う。「拠点から count 個減らす(count 個以上落ちているときだけ)」と
@@ -381,8 +402,8 @@ export interface FruitSource {
 /**
  * 実を1個もらう。「拠点の実を1個減らす(1個以上あるときだけ)」「もらった人の実(GameTaneItem)を1個増やす」
  * 「収穫の記録(GameTaneHarvest)を1行足す」を1つのトランザクションで行う。
- * once(ご当地の実)なら、まだ持っていないときだけもらえる(1つの品につき1人1個)。
- * もらえたら、残りの実の数を返す(先にほかの人が取りきっていた・もう持っていたら null)
+ * once(ご当地の実)なら、この生産者のこの実をまだもらっていないときだけもらえる(生産者とものの組みにつき1人1個。GameTaneLocalFruit)。
+ * もらえたら、残りの実の数を返す(先にほかの人が取りきっていた・もうもらっていたら null)
  */
 export async function takeFruit(base: FruitSource, userId: string, itemId: string, once = false): Promise<number | null> {
   const { areaKey } = base;
@@ -420,7 +441,10 @@ export async function giveFruit(base: FruitSource, userId: string, itemId: strin
   await ddb.send(new TransactWriteItemsCommand({ TransactItems: fruitGainWrites(base, userId, itemId, false, new Date().toISOString()) }));
 }
 
-/** 実を1個もらうときの書き込み(もらった人の GameTaneItem を1個増やす・GameTaneHarvest を1行足す)。once ならまだ持っていないときだけ */
+/**
+ * 実を1個もらうときの書き込み(もらった人の GameTaneItem を1個増やす・GameTaneHarvest を1行足す)。
+ * once なら、もらった記録(GameTaneLocalFruit)も足す(すでにあれば、トランザクションごと失敗する)
+ */
 function fruitGainWrites(base: FruitSource, userId: string, itemId: string, once: boolean, now: string): TransactWriteItem[] {
   const areaName = `${base.cityName} ${base.townName}`;
   return [
@@ -429,7 +453,6 @@ function fruitGainWrites(base: FruitSource, userId: string, itemId: string, once
       Update: {
         TableName: ITEM_TABLE,
         Key: { userId: { S: userId }, itemId: { S: itemId } },
-        ...(once ? { ConditionExpression: "attribute_not_exists(quantity)" } : {}),
         UpdateExpression:
           "SET quantity = if_not_exists(quantity, :zero) + :one, #tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now, " +
           "firstAcquiredAt = if_not_exists(firstAcquiredAt, :now), firstAreaName = if_not_exists(firstAreaName, :area)",
@@ -463,6 +486,23 @@ function fruitGainWrites(base: FruitSource, userId: string, itemId: string, once
         ConditionExpression: "attribute_not_exists(harvestedAt)",
       },
     },
+    ...(once
+      ? [
+          {
+            Put: {
+              TableName: LOCAL_FRUIT_TABLE,
+              Item: {
+                userId: { S: userId },
+                sourceKey: { S: localFruitSourceKey(base.ownerId, itemId) },
+                __typename: { S: "GameTaneLocalFruit" },
+                createdAt: { S: now },
+                updatedAt: { S: now },
+              },
+              ConditionExpression: "attribute_not_exists(sourceKey)",
+            },
+          },
+        ]
+      : []),
   ];
 }
 

@@ -37,15 +37,18 @@ const taneBaseTable = backend.data.resources.tables["GameTaneBase"];
 const taneHeldSeedTable = backend.data.resources.tables["GameTaneHeldSeed"];
 const taneItemTable = backend.data.resources.tables["GameTaneItem"];
 const taneHarvestTable = backend.data.resources.tables["GameTaneHarvest"];
+const taneLocalFruitTable = backend.data.resources.tables["GameTaneLocalFruit"];
 for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
   taneBaseTable.grantReadWriteData(fn.resources.lambda);
   taneHeldSeedTable.grantReadWriteData(fn.resources.lambda);
   taneItemTable.grantReadWriteData(fn.resources.lambda);
   taneHarvestTable.grantReadWriteData(fn.resources.lambda);
+  taneLocalFruitTable.grantReadWriteData(fn.resources.lambda);
   fn.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
   fn.addEnvironment("CHIZU_TANE_HELD_SEED_TABLE", taneHeldSeedTable.tableName);
   fn.addEnvironment("CHIZU_TANE_ITEM_TABLE", taneItemTable.tableName);
   fn.addEnvironment("CHIZU_TANE_HARVEST_TABLE", taneHarvestTable.tableName);
+  fn.addEnvironment("CHIZU_TANE_LOCAL_FRUIT_TABLE", taneLocalFruitTable.tableName);
 }
 
 // タネをまく・まき直すのも「空き地か、空き地に戻った畑のときだけ」「タネ待ちのときだけ」の条件付きで拠点のテーブルに書く

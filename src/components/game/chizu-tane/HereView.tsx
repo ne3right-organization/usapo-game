@@ -331,7 +331,7 @@ function Here({ player }: { player: TanePlayer }) {
         );
       } else if (res.status === "have") {
         parts.push(
-          `${item?.name ?? "この実"}はもう持っています。ご当地の実は1つの品につき1人1個なので、ほかの人のために残しておきました（ここの実は、あと${res.fruits}個です）。`
+          `この畑の${item?.name ?? "実"}は、もうもらっています。ご当地の実は1つの畑から1人1個なので、ほかの人のために残しておきました（ここの実は、あと${res.fruits}個です）。`
         );
       } else if (res.status === "ripened") {
         parts.push(

@@ -10,6 +10,7 @@ import {
   baseOwnerId,
   dropSeed,
   giveFruit,
+  hasLocalFruitFrom,
   grantLevelSeeds,
   grantNextLocalSeed,
   listOfficialVisits,
@@ -84,7 +85,7 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
  * - ほかの人のタネに初めてチェックインしたときだけ、拠点にタネが1個落ちる(3個まで。直接はもらわず、拾うかどうかは選べる)。
  *   前にタネが落ちたときから畑の種類が変わっていれば(まき直し・ほかの人の畑になった)、またタネが1個落ちる(たずねた数は増えない)。
  *   たずねた拠点の数が増えるので、レベルが上がることもある(自分のタネは訪問の記録に残さず、レベルにも数えない)
- * - ご当地の畑(docs/地図タネ_ご当地タネ設計書.md の 4章)は、実が1つの品につき1人1個(もう持っている人には渡さない)で、タネは落ちない。
+ * - ご当地の畑(docs/地図タネ_ご当地タネ設計書.md の 4章)は、実が生産者とものの組みにつき1人1個(この畑の実をもうもらった人には渡さない)で、タネは落ちない。
  *   1個目の畑が実ったら持ち主に2個目のタネを、2個目の畑の実が全部収穫されたら3個目のタネを届ける
  */
 async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise<CheckInResult> {
@@ -143,8 +144,8 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   if (waiting) {
     result.status = "waiting";
   } else if ((base.fruits ?? 0) > 0) {
-    // ご当地の実は1つの品につき1人1個。もう持っていれば渡さない(実はほかの人のために残る)
-    const have = local && !!unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }));
+    // ご当地の実は生産者とものの組みにつき1人1個。この畑の実をもうもらっていれば渡さない(実はほかの人のために残る)
+    const have = local && (await hasLocalFruitFrom(c, userId, ownerId, picked.itemId));
     const left = have ? null : await takeFruit({ ...base, ownerId }, userId, picked.itemId, local);
     if (have) result.status = "have";
     if (left !== null) {

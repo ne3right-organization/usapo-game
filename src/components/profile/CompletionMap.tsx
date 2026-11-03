@@ -29,6 +29,38 @@ export interface CompletionMapProps {
   onLoaded?: (keys: MapFeatureKey[]) => void;
   /** 地図のどこかをタップしたときの緯度・経度(地物の上でも外でも)。地図タネの開発用の位置指定で使う */
   onPointSelect?: (lat: number, lng: number) => void;
+  /** 地物の上に出す印(HTML。null なら出さない)。うさぽ農園のご当地の実の絵。印はタップを下の地物に通す */
+  markerFor?: (code: string) => { html: string; size: number } | null;
+}
+
+/**
+ * 印を置く点。いちばん大きい多角形(本土。離島に置かないように)の外周の範囲のまん中。
+ * 東京都は小笠原まで入るので、地物全体の範囲のまん中だと海の上になる
+ */
+function labelPointOf(feature: unknown): { point: [number, number]; area: number } | null {
+  const geometry = (feature as { geometry?: { type?: string; coordinates?: unknown } })?.geometry;
+  const polygons =
+    geometry?.type === "Polygon"
+      ? [geometry.coordinates as number[][][]]
+      : geometry?.type === "MultiPolygon"
+        ? (geometry.coordinates as number[][][][])
+        : [];
+  let best: { point: [number, number]; area: number } | null = null;
+  for (const polygon of polygons) {
+    const ring = polygon[0] ?? [];
+    if (ring.length === 0) continue;
+    // 点が多い(北海道は数万)ので、Math.min(...配列) ではなく1つずつ見る
+    let [minLng, maxLng, minLat, maxLat] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const [lng, lat] of ring) {
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+    const area = (maxLng - minLng) * (maxLat - minLat);
+    if (!best || area > best.area) best = { point: [(minLat + maxLat) / 2, (minLng + maxLng) / 2], area };
+  }
+  return best;
 }
 
 const UNCLEARED: FillStyle = { color: "#ffffff", opacity: 0.75 };
@@ -43,9 +75,14 @@ export default function CompletionMap({
   onSelect,
   onLoaded,
   onPointSelect,
+  markerFor,
 }: CompletionMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const layersRef = useRef<Map<string, L.GeoJSON[]>>(new Map());
+  // 印を置く点(地物のいちばん大きい島のまん中)と、印を置く層
+  const labelPointsRef = useRef<Map<string, { point: [number, number]; area: number }>>(new Map());
+  const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const leafletRef = useRef<typeof L | null>(null);
   const callbacksRef = useRef({ featureKey, onSelect, onLoaded, onPointSelect });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -58,6 +95,7 @@ export default function CompletionMap({
     let cancelled = false;
     let mapInstance: L.Map | null = null;
     layersRef.current = new Map();
+    labelPointsRef.current = new Map();
 
     (async () => {
       const leaflet = await import("leaflet");
@@ -71,6 +109,8 @@ export default function CompletionMap({
         attributionControl: false,
       });
       mapInstance = map;
+      leafletRef.current = Lmod;
+      markerLayerRef.current = Lmod.layerGroup().addTo(map);
       Lmod.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { opacity: 0.5 }).addTo(map);
       // 地物の上のタップも地図まで伝わってくる(Leaflet の既定)
       map.on("click", (e: L.LeafletMouseEvent) => callbacksRef.current.onPointSelect?.(e.latlng.lat, e.latlng.lng));
@@ -102,6 +142,9 @@ export default function CompletionMap({
         const b = layer.getBounds();
         if (b.isValid()) bounds = bounds ? bounds.extend(b) : Lmod.latLngBounds(b.getSouthWest(), b.getNorthEast());
         layer.on("click", () => callbacksRef.current.onSelect?.(key));
+        const label = labelPointOf(feature);
+        const prev = labelPointsRef.current.get(key.code);
+        if (label && (!prev || label.area > prev.area)) labelPointsRef.current.set(key.code, label);
       }
 
       if (bounds) map.fitBounds(bounds, { padding: [12, 12] });
@@ -132,6 +175,24 @@ export default function CompletionMap({
       }
     }
   }, [loading, fillFor, selectedCode]);
+
+  // 印を置き直す
+  useEffect(() => {
+    const Lmod = leafletRef.current;
+    const group = markerLayerRef.current;
+    if (loading || !Lmod || !group) return;
+    group.clearLayers();
+    if (!markerFor) return;
+    for (const [code, { point }] of labelPointsRef.current) {
+      const marker = markerFor(code);
+      if (!marker) continue;
+      Lmod.marker(point, {
+        icon: Lmod.divIcon({ html: marker.html, className: "", iconSize: [marker.size, marker.size] }),
+        interactive: false,
+        keyboard: false,
+      }).addTo(group);
+    }
+  }, [loading, markerFor]);
 
   return (
     <div className="relative h-[360px] rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(120,90,40,0.08)] bg-white">
