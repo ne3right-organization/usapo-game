@@ -38,6 +38,7 @@ import { GROWTH_STAGES, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/gro
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
+import { FollowingGardens } from "./FriendGardenView";
 import {
   ErrorText,
   GrowthBadge,
@@ -200,6 +201,8 @@ function Home({ course }: { course: TaneCourse }) {
   const visitedCount = visits ? levelVisitCount(visits.visited + visits.official, visits.helps) : null;
   const [seeds, setSeeds] = useState<TaneSeedCount[] | null>(null);
   const [error, setError] = useState("");
+  // 遠くから水をやったときの知らせ(あなたの畑の見出しの下に出す。手伝いの水やりと同じ形)
+  const [waterNotice, setWaterNotice] = useState<WaterNotice>(NO_NOTICE);
   const courseDef = TANE_COURSE_BY_ID.get(course);
   // まいたことのあるタネ(まき直す前のものも含む。レベルの条件「いまのタネを3つともまく」に使う)
   const [plantedIds, setPlantedIds] = useState<Set<string>>(new Set());
@@ -302,9 +305,16 @@ function Home({ course }: { course: TaneCourse }) {
         </div>
       )}
 
-      <h2 className="text-sm font-bold text-[#3c2a14] mb-2">
-        あなたの畑{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
-      </h2>
+      <div className="flex items-center gap-2 mb-2">
+        <h2 className="flex-1 text-sm font-bold text-[#3c2a14]">
+          あなたの畑{bases && bases.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{bases.length}か所）</span>}
+        </h2>
+        {bases && bases.length > 0 && <WaterAllButton bases={bases} onWatered={handleWatered} onNotice={setWaterNotice} />}
+      </div>
+      {waterNotice.error && <ErrorText message={waterNotice.error} />}
+      {waterNotice.message && (
+        <p className="text-xs text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2 mb-2 whitespace-pre-line">{waterNotice.message}</p>
+      )}
       {error && <ErrorText message={error} />}
       {bases === null && !error && <Loading />}
       {bases?.length === 0 && (
@@ -381,11 +391,11 @@ function Home({ course }: { course: TaneCourse }) {
                         {stage === RIPE_STAGE && !b.waitingSince ? (
                           <span className="text-sm text-amber-600 font-bold">実{b.fruits ?? 0}個</span>
                         ) : (
-                          <RemoteWaterButton base={b} compact="side" onWatered={handleWatered} />
+                          <RemoteWaterButton base={b} compact="side" onWatered={handleWatered} onNotice={setWaterNotice} />
                         )}
                       </span>
                     ) : (
-                      <RemoteWaterButton base={b} compact="card" onWatered={handleWatered} />
+                      <RemoteWaterButton base={b} compact="card" onWatered={handleWatered} onNotice={setWaterNotice} />
                     )}
                   </div>
                 </div>
@@ -424,6 +434,9 @@ function Home({ course }: { course: TaneCourse }) {
         </>
       )}
 
+      {/* ガーデンの画面と同じ「見に行けるガーデン」を、あなたの畑と同じ並べ方で */}
+      <FollowingGardens grid />
+
       <OfficialFields course={course} />
 
       {/* ホーム画面への追加と通知の案内(状態ごとに出し分ける。済んでいれば出さない) */}
@@ -434,42 +447,111 @@ function Home({ course }: { course: TaneCourse }) {
 
 const noopSubscribe = () => () => {};
 
+/** 遠くから水をやったときの知らせ(message は緑の枠、error は赤い字) */
+type WaterNotice = { message: string; error: string };
+const NO_NOTICE: WaterNotice = { message: "", error: "" };
+
+/** 遠くから水をやれる畑(実っていない・タネ待ちでない・この時間帯にまだ水をやっていない) */
+const canWaterRemotely = (base: TaneBase, now: Date) =>
+  (base.fruits ?? 0) === 0 && !base.waitingSince && base.lastRemoteWaterOn !== slotKey(now, taneDayMs());
+
+/**
+ * あなたの畑の見出しの横の「まとめて水をやる」。遠くから水をやれる畑に、1か所ずつ順に水をやる(1か所ずつのボタンと同じ)。
+ * 終わったら、何か所に水をやって何か所が実ったかを見出しの下に知らせる(onNotice。手伝いの水やりと同じ形)
+ */
+function WaterAllButton({
+  bases,
+  onWatered,
+  onNotice,
+}: {
+  bases: TaneBase[];
+  onWatered: (next: TaneBase) => void;
+  onNotice: (notice: WaterNotice) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const targets = bases.filter((b) => canWaterRemotely(b, new Date()));
+
+  const handle = async () => {
+    setBusy(true);
+    onNotice(NO_NOTICE);
+    let watered = 0;
+    const ripened: string[] = [];
+    const localSeeds: string[] = [];
+    const errors: string[] = [];
+    for (const base of targets) {
+      try {
+        const next = await waterRemotely(base.areaKey);
+        onWatered(next);
+        watered++;
+        if ((next.fruits ?? 0) > 0) {
+          ripened.push(`${base.townName}の${TANE_BASE_TYPE_BY_ID.get(next.baseTypeId)?.name ?? "畑"}`);
+          const nextLocal = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
+          const localSeed = nextLocal?.rank === 1 ? nextLocalItem(nextLocal) : undefined;
+          if (localSeed) localSeeds.push(localSeed.name);
+        }
+      } catch (err) {
+        errors.push(`${base.townName}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    setBusy(false);
+    const lines = [`💧 ${watered}か所に水をやりました`];
+    if (ripened.length > 0) lines.push(`${ripened.join("・")}が実りました！ 生産者の取り分として、実が${ripened.length}個届きました`);
+    if (localSeeds.length > 0) lines.push(`ご当地のタネ「${localSeeds.join("」「")}」も届きました（どこでもまけます）`);
+    onNotice({ message: lines.join("\n"), error: errors.length > 0 ? `水をやれなかった畑: ${errors.join(" / ")}` : "" });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      disabled={busy || targets.length === 0}
+      className="shrink-0 rounded-lg px-2.5 py-1 text-2xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
+    >
+      {busy ? "水やり中..." : targets.length > 0 ? `💧 まとめて水をやる（${targets.length}か所）` : "💧 まとめて水をやる"}
+    </button>
+  );
+}
+
 /**
  * 自分のタネに遠くから水をやるボタン(タネごとに朝・昼・夜に1回、効き目は現地の10分の1)。実っている間とタネ待ちの間は出さない。
- * compact はあなたの畑のカードの中に出すとき(短い言葉で)。"card" はカードの下に幅いっぱい、"side" は1列のカードの右端
+ * compact はあなたの畑のカードの中に出すとき(短い言葉で)。"card" はカードの下に幅いっぱい、"side" は1列のカードの右端。
+ * 水をやったことと失敗は、あなたの畑の見出しの下に知らせる(onNotice。手伝いの水やりと同じ形)
  */
 function RemoteWaterButton({
   base,
   onWatered,
+  onNotice,
   compact,
 }: {
   base: TaneBase;
   onWatered: (next: TaneBase) => void;
+  onNotice: (notice: WaterNotice) => void;
   compact?: "card" | "side";
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   if ((base.fruits ?? 0) > 0 || base.waitingSince) return null;
   const now = new Date();
   const done = base.lastRemoteWaterOn === slotKey(now, taneDayMs());
   const slot = slotLabel(now, taneDayMs());
+  const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "畑"}`;
 
   const handle = async () => {
     setBusy(true);
-    setError("");
+    onNotice(NO_NOTICE);
     try {
       const next = await waterRemotely(base.areaKey);
       onWatered(next);
-      // 実ったら、生産者の取り分の1個が届いている(実ったあとはこのボタンが消えるので、ここで知らせる)
+      const lines = [`💧 ${place}に水をやりました`];
+      // 実ったら、生産者の取り分の1個が届いている
       if ((next.fruits ?? 0) > 0) {
         const nextLocal = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
         const localSeed = nextLocal?.rank === 1 ? nextLocalItem(nextLocal) : undefined;
-        window.alert(
-          `実りました！ 生産者の取り分として、実が1個届きました${localSeed ? `。ご当地のタネ「${localSeed.name}」も届きました（どこでもまけます）` : ""}`
-        );
+        lines.push(`実りました！ 生産者の取り分として、実が1個届きました`);
+        if (localSeed) lines.push(`ご当地のタネ「${localSeed.name}」も届きました（どこでもまけます）`);
       }
+      onNotice({ message: lines.join("\n"), error: "" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      onNotice({ message: "", error: `${place}: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       setBusy(false);
     }
@@ -489,7 +571,6 @@ function RemoteWaterButton({
           {/* 1列の右端は幅が決まっているので、朝・昼・夜を付けない */}
           {done ? `${slot && compact === "card" ? `${slot}の` : ""}水やり済み` : busy ? "水やり中..." : "💧 水をやる"}
         </button>
-        {error && <span className="block text-3xs text-red-600 mt-0.5">{error}</span>}
       </span>
     );
   }
@@ -503,7 +584,6 @@ function RemoteWaterButton({
       >
         {done ? `${slot ? `${slot}の` : ""}水やりは済み` : busy ? "水をやっています..." : "💧 遠くから水をやる"}
       </button>
-      {error && <span className="block text-3xs text-red-600 mt-0.5">{error}</span>}
     </span>
   );
 }

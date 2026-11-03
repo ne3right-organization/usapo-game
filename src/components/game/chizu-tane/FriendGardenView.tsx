@@ -123,7 +123,8 @@ function FriendGarden({ userId, helpCount }: { userId: string; helpCount: number
 /**
  * その人の畑に遠くから水をやる(手伝い)。1つの畑に朝・昼・夜に1回、効き目は現地の10分の1。
  * 手伝いの水やり HELPS_PER_VISIT 回で、たずねたタネ1か所と数える。
- * 畑はほかのカードと同じ形で並べ(TaneCards)、タップするとその下に詳しいこと(場所・育ち・あと何回)と水やりのボタンを出す
+ * 畑はほかのカードと同じ形で並べ(TaneCards)、タップするとその下に詳しいこと(場所・育ち・あと何回)と水やりのボタンを出す。
+ * 見出しの横の「まとめて水をやる」で、水をやれる畑に1か所ずつ順に水をやる(1か所ずつのボタンと同じ)
  */
 function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; nickname: string; initialHelpCount: number }) {
   const [fields, setFields] = useState<TaneHelpField[] | null>(null);
@@ -166,10 +167,62 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
     }
   };
 
+  // 水をやれる畑(実っていない・タネ待ちでない・この時間帯にまだ水をやっていない)
+  const targets = fields?.filter((f) => (f.fruits ?? 0) === 0 && !f.waitingSince && !f.wateredThisSlot) ?? [];
+
+  const handleAll = async () => {
+    setBusy("all");
+    setError("");
+    setMessage("");
+    let watered = 0;
+    let ripened = 0;
+    let level: number | null = null;
+    let count = helpCount;
+    const gained: string[] = [];
+    const errors: string[] = [];
+    for (const f of targets) {
+      try {
+        const res = await helpWater(ownerId, f.fieldId);
+        setFields((cur) => cur?.map((x) => (x.fieldId === f.fieldId ? res.field : x)) ?? null);
+        setHelpCount(res.helpCount);
+        watered++;
+        if (res.ripened) ripened++;
+        if (res.leveledUp) {
+          level = res.level;
+          gained.push(...res.seedsGained.map((g) => TANE_ITEM_BY_ID.get(g.itemId)?.name ?? g.itemId));
+        }
+        count = res.helpCount;
+      } catch (err) {
+        errors.push(`${f.townName}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const lines = [`💧 ${watered}か所に水をやりました`];
+    if (ripened > 0) lines.push(`${ripened}か所が実りました！ ${nickname}さんに生産者の取り分が届きました。実は現地でもらえます`);
+    // この水やりで HELPS_PER_VISIT 回の区切りをまたいだら知らせる
+    const visitsGained = Math.floor(count / HELPS_PER_VISIT) - Math.floor(helpCount / HELPS_PER_VISIT);
+    if (visitsGained > 0) lines.push(`手伝いが${count}回になり、たずねたタネ${visitsGained}か所ぶん増えました`);
+    if (level !== null) lines.push(`🎉 Lv.${level} になりました！ ${gained.join("・")}のタネをもらいました`);
+    setMessage(lines.join("\n"));
+    if (errors.length > 0) setError(`水をやれなかった畑: ${errors.join(" / ")}`);
+    setBusy(null);
+  };
+
   const slot = slotLabel(new Date(), taneDayMs());
   return (
     <section className="mb-4">
-      <h2 className="text-xs font-bold text-[#a8937a] mb-1">💧 {nickname}さんの畑に水をやる</h2>
+      <div className="flex items-center gap-2 mb-1">
+        <h2 className="flex-1 text-xs font-bold text-[#a8937a]">💧 {nickname}さんの畑に水をやる</h2>
+        {fields && fields.length > 0 && (
+          <button
+            type="button"
+            onClick={handleAll}
+            disabled={busy !== null || targets.length === 0}
+            className="shrink-0 rounded-lg px-2.5 py-1 text-2xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 disabled:opacity-50"
+          >
+            {busy === "all" ? "水やり中..." : targets.length > 0 ? `💧 まとめて水をやる（${targets.length}か所）` : "💧 まとめて水をやる"}
+          </button>
+        )}
+      </div>
       <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
         遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
       </p>
@@ -272,8 +325,11 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
   );
 }
 
-/** フォローしていて、自分に農園を見せてくれている人のガーデンへのリンクの一覧(自分のガーデンの画面の下に出す) */
-export function FollowingGardens() {
+/**
+ * フォローしていて、自分に農園を見せてくれている人のガーデンへのリンクの一覧(自分のガーデンの画面の下に出す)。
+ * grid はホームの公式の畑の下に出すとき(見出しと並べ方をあなたの畑にそろえる。ふつうは 3×3 でスワイプ)
+ */
+export function FollowingGardens({ grid = false }: { grid?: boolean }) {
   const [users, setUsers] = useState<FollowUser[] | null>(null);
   const cards = useCardLayout();
 
@@ -288,8 +344,11 @@ export function FollowingGardens() {
   }, []);
 
   return (
-    <section className="mt-6">
-      <h2 className="text-xs font-bold text-[#a8937a] mb-2">見に行けるガーデン</h2>
+    <section className={grid ? "mt-8" : "mt-6"}>
+      <h2 className={grid ? "text-sm font-bold text-[#3c2a14] mb-2" : "text-xs font-bold text-[#a8937a] mb-2"}>
+        見に行けるガーデン
+        {grid && users && users.length > 0 && <span className="ml-1 text-xs font-normal text-[#a8937a]">（{users.length}人）</span>}
+      </h2>
       {users === null && <Loading />}
       {users?.length === 0 && (
         <p className="text-xs text-[#78716c] bg-white rounded-2xl p-3">
@@ -300,8 +359,9 @@ export function FollowingGardens() {
         // フォロワーと同じカードで並べる(TaneCards)
         <SwipePages
           items={users}
-          perPage={cards.columns}
-          layout="cols"
+          perPage={grid ? cards.perPage : cards.columns}
+          columns={grid ? cards.columns : undefined}
+          layout={grid ? "grid" : "cols"}
           keyOf={(u) => u.userId}
           render={(u) => (
             <Link
