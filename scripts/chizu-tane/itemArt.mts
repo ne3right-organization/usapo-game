@@ -18,8 +18,13 @@ const { localItemFor } = localItems;
 /** ご当地のもののシートの並び(左から右へ)。1シート = 1都道府県の同じ何個目の5点を横1列に */
 export const LOCAL_SHEET_COURSES = ["plant", "animal", "hobby", "vehicle", "building"] as const;
 
-/** ご当地のもののシートID(local-13-2 = 東京都の2個目) */
+/** ご当地のもののシートID(local-13-1 = 東京都の1個目) */
 export const localSheetId = (prefCode: string, rank: number) => `local-${prefCode}-${rank}`;
+
+/** 2個目・3個目は、1シートに3都道府県ずつ(1行が1都道府県) */
+export const LOCAL_GROUP_PREFS = 3;
+/** 何都道府県かをまとめたシートのID(local-2-p01-03 = 北海道〜岩手県の2個目) */
+export const localGroupSheetId = (rank: number, fromPrefCode: string, toPrefCode: string) => `local-${rank}-p${fromPrefCode}-${toPrefCode}`;
 
 /**
  * 描き直しのシート(redo-1 など。3×3 の9点)の並び。local-art-prompts.mts --redo が redo.md から作る。
@@ -54,6 +59,16 @@ export type Rgba = { data: Buffer; width: number; height: number };
 export function sheetRows(sheetId: string): string[][] | null {
   if (sheetId === GROWTH_SHEET_ID) return GROWTH_ROWS;
   if (/^redo-\d+$/.test(sheetId)) return redoRows(sheetId);
+  const group = /^local-([123])-p(\d{2})-(\d{2})$/.exec(sheetId);
+  if (group) {
+    const rows: string[][] = [];
+    for (let code = Number(group[2]); code <= Number(group[3]); code++) {
+      const row = LOCAL_SHEET_COURSES.map((course) => localItemFor(String(code).padStart(2, "0"), course, Number(group[1]))?.itemId);
+      if (!row.every((id) => id)) return null;
+      rows.push(row as string[]);
+    }
+    return rows.length > 0 ? rows : null;
+  }
   const local = /^local-(\d{2})-([123])$/.exec(sheetId);
   if (local) {
     const row = LOCAL_SHEET_COURSES.map((course) => localItemFor(local[1], course, Number(local[2]))?.itemId);

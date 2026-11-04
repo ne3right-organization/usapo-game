@@ -17,7 +17,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Sheet, isPlaced, prompt, selectSheets } from "./local-art-prompts.mjs";
+import { type Sheet, isPlaced, prompt, selectSheets, sheetLabel } from "./local-art-prompts.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const SHEETS_DIR = join(ROOT, "art/chizu-tane/sheets");
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   const key = apiKey();
   const made: string[] = [];
   for (const sheet of sheets) {
-    console.log(`\n${sheet.id}（${sheet.prefName} ${sheet.rank}個目）を頼んでいます…(1〜2分かかります)`);
+    console.log(`\n${sheet.id}（${sheetLabel(sheet)}）を頼んでいます…(1〜2分かかります)`);
     try {
       const png = await generate(sheet, key, references);
       writeFileSync(join(SHEETS_DIR, `${sheet.id}.png`), png);

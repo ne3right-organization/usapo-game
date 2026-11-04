@@ -140,7 +140,7 @@ async function main(): Promise<void> {
     if (!pick(sheetId)) continue;
     const rows = sheetRows(sheetId);
     if (!rows) {
-      console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4、growth、ご当地の local-01-1 〜 local-47-3、描き直しの redo-1 など)`);
+      console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4、growth、ご当地の local-01-1 〜 local-47-1・local-2-p01-03 など、描き直しの redo-1 など)`);
       continue;
     }
     console.log(`sheets/${f}（${rows.length}行 × ${Math.max(...rows.map((r) => r.length))}）`);
