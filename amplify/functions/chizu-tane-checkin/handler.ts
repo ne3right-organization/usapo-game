@@ -196,6 +196,10 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
         if (afterShare !== null) result.fruits = afterShare;
       }
       if (local) localSeed = await grantNextLocalSeed(c, ownerId, picked.itemId, "ripened");
+      // 手伝った人にお礼の実を届ける(ご当地の畑は畑の実から渡すので、残りの数を読み直す)
+      if ((await thankHelpers(c, base, ownerId, picked.itemId, source.ripenedAt, null)).length > 0 && local) {
+        result.fruits = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey }))?.fruits ?? 0;
+      }
     }
   }
 
@@ -366,9 +370,12 @@ async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
   if (watered.ripened) {
     const item = TANE_ITEM_BY_ID.get(base.seedItemId);
     const local = isLocalBaseTypeId(base.baseTypeId);
-    if (item) await takeFruit({ ...base, ownerId: userId, ripenedAt: new Date().toISOString() }, userId, item.itemId, local);
+    const ripenedAt = new Date().toISOString();
+    if (item) await takeFruit({ ...base, ownerId: userId, ripenedAt }, userId, item.itemId, local);
     // ご当地の1個目の畑なら、2個目のタネが届く(画面はタネを読み直して知らせる)
     if (item && local) await grantNextLocalSeed(c, userId, item.itemId, "ripened");
+    // 手伝った人にお礼の実を届ける
+    if (item) await thankHelpers(c, base, userId, item.itemId, ripenedAt, null);
   }
   return unwrap(await c.models.GameTaneBase.get({ areaKey }));
 }
@@ -434,6 +441,8 @@ async function listHelpFields(c: DataClient, helperId: string, ownerId: string):
 interface HelpWatered {
   field: HelpField;
   ripened: boolean;
+  /** 実って、手伝った本人にお礼の実が届いた */
+  thanked: boolean;
   /** ご当地の畑が実って、持ち主に届いた次のご当地のタネ */
   localSeed: TaneLocalItem | null;
   /** 知らせに出す畑の名前(○○町の果樹園) */
@@ -454,19 +463,83 @@ async function waterHelpField(c: DataClient, helperId: string, ownerId: string, 
   const item = TANE_ITEM_BY_ID.get(base.seedItemId);
   const local = isLocalBaseTypeId(base.baseTypeId);
   let localSeed: TaneLocalItem | null = null;
+  let thanked = false;
   if (watered.ripened && item) {
     // 持ち主に生産者の取り分を1個届ける
-    await takeFruit({ ...base, ownerId, ripenedAt: new Date().toISOString() }, ownerId, item.itemId, local);
+    const ripenedAt = new Date().toISOString();
+    await takeFruit({ ...base, ownerId, ripenedAt }, ownerId, item.itemId, local);
     if (local) localSeed = await grantNextLocalSeed(c, ownerId, item.itemId, "ripened");
+    // 手伝った人(この水で実らせた本人も)にお礼の実を届ける。本人には知らせず、画面で伝える
+    thanked = (await thankHelpers(c, base, ownerId, item.itemId, ripenedAt, helperId)).includes(helperId);
   }
   const next = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey })) ?? base;
   return {
     field: helpFieldOf(own, next, true),
     ripened: watered.ripened,
+    thanked,
     localSeed,
     place: `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "タネ"}`,
     areaKey: base.areaKey,
   };
+}
+
+/**
+ * 手伝いのお礼(2026-11-05)。畑が実ったら、その畑をまいたあと(手伝いの記録の最後の時間帯が、まいた時間帯以降)に手伝いの水をやった人に、
+ * 実を1個ずつ届ける(持ち主は除く)。ほかの人の畑の実なので、自分のコース以外のものも手に入る。
+ * - 普通の畑は、畑の実とは別に届ける(現地に来る人の分は減らさない)
+ * - ご当地の畑は、畑の実から渡す(1つの畑の実10個を、ちがう人に行き渡らせるため)。生産者とものの組みにつき1人1個なので、
+ *   もう持っている人には渡さない。最後の1個を渡したら、現地で取りきったときと同じく、次のご当地のタネを届けて畑を消す
+ * 届けた人に知らせる(skipNoticeId の人は画面で伝えるので知らせない)。届けた人の ID を返す
+ */
+async function thankHelpers(
+  c: DataClient,
+  base: Base,
+  ownerId: string,
+  itemId: string,
+  ripenedAt: string,
+  skipNoticeId: string | null
+): Promise<string[]> {
+  const cycleStart = slotKey(new Date(base.plantedAt), DAY_MS);
+  const helperIds: string[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const page = await c.models.GameTaneHelp.listTaneHelpsByArea({ areaKey: base.areaKey }, { nextToken });
+    for (const h of unwrap(page)) if (h.helperId !== ownerId && h.lastWaterOn >= cycleStart) helperIds.push(h.helperId);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  if (helperIds.length === 0) return [];
+
+  const local = isLocalBaseTypeId(base.baseTypeId);
+  const source = { ...base, ownerId, ripenedAt };
+  const thanked: string[] = [];
+  for (const helperId of helperIds) {
+    if (!local) {
+      await giveFruit(source, helperId, itemId);
+      thanked.push(helperId);
+      continue;
+    }
+    const left = await takeFruit(source, helperId, itemId, true);
+    if (left === null) continue;
+    thanked.push(helperId);
+    if (left === 0) {
+      await grantNextLocalSeed(c, ownerId, itemId, "harvested");
+      await removeHarvestedBase(c, base.areaKey);
+      break;
+    }
+  }
+
+  const notify = thanked.filter((id) => id !== skipNoticeId);
+  if (notify.length > 0) {
+    const ownerName = unwrap(await c.models.GameProfile.get({ userId: ownerId }))?.nickname;
+    const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "畑"}`;
+    await notifyUsers(c, notify, {
+      title: "手伝った畑が実りました",
+      body: `${ownerName ? `${ownerName}さんの` : ""}${place}が実りました。水やりを手伝ったお礼に、実が1個届きました`,
+      url: "/game/chizu-tane/collection",
+      tag: `tane-thanks-${base.areaKey}`,
+    });
+  }
+  return thanked;
 }
 
 /** 手伝った回数を足す(Lambda が書く。足したあとの合計を返す) */
@@ -505,7 +578,7 @@ async function notifyHelped(c: DataClient, helperId: string, ownerId: string, do
 
 /**
  * フォローしている人の畑に遠くから水をやる。持ち主の遠くからの水やりと同じく、1人が1つの畑に朝・昼・夜に1回で、効き目は現地の10分の1。
- * 実っている間とタネ待ちの間はできない。実ったら持ち主に生産者の取り分が1個届く(手伝った人は実をもらわない。実は現地で)。
+ * 実っている間とタネ待ちの間はできない。実ったら持ち主に生産者の取り分が1個届き、手伝った人にはお礼の実が1個届く(thankHelpers)。
  * 手伝った回数は HELPS_PER_VISIT 回で、たずねたタネ1か所としてレベルに数える
  */
 async function helpWater(c: DataClient, helperId: string, ownerId: string, fieldId: string): Promise<HelpResult> {
@@ -522,6 +595,7 @@ async function helpWater(c: DataClient, helperId: string, ownerId: string, field
   return {
     field: done.field,
     ripened: done.ripened,
+    thanked: done.thanked,
     helpCount,
     level: granted.level,
     leveledUp: granted.gains.length > 0,
@@ -556,6 +630,7 @@ async function helpWaterAll(c: DataClient, helperId: string, ownerId: string): P
     fields: done.map((d) => d.field),
     watered: done.length,
     ripened: done.filter((d) => d.ripened).length,
+    thanked: done.filter((d) => d.thanked).length,
     helpCount,
     level: granted.level,
     leveledUp: granted.gains.length > 0,

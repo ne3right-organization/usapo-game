@@ -397,6 +397,7 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // 手伝いの水やり(手伝った人×拠点)。lastWaterOn は最後に水をやった時間帯(slotKey)で、1つの畑に朝・昼・夜に1回の判定に使う。
+    // 畑が実ったら、その畑をまいたあと(lastWaterOn がまいた時間帯以降)に手伝った人に、お礼の実を1個ずつ届ける(2026-11-05。地区から引く)。
     // 書くのも読むのも Lambda だけ(クライアントからは読ませない。誰も入っていない admin グループ)
     GameTaneHelp: a
       .model({
@@ -405,6 +406,7 @@ const schema = a
         lastWaterOn: a.string().required(),
       })
       .identifier(["helperId", "areaKey"])
+      .secondaryIndexes((index) => [index("areaKey").queryField("listTaneHelpsByArea")])
       .authorization((allow) => [allow.group("admin")]),
 
     // 公式の畑(ユーザー×公式の畑。2026-10-31、src/lib/game/chizuTane/official.ts)。ほかの人の畑をたずねる練習なので、畑の育ちは1人ずつ別に持つ。
@@ -575,6 +577,7 @@ const schema = a
     TaneHelpResult: a.customType({
       field: a.ref("TaneHelpField").required(),
       ripened: a.boolean().required(), // この水やりで実った
+      thanked: a.boolean(), // 実って、手伝ったお礼の実が自分に届いた
       helpCount: a.integer().required(), // 手伝った回数(合計)
       level: a.integer(),
       leveledUp: a.boolean(),
@@ -586,6 +589,7 @@ const schema = a
       fields: a.ref("TaneHelpField").required().array().required(),
       watered: a.integer().required(), // 水をやった畑の数
       ripened: a.integer().required(), // この水やりで実った畑の数
+      thanked: a.integer(), // 実って、手伝ったお礼の実が自分に届いた畑の数
       helpCount: a.integer().required(), // 手伝った回数(合計)
       level: a.integer(),
       leveledUp: a.boolean(),

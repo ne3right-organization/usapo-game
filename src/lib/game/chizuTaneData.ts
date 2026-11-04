@@ -394,6 +394,8 @@ export interface HelpWaterResult {
   field: TaneHelpField;
   /** この水やりで実った(持ち主に生産者の取り分が届いた) */
   ripened: boolean;
+  /** 実って、手伝ったお礼の実が自分に届いた */
+  thanked: boolean;
   /** 手伝った回数(合計) */
   helpCount: number;
   level: number | null;
@@ -416,6 +418,7 @@ export async function helpWater(ownerId: string, fieldId: string): Promise<HelpW
   return {
     field: res.field,
     ripened: res.ripened,
+    thanked: res.thanked ?? false,
     helpCount: res.helpCount,
     level: res.level ?? null,
     leveledUp: res.leveledUp ?? false,
@@ -428,6 +431,8 @@ export interface HelpWaterAllResult {
   fields: TaneHelpField[];
   watered: number;
   ripened: number;
+  /** 実って、手伝ったお礼の実が自分に届いた畑の数 */
+  thanked: number;
   helpCount: number;
   level: number | null;
   leveledUp: boolean;
@@ -445,6 +450,7 @@ export async function helpWaterAll(ownerId: string): Promise<HelpWaterAllResult>
     fields: res.fields.filter((f): f is TaneHelpField => !!f),
     watered: res.watered,
     ripened: res.ripened,
+    thanked: res.thanked ?? 0,
     helpCount: res.helpCount,
     level: res.level ?? null,
     leveledUp: res.leveledUp ?? false,

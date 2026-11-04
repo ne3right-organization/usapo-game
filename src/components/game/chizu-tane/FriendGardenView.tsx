@@ -154,7 +154,11 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
       const res = await helpWater(ownerId, f.fieldId);
       setFields((cur) => cur?.map((x) => (x.fieldId === f.fieldId ? res.field : x)) ?? null);
       setHelpCount(res.helpCount);
-      const lines = [res.ripened ? `💧 水をやって、実りました！ ${nickname}さんに生産者の取り分が届きました。実は現地でもらえます` : "💧 水をやりました"];
+      const lines = [
+        res.ripened
+          ? `💧 水をやって、実りました！ ${nickname}さんに生産者の取り分が届きました。${res.thanked ? "手伝ったお礼に、あなたにも実が1個届きました🎁" : "実は現地でもらえます"}`
+          : "💧 水をやりました",
+      ];
       if (res.helpCount % HELPS_PER_VISIT === 0) lines.push(`手伝いが${res.helpCount}回になり、たずねたタネ1か所ぶんになりました`);
       if (res.leveledUp) {
         const names = res.seedsGained.map((g) => TANE_ITEM_BY_ID.get(g.itemId)?.name ?? g.itemId).join("・");
@@ -182,7 +186,8 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
       setFields((cur) => cur?.map((x) => byId.get(x.fieldId) ?? x) ?? null);
       setHelpCount(res.helpCount);
       const lines = [`💧 ${res.watered}か所に水をやりました`];
-      if (res.ripened > 0) lines.push(`${res.ripened}か所が実りました！ ${nickname}さんに生産者の取り分が届きました。実は現地でもらえます`);
+      if (res.ripened > 0) lines.push(`${res.ripened}か所が実りました！ ${nickname}さんに生産者の取り分が届きました`);
+      if (res.thanked > 0) lines.push(`手伝ったお礼に、あなたにも実が${res.thanked}個届きました🎁`);
       // この水やりで HELPS_PER_VISIT 回の区切りをまたいだら知らせる
       const visitsGained = Math.floor(res.helpCount / HELPS_PER_VISIT) - Math.floor(helpCount / HELPS_PER_VISIT);
       if (visitsGained > 0) lines.push(`手伝いが${res.helpCount}回になり、たずねたタネ${visitsGained}か所ぶん増えました`);
@@ -216,7 +221,7 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
         )}
       </div>
       <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
-        遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
+        遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝った畑が実ると、お礼に実が1個届きます。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
       </p>
       {error && <ErrorText message={error} />}
       {message && <p className="text-xs text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2 mb-2 whitespace-pre-line">{message}</p>}
