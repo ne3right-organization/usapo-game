@@ -1,6 +1,9 @@
 // うさぽ農園のアイテムの絵を、画像生成AIで作った元の画像(art/chizu-tane/)から切り抜く処理。
 // process-item-images.mts(ゲーム用の絵)と make-app-icons.mts(アプリのアイコン)で使う
 
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import * as coursesModule from "../../src/lib/game/chizuTane/courses";
 import * as localItemsModule from "../../src/lib/game/chizuTane/localItems";
@@ -17,6 +20,18 @@ export const LOCAL_SHEET_COURSES = ["plant", "animal", "hobby", "vehicle", "buil
 
 /** ご当地のもののシートID(local-13-2 = 東京都の2個目) */
 export const localSheetId = (prefCode: string, rank: number) => `local-${prefCode}-${rank}`;
+
+/**
+ * 描き直しのシート(redo-1 など。3×3 の9点)の並び。local-art-prompts.mts --redo が redo.md から作る。
+ * redo.md が変わっても、置いたシートの切り分けがずれないよう、頼む文を作ったときの並びをファイルに残しておく
+ */
+export const REDO_SHEETS_FILE = join(dirname(fileURLToPath(import.meta.url)), "../../art/chizu-tane/redo-sheets.json");
+
+function redoRows(sheetId: string): string[][] | null {
+  if (!existsSync(REDO_SHEETS_FILE)) return null;
+  const sheets = JSON.parse(readFileSync(REDO_SHEETS_FILE, "utf8")) as Record<string, string[][]>;
+  return sheets[sheetId] ?? null;
+}
 
 // 育つ途中の絵(growth.ts の GROWTH_STAGES のタネ〜花と、タネ待ちの空き地。実りはその畑の実の絵を出す)
 export const GROWTH_SHEET_ID = "growth";
@@ -38,6 +53,7 @@ export type Rgba = { data: Buffer; width: number; height: number };
 /** シートID(plant-1 など)から、行ごとのアイテムID(1行 = 1種類のタネ1〜3。ご当地の local-13-2 などは1行に5コース) */
 export function sheetRows(sheetId: string): string[][] | null {
   if (sheetId === GROWTH_SHEET_ID) return GROWTH_ROWS;
+  if (/^redo-\d+$/.test(sheetId)) return redoRows(sheetId);
   const local = /^local-(\d{2})-([123])$/.exec(sheetId);
   if (local) {
     const row = LOCAL_SHEET_COURSES.map((course) => localItemFor(local[1], course, Number(local[2]))?.itemId);

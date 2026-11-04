@@ -134,12 +134,13 @@ async function main(): Promise<void> {
   const only = new Set(process.argv.slice(2));
   const pick = (name: string) => only.size === 0 || only.has(name);
 
-  for (const f of listImages(SHEETS_DIR)) {
+  // 描き直しのシート(redo-1 など)が元のシート(local-*)より後に、redo-2 が redo-10 より前になるよう、数字を数として並べる
+  for (const f of listImages(SHEETS_DIR).sort((a, b) => a.localeCompare(b, "en", { numeric: true }))) {
     const sheetId = basename(f, extname(f));
     if (!pick(sheetId)) continue;
     const rows = sheetRows(sheetId);
     if (!rows) {
-      console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4、growth、ご当地の local-01-1 〜 local-47-3)`);
+      console.warn(`! sheets/${f}: シートID が分かりません(plant-1 〜 building-4、growth、ご当地の local-01-1 〜 local-47-3、描き直しの redo-1 など)`);
       continue;
     }
     console.log(`sheets/${f}（${rows.length}行 × ${Math.max(...rows.map((r) => r.length))}）`);
