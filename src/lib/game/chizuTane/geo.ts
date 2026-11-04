@@ -75,12 +75,21 @@ export function featureContains(feature: TownDistrictFeature, lng: number, lat: 
   return g.coordinates.some((rings) => inPolygon(lng, lat, rings));
 }
 
-/** 点を含む地区。どれにも入らなければ null */
+/**
+ * 点を含む地区。どれにも入らなければ null。
+ * 飛び地のある地区は、同じ KEY_CODE の feature が複数あり、代表点も feature ごとに違う(例: 戸塚区の吉田町)。
+ * どこに立っていても同じ点になるよう、いちばん大きい(AREA)feature の代表点を使う
+ * (飛び地の代表点を使うと、まいた人が狭い飛び地にいたことまで分かってしまう)
+ */
 export function findTownDistrict(features: TownDistrictFeature[], lng: number, lat: number): TownDistrict | null {
-  for (const f of features) {
-    if (featureContains(f, lng, lat)) return townDistrictOf(f);
-  }
-  return null;
+  const hit = features.find((f) => featureContains(f, lng, lat));
+  if (!hit) return null;
+  const key = hit.properties.KEY_CODE;
+  const main = features.reduce(
+    (best, f) => (f.properties.KEY_CODE === key && Number(f.properties.AREA) > Number(best.properties.AREA) ? f : best),
+    hit
+  );
+  return townDistrictOf(main);
 }
 
 /** 市区町村ごとの範囲の一覧(public/chizu-tane/municipality-bounds.json)の1行 */
