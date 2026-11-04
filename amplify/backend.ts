@@ -4,6 +4,7 @@ import { CfnManagedLoginBranding, CfnUserPoolDomain } from "aws-cdk-lib/aws-cogn
 import { auth, branch } from "./auth/resource";
 import { data } from "./data/resource";
 import { chizuTaneCheckin } from "./functions/chizu-tane-checkin/resource";
+import { chizuTaneMarket } from "./functions/chizu-tane-market/resource";
 import { chizuTanePlace } from "./functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "./functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "./functions/chizu-tane-seeds/resource";
@@ -26,6 +27,7 @@ const backend = defineBackend({
   chizuTanePlayer,
   chizuTanePlace,
   chizuTaneCheckin,
+  chizuTaneMarket,
   chizuTaneSeeds,
   chizuTaneShelf,
   chizuTaneStats,
@@ -38,7 +40,8 @@ const taneHeldSeedTable = backend.data.resources.tables["GameTaneHeldSeed"];
 const taneItemTable = backend.data.resources.tables["GameTaneItem"];
 const taneHarvestTable = backend.data.resources.tables["GameTaneHarvest"];
 const taneLocalFruitTable = backend.data.resources.tables["GameTaneLocalFruit"];
-for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin]) {
+// 市場の交換(実を条件付きで減らし、タネを足す)も同じテーブルを使う
+for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin, backend.chizuTaneMarket]) {
   taneBaseTable.grantReadWriteData(fn.resources.lambda);
   taneHeldSeedTable.grantReadWriteData(fn.resources.lambda);
   taneItemTable.grantReadWriteData(fn.resources.lambda);

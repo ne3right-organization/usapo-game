@@ -3,12 +3,11 @@ import type { AppSyncIdentityCognito, AppSyncResolverHandler } from "aws-lambda"
 import type { Schema } from "../../data/resource";
 import { env } from "$amplify/env/chizu-tane-shelf";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { addSeeds, hasLocalFruitFrom, localFruitSourceKey, plantedItemIds, requirePlayer } from "../shared/chizuTane";
+import { addSeeds, hasLocalFruitFrom, localFruitSourceKey, placedInGardens, plantedItemIds, requirePlayer } from "../shared/chizuTane";
 import { notifyUsers } from "../shared/push";
 import { TANE_ITEM_BY_ID, seedsNeededToLevelUp, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/localItems";
 import { DAY_MS_PRODUCTION, jstDate, slotKey } from "../../../src/lib/game/chizuTane/geo";
-import { countPlaced, type GardenLayouts, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
 
 // おすそ分けの棚(2026-10-31)。持ち主が余ったタネや実を手元から棚に出しておき、持ち主が「農園を見せる」にしたフォロワー
 // (ガーデンを見られる人と同じ)が、遠くから1人1日1個持っていく。持ち主はいちいち渡さなくてよい。
@@ -107,22 +106,6 @@ async function changeShelf(ownerId: string, kind: Kind, itemId: string, delta: n
     if (err instanceof ConditionalCheckFailedException) return false;
     throw err;
   }
-}
-
-/** a.json の値は二重に文字列化されて返ることがあるので、文字列である限り戻し続ける */
-function parseJson<T = unknown>(value: unknown): T {
-  let v = value;
-  while (typeof v === "string") v = JSON.parse(v);
-  return v as T;
-}
-
-/** ガーデン(全部)に飾っている、その実の数 */
-async function placedInGardens(c: DataClient, userId: string, itemId: string): Promise<number> {
-  const garden = unwrap(await c.models.GameTaneGarden.get({ userId }));
-  if (!garden) return 0;
-  const layouts = parseJson<GardenLayouts | null>(garden.layouts) ?? {};
-  const all: GardenObject[] = [...parseJson<GardenObject[]>(garden.objects), ...Object.values(layouts).flatMap((objs) => objs ?? [])];
-  return countPlaced(all).get(itemId) ?? 0;
 }
 
 /** 実を1個足す(無ければ作る) */

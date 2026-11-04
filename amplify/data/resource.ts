@@ -1,5 +1,6 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
+import { chizuTaneMarket } from "../functions/chizu-tane-market/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "../functions/chizu-tane-seeds/resource";
@@ -625,6 +626,13 @@ const schema = a
       players: a.integer().required(),
     }),
 
+    // 市場で実をタネと交換した結果。seedItemId はもらったタネ、fruitsLeft は交換に使った実の残り、seedsHeld はそのタネの手元の数
+    TaneExchangeResult: a.customType({
+      seedItemId: a.string().required(),
+      fruitsLeft: a.integer().required(),
+      seedsHeld: a.integer().required(),
+    }),
+
     // フォローしてもらうリンクを開いたときの、リンクの持ち主
     FollowInviteOwner: a.customType({
       userId: a.id().required(),
@@ -877,6 +885,14 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlayer)),
 
+    // 市場: 同じ実3個を、同じコースの1つ上のレベルの同じ番号のタネ1個と交換する(courses.ts の exchangeSeedFor)
+    exchangeTaneFruits: a
+      .mutation()
+      .arguments({ itemId: a.string().required() })
+      .returns(a.ref("TaneExchangeResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneMarket)),
+
     setFollowing: a
       .mutation()
       .arguments({ followeeId: a.id().required(), follow: a.boolean().required() })
@@ -916,6 +932,7 @@ const schema = a
     allow.resource(chizuTanePlayer),
     allow.resource(chizuTanePlace),
     allow.resource(chizuTaneCheckin),
+    allow.resource(chizuTaneMarket),
     allow.resource(chizuTaneSeeds),
     allow.resource(chizuTaneStats),
     allow.resource(chizuTaneShelf),

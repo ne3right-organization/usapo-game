@@ -643,6 +643,25 @@ export async function pickUpSeeds(loc: Location, district: TownDistrict, count: 
   );
 }
 
+// ─── 市場(2026-11-05) ─────────────────────────────────────────────────────
+
+export interface TaneExchangeResult {
+  /** もらったタネ */
+  seedItemId: string;
+  /** 交換に使った実の残り(手元の数) */
+  fruitsLeft: number;
+  /** もらったタネの手元の数 */
+  seedsHeld: number;
+}
+
+/** 同じ実3個を、同じコースの1つ上のレベルの同じ番号のタネ1個と交換する(courses.ts の exchangeSeedFor) */
+export async function exchangeFruits(itemId: string): Promise<TaneExchangeResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.exchangeTaneFruits({ itemId }));
+  if (!res) throw new Error("交換できませんでした");
+  return res;
+}
+
 // ─── ガーデン ─────────────────────────────────────────────────────────────
 
 export interface GardenState {

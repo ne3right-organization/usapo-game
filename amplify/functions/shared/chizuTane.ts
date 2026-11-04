@@ -13,6 +13,7 @@ import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
 import { levelFor, levelVisitCount, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem, type TaneLocalItem } from "../../../src/lib/game/chizuTane/localItems";
+import { countPlaced, type GardenLayouts, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
 import {
   findTownDistrict,
   isCityCode,
@@ -651,6 +652,44 @@ export async function replantBaseRow(areaKey: string, itemId: string, baseTypeId
           ":now": { S: now },
           ":cutoff": { S: abandonedBefore },
         },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
+}
+
+/** a.json の値は二重に文字列化されて返ることがあるので、文字列である限り戻し続ける */
+function parseJson<T = unknown>(value: unknown): T {
+  let v = value;
+  while (typeof v === "string") v = JSON.parse(v);
+  return v as T;
+}
+
+/** ガーデン(全部)に飾っている、その実の数(おすそ分けの棚・市場では、飾っている分は出せない) */
+export async function placedInGardens(c: DataClient, userId: string, itemId: string): Promise<number> {
+  const garden = unwrap(await c.models.GameTaneGarden.get({ userId }));
+  if (!garden) return 0;
+  const layouts = parseJson<GardenLayouts | null>(garden.layouts) ?? {};
+  const all: GardenObject[] = [...parseJson<GardenObject[]>(garden.objects), ...Object.values(layouts).flatMap((objs) => objs ?? [])];
+  return countPlaced(all).get(itemId) ?? 0;
+}
+
+/**
+ * 手元の実を count 個減らす。ガーデンに飾っている分(keep)は残し、足りるときだけ減らす(同時に押しても、数がずれない)。
+ * 減らせなければ false
+ */
+export async function spendFruits(userId: string, itemId: string, count: number, keep: number): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: ITEM_TABLE,
+        Key: { userId: { S: userId }, itemId: { S: itemId } },
+        UpdateExpression: "SET quantity = quantity - :n, updatedAt = :now",
+        ConditionExpression: "quantity >= :need",
+        ExpressionAttributeValues: { ":n": { N: String(count) }, ":need": { N: String(count + keep) }, ":now": { S: new Date().toISOString() } },
       })
     );
     return true;
