@@ -38,6 +38,25 @@ export async function unfollow(followeeId: string): Promise<void> {
   unwrap(await data.mutations.setFollowing({ followeeId, follow: false }));
 }
 
+/**
+ * フォローしてもらうリンク(/follow/{token})の URL。開いた人は自分をフォローし、自分の農園を見られるようになる。
+ * renew なら作り直して、前のリンクを使えなくする
+ */
+export async function fetchFollowInviteUrl(renew = false): Promise<string> {
+  await requireUserId();
+  const token = unwrap(await data.mutations.issueFollowInvite({ renew }));
+  if (!token) throw new Error("リンクを作れませんでした");
+  return `${window.location.origin}/follow/${token}`;
+}
+
+/** フォローしてもらうリンクを開いた: リンクの持ち主をフォローし、持ち主の農園を見せてもらう。持ち主を返す */
+export async function acceptFollowInvite(token: string): Promise<{ userId: string; nickname: string }> {
+  await requireUserId();
+  const owner = unwrap(await data.mutations.acceptFollowInvite({ token }));
+  if (!owner) throw new Error("リンクを開けませんでした");
+  return owner;
+}
+
 /** 自分のフォロワー(kind=followers)か、自分がフォローしている人(kind=following)を全部。新しい順 */
 async function listFollows(kind: "followers" | "following", userId: string): Promise<FollowItem[]> {
   const items: FollowItem[] = [];

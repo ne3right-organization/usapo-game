@@ -38,7 +38,7 @@ import { GROWTH_STAGES, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/gro
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
-import { FollowingGardens } from "./FriendGardenView";
+import { FOLLOW_LINK_ANCHOR, FollowingGardens } from "./FriendGardenView";
 import {
   ErrorText,
   GrowthBadge,
@@ -436,6 +436,10 @@ function Home({ course }: { course: TaneCourse }) {
 
       {/* ガーデンの画面と同じ「見に行けるガーデン」を、あなたの畑と同じ並べ方で */}
       <FollowingGardens grid />
+      {/* 友達にフォローしてもらうリンクは、ガーデンの画面のいちばん下(MyFollowers)にある */}
+      <Link href={`/game/chizu-tane/garden#${FOLLOW_LINK_ANCHOR}`} className="block text-right text-xs text-emerald-700 underline underline-offset-2 mt-2">
+        友達にフォローしてもらう →
+      </Link>
 
       <OfficialFields course={course} />
 

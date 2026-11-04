@@ -248,6 +248,20 @@ const schema = a
         allow.ownerDefinedIn("followeeId").identityClaim("sub").to(["read"]),
       ]),
 
+    // フォローしてもらうリンク(/follow/{token})。1人1つで、作り直すと前のリンクは使えなくなる。
+    // リンクを開いた人は持ち主をフォローし、同時に持ち主の農園を見せてもらえる(GameTaneShare)。
+    // 誰でも踏めば農園が見えるようになるので、推測できない token にし、ユーザーID からは引けないようにしている。
+    // 書くのも token から引くのも set-following の Lambda だけ。持ち主は自分の行を読める
+    GameFollowInvite: a
+      .model({
+        ownerId: a.id().required(),
+        token: a.string().required(),
+        createdAt: a.datetime().required(),
+      })
+      .identifier(["ownerId"])
+      .secondaryIndexes((index) => [index("token").queryField("listFollowInvitesByToken")])
+      .authorization((allow) => [allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["read"])]),
+
     // ─── 最近のクリア(地図パズル・地図ポットン共通) ──────────────────────────
     // 各ゲームのトップに出す「最近クリアされたエリア」。誰がクリアしたかは持たない。未ログインでも読める。
     // game = map-puzzle / map-pack(図鑑クイズを消す前の zukan-quiz の行が残っていることがある)、areaKey はゲームごとのエリアのキー
@@ -607,6 +621,12 @@ const schema = a
       players: a.integer().required(),
     }),
 
+    // フォローしてもらうリンクを開いたときの、リンクの持ち主
+    FollowInviteOwner: a.customType({
+      userId: a.id().required(),
+      nickname: a.string().required(),
+    }),
+
     // ほかの人のガーデン(見るだけ)。nickname は持ち主のニックネーム
     TaneGardenView: a.customType({
       nickname: a.string(),
@@ -857,6 +877,22 @@ const schema = a
       .mutation()
       .arguments({ followeeId: a.id().required(), follow: a.boolean().required() })
       .returns(a.boolean())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(setFollowing)),
+
+    // フォローしてもらうリンクの token を返す(無ければ作る。renew なら作り直して、前のリンクを使えなくする)
+    issueFollowInvite: a
+      .mutation()
+      .arguments({ renew: a.boolean().required() })
+      .returns(a.string())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(setFollowing)),
+
+    // フォローしてもらうリンクを開いた: リンクの持ち主をフォローし、持ち主の農園を見せてもらう。持ち主を返す
+    acceptFollowInvite: a
+      .mutation()
+      .arguments({ token: a.string().required() })
+      .returns(a.ref("FollowInviteOwner"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(setFollowing)),
 

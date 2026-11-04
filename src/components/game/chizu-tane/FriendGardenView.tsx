@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchFollowList, type FollowUser } from "@/lib/game/followData";
+import { fetchFollowInviteUrl, fetchFollowList, type FollowUser } from "@/lib/game/followData";
 import { currentUser } from "@/lib/auth";
 import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
 import {
@@ -373,20 +373,28 @@ export function FollowingGardens({ grid = false }: { grid?: boolean }) {
   );
 }
 
+/** ガーデンの画面の、フォローしてもらうリンクのところ(ホームの「見に行けるガーデン」の下から、ここに飛ぶ) */
+export const FOLLOW_LINK_ANCHOR = "follow-link";
+
 /**
- * 自分のフォロワー(3人ずつ横スワイプ)と、友達にフォローしてもらうためのリンク(自分のプロフィールの URL。そこでフォローできる)。
- * 自分のガーデンの画面のいちばん下に出す。農園を見せるかどうかはフォロワーの一覧(/profile/follows)で選ぶ
+ * 自分のフォロワー(3人ずつ横スワイプ)と、友達にフォローしてもらうためのリンク(/follow/{token}。開いた人は自分をフォローし、
+ * 同時に自分の農園を見られるようになる)。自分のガーデンの画面のいちばん下に出す。
+ * ほかのフォロワーに農園を見せるかどうかはフォロワーの一覧(/profile/follows)で選ぶ
  */
 export function MyFollowers() {
   const cards = useCardLayout();
   const [view, setView] = useState<{ userId: string; nickname: string | null; followers: FollowUser[]; shared: Set<string> } | null>(null);
   const [copied, setCopied] = useState(false);
+  // フォローしてもらうリンク。navigator.share はタップの直後でないと使えない端末があるので、先に作っておく
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([currentUser(), fetchGameProfile(), fetchFollowList("followers"), fetchTaneShareViewerIds()])
       .then(([user, profile, followers, shared]) => {
         if (!cancelled && user) setView({ userId: user.id, nickname: profile?.nickname ?? null, followers, shared });
+        if (profile?.nickname) return fetchFollowInviteUrl().then((url) => !cancelled && setInviteUrl(url));
       })
       .catch(() => {});
     return () => {
@@ -394,11 +402,20 @@ export function MyFollowers() {
     };
   }, []);
 
+  // 読み込んでから出すので、ブラウザの #follow-link への移動では届かない。出したあとで、そこまで送る
+  // (ガーデンの画面の上のほうも後から読み込まれて高さが変わるので、少し待つ)
+  useEffect(() => {
+    if (!view || window.location.hash !== `#${FOLLOW_LINK_ANCHOR}`) return;
+    const timer = setTimeout(() => document.getElementById(FOLLOW_LINK_ANCHOR)?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+    return () => clearTimeout(timer);
+  }, [view]);
+
   if (!view) return null;
 
   const shareLink = async () => {
-    const url = `${window.location.origin}/profile/${view.userId}`;
-    const text = `うさぽゲームコーナーで${view.nickname}をフォローしてね`;
+    const url = inviteUrl;
+    if (!url) return;
+    const text = `うさぽゲームコーナーで${view.nickname}をフォローして、うさぽ農園を見に来てね`;
     if (navigator.share) {
       // 共有をやめたときも例外になるので、何もしない
       await navigator.share({ title: "うさぽゲームコーナー", text, url }).catch(() => {});
@@ -410,6 +427,16 @@ export function MyFollowers() {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       window.prompt("このリンクを友達に送ってください", url);
+    }
+  };
+
+  const renewLink = async () => {
+    if (!window.confirm("リンクを作り直しますか？ いままで送ったリンクは使えなくなります（すでにフォローしている人はそのままです）")) return;
+    setInviteError(null);
+    try {
+      setInviteUrl(await fetchFollowInviteUrl(true));
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -457,16 +484,24 @@ export function MyFollowers() {
           畑の場所や来た時間から、ふだん過ごしている場所が分かってしまうため、こうしています。フォローはパズルのランキングなどからも誰でもできるので、フォローされただけでは見せません。実際に会ったことのある友達など、知られてもよい人だけを「見せる」にしてください。
         </p>
       </div>
-      <div className="bg-white rounded-2xl p-3 mt-2 text-xs text-[#78716c]">
+      <div id={FOLLOW_LINK_ANCHOR} className="bg-white rounded-2xl p-3 mt-2 text-xs text-[#78716c] scroll-mt-4">
         {view.nickname ? (
           <>
-            <p className="mb-2">友達にこのリンクを送ると、あなたをフォローしてもらえます（フォローするには、友達もニックネームの設定が要ります）。</p>
+            <p className="mb-2">
+              友達にこのリンクを送ると、開いた友達があなたをフォローし、<span className="font-semibold">同時にあなたの農園を見せる相手になります</span>
+              （フォローするには、友達もニックネームの設定が要ります）。リンクは誰が開いても同じなので、知られてもよい友達にだけ送ってください。
+            </p>
             <button
               type="button"
               onClick={shareLink}
-              className="w-full rounded-xl bg-emerald-600 text-white font-semibold text-sm py-2 active:scale-[0.98] transition-transform"
+              disabled={!inviteUrl}
+              className="w-full rounded-xl bg-emerald-600 text-white font-semibold text-sm py-2 active:scale-[0.98] transition-transform disabled:opacity-60"
             >
-              {copied ? "リンクをコピーしました" : "🔗 フォローしてもらうリンクを送る"}
+              {copied ? "リンクをコピーしました" : inviteUrl ? "🔗 フォローしてもらうリンクを送る" : "リンクを準備しています..."}
+            </button>
+            {inviteError && <ErrorText message={inviteError} />}
+            <button type="button" onClick={renewLink} className="block ml-auto mt-2 text-2xs text-[#a8937a] underline underline-offset-2">
+              リンクを作り直す（前のリンクを使えなくする）
             </button>
           </>
         ) : (
