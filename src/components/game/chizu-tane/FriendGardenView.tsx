@@ -394,7 +394,11 @@ export function MyFollowers() {
     Promise.all([currentUser(), fetchGameProfile(), fetchFollowList("followers"), fetchTaneShareViewerIds()])
       .then(([user, profile, followers, shared]) => {
         if (!cancelled && user) setView({ userId: user.id, nickname: profile?.nickname ?? null, followers, shared });
-        if (profile?.nickname) return fetchFollowInviteUrl().then((url) => !cancelled && setInviteUrl(url));
+        if (!profile?.nickname) return;
+        // 作れなかったときに「準備しています」のまま止まらないよう、エラーを出す
+        fetchFollowInviteUrl()
+          .then((url) => !cancelled && setInviteUrl(url))
+          .catch((err) => !cancelled && setInviteError(err instanceof Error ? err.message : String(err)));
       })
       .catch(() => {});
     return () => {
@@ -497,7 +501,7 @@ export function MyFollowers() {
               disabled={!inviteUrl}
               className="w-full rounded-xl bg-emerald-600 text-white font-semibold text-sm py-2 active:scale-[0.98] transition-transform disabled:opacity-60"
             >
-              {copied ? "リンクをコピーしました" : inviteUrl ? "🔗 フォローしてもらうリンクを送る" : "リンクを準備しています..."}
+              {copied ? "リンクをコピーしました" : inviteUrl ? "🔗 フォローしてもらうリンクを送る" : inviteError ? "リンクを作れませんでした" : "リンクを準備しています..."}
             </button>
             {inviteError && <ErrorText message={inviteError} />}
             <button type="button" onClick={renewLink} className="block ml-auto mt-2 text-2xs text-[#a8937a] underline underline-offset-2">

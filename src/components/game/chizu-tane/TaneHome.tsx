@@ -38,6 +38,7 @@ import { GROWTH_STAGES, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/gro
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
+import TaneTipPopup from "./TaneTipPopup";
 import { FOLLOW_LINK_ANCHOR, FollowingGardens } from "./FriendGardenView";
 import {
   ErrorText,
@@ -106,6 +107,8 @@ export default function TaneHome() {
       )}
       {state.status === "not-started" && <CoursePicker onStarted={reload} />}
       {state.status === "ready" && <Home course={state.player.course as TaneCourse} />}
+      {/* 始めたばかりの人へのヒント(済んでいないことから1つ。全部済んだら出ない) */}
+      {state.status === "ready" && <TaneTipPopup />}
     </TaneScreen>
   );
 }
