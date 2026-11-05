@@ -576,7 +576,7 @@ export interface CheckInResult {
   fruits: number;
   level: number | null;
   leveledUp: boolean;
-  /** 増えたタネ。level: レベルが上がった / local: 自分のご当地の畑が実った・配り終えたので、次のご当地のタネが届いた */
+  /** 増えたタネ。level: レベルが上がった / local: 自分のご当地の畑の実を配り終えたので、次のご当地のタネが届いた */
   seedsGained: { itemId: string; count: number; reason: "level" | "local" }[];
   /** チェックインのあと、この拠点に落ちているタネの数 */
   droppedSeeds: number;
@@ -659,6 +659,23 @@ export async function exchangeFruits(itemId: string): Promise<TaneExchangeResult
   await requireUserId();
   const res = unwrap(await data.mutations.exchangeTaneFruits({ itemId }));
   if (!res) throw new Error("交換できませんでした");
+  return res;
+}
+
+/** 市場に並んでいるご当地の実(ものごと。available は自分がもらえる数) */
+export type TaneLocalMarketItem = Schema["TaneLocalMarketItem"]["type"];
+export type TaneLocalTradeResult = Schema["TaneLocalTradeResult"]["type"];
+
+export async function fetchLocalMarket(): Promise<TaneLocalMarketItem[]> {
+  await requireUserId();
+  return (unwrap(await data.queries.listTaneLocalMarket({ listLocal: true })) ?? []).filter((x): x is TaneLocalMarketItem => !!x);
+}
+
+/** ご当地の実の物々交換。手元の giveItemId を1個出して、同じ何個目の takeItemId を1個もらう */
+export async function tradeLocalFruit(giveItemId: string, takeItemId: string): Promise<TaneLocalTradeResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.exchangeTaneLocalFruit({ giveItemId, takeItemId }));
+  if (!res) throw new Error("物々交換できませんでした");
   return res;
 }
 

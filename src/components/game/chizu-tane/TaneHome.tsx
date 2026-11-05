@@ -32,10 +32,10 @@ import {
 } from "@/lib/game/chizuTaneData";
 import GardenSvg from "./GardenSvg";
 import { houseTierFor } from "@/lib/game/chizuTane/garden";
-import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem } from "@/lib/game/chizuTane/localItems";
+import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
 import SwipePages from "./SwipePages";
 import { CardBody, useCardLayout } from "./TaneCards";
-import { GROWTH_STAGES, RIPE_STAGE, deliveryFrom, growthStage, rotAt, witherAt } from "@/lib/game/chizuTane/growth";
+import { GROWTH_STAGES, RIPE_STAGE, deliveryFrom, growthStage, localMarketAt, rotAt, witherAt } from "@/lib/game/chizuTane/growth";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
@@ -214,10 +214,9 @@ function Home({ course }: { course: TaneCourse }) {
   // 新しく手に入れたものから順(fetchMySeeds で並べてある)
   const loadSeeds = () => fetchMySeeds().then(setSeeds);
 
-  // 遠くから水をやったあと: その畑を入れ替える。ご当地の1個目の畑が実ると、次のご当地のタネが届いている
+  // 遠くから水をやったあと: その畑を入れ替える
   const handleWatered = (next: TaneBase) => {
     setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null);
-    if ((next.fruits ?? 0) > 0) loadSeeds().catch(() => {});
   };
 
   // タネ待ちの畑にまき直したあと: その畑と、持っているタネ・まいたことのあるタネを読み直す
@@ -473,7 +472,7 @@ function dateLabel(d: Date): string {
 
 /**
  * 畑の終わり方(growth.ts)の案内。実っている畑は、宅急便で回収できる日時(過ぎていれば回収のボタン)と腐り落ちる日時、
- * 育っている途中の畑は、水が入らないと枯れる日時を出す。ご当地の畑は宅急便で回収できない。
+ * 育っている途中の畑は、水が入らないと枯れる日時を出す。ご当地の畑は宅急便で回収できず、実って1か月で撤去して残りの実を市場に並べる。
  * 腐る・枯れるは定期実行(chizu-tane-sweep。1日3回)で行うので、その日時の次の区切りまでに空き地に戻る(「ごろ」と出す)
  */
 function FieldEndingNote({ base, onDelivered }: { base: TaneBase; onDelivered: (base: TaneBase, delivered: number) => void }) {
@@ -503,6 +502,15 @@ function FieldEndingNote({ base, onDelivered }: { base: TaneBase; onDelivered: (
       setBusy(false);
     }
   };
+
+  const marketAt = localMarketAt(base);
+  if (local && marketAt) {
+    return (
+      <p className="text-2xs text-[#78716c] mt-1">
+        🏪 {dateLabel(marketAt)}ごろに畑を撤去して、残りの実を市場に並べます（市場で、ほかの人の育てたご当地の実と取り替えられます）
+      </p>
+    );
+  }
 
   return (
     <div className="mt-2 text-2xs text-[#78716c] space-y-1">
@@ -553,7 +561,6 @@ function WaterAllButton({
     onNotice(NO_NOTICE);
     let watered = 0;
     const ripened: string[] = [];
-    const localSeeds: string[] = [];
     const errors: string[] = [];
     for (const base of targets) {
       try {
@@ -562,9 +569,6 @@ function WaterAllButton({
         watered++;
         if ((next.fruits ?? 0) > 0) {
           ripened.push(`${base.townName}の${TANE_BASE_TYPE_BY_ID.get(next.baseTypeId)?.name ?? "畑"}`);
-          const nextLocal = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
-          const localSeed = nextLocal?.rank === 1 ? nextLocalItem(nextLocal) : undefined;
-          if (localSeed) localSeeds.push(localSeed.name);
         }
       } catch (err) {
         errors.push(`${base.townName}: ${err instanceof Error ? err.message : String(err)}`);
@@ -573,7 +577,6 @@ function WaterAllButton({
     setBusy(false);
     const lines = [`💧 ${watered}か所に水をやりました`];
     if (ripened.length > 0) lines.push(`${ripened.join("・")}が実りました！ 生産者の取り分として、実が${ripened.length}個届きました`);
-    if (localSeeds.length > 0) lines.push(`ご当地のタネ「${localSeeds.join("」「")}」も届きました（どこでもまけます）`);
     onNotice({ message: lines.join("\n"), error: errors.length > 0 ? `水をやれなかった畑: ${errors.join(" / ")}` : "" });
   };
 
@@ -620,12 +623,7 @@ function RemoteWaterButton({
       onWatered(next);
       const lines = [`💧 ${place}に水をやりました`];
       // 実ったら、生産者の取り分の1個が届いている
-      if ((next.fruits ?? 0) > 0) {
-        const nextLocal = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
-        const localSeed = nextLocal?.rank === 1 ? nextLocalItem(nextLocal) : undefined;
-        lines.push(`実りました！ 生産者の取り分として、実が1個届きました`);
-        if (localSeed) lines.push(`ご当地のタネ「${localSeed.name}」も届きました（どこでもまけます）`);
-      }
+      if ((next.fruits ?? 0) > 0) lines.push(`実りました！ 生産者の取り分として、実が1個届きました`);
       onNotice({ message: lines.join("\n"), error: "" });
     } catch (err) {
       onNotice({ message: "", error: `${place}: ${err instanceof Error ? err.message : String(err)}` });

@@ -11,13 +11,16 @@ import {
   type TaneItem,
 } from "@/lib/game/chizuTane/courses";
 import { countPlaced } from "@/lib/game/chizuTane/garden";
-import { exchangeFruits, openGarden } from "@/lib/game/chizuTaneData";
+import { TANE_LOCAL_ITEM_BY_ID, TANE_LOCAL_PREFS, TANE_LOCAL_RANK_LABELS, type TaneLocalItem } from "@/lib/game/chizuTane/localItems";
+import { exchangeFruits, fetchLocalMarket, openGarden, tradeLocalFruit, type TaneLocalMarketItem } from "@/lib/game/chizuTaneData";
 import { ErrorText, ItemIcon, Loading, NeedStart, SeedIcon, TaneHeading, TaneScreen } from "./TaneParts";
 import { useTanePlayer } from "./useTanePlayer";
 
-// 市場(2026-11-05。集めたものの画面の上からリンクする)。いまは、同じ実3個を1つ上のレベルの同じ番号のタネ1個と交換できる
-// (みかんの木 → チューリップ。courses.ts の exchangeSeedFor)。いまの環境の上限レベル(本番は Lv.3)の種類の実と、ご当地の実は交換できない。
-// ガーデンに飾っている分は使えない
+// 市場(2026-11-05。集めたものの画面の上からリンクする)。
+// - 同じ実3個を1つ上のレベルの同じ番号のタネ1個と交換できる(みかんの木 → チューリップ。courses.ts の exchangeSeedFor)。
+//   いまの環境の上限レベル(本番は Lv.3)の種類の実と、ご当地の実は交換できない
+//   ガーデンに飾っている分は使えない
+// - ご当地の実の取り替え(LocalSwap): 市場にある自分が育てたご当地の実1個と、同じ何個目のほかの人の実1個を取り替える(生産者とものの組みにつき1人1個)
 export default function MarketView() {
   const [state] = useTanePlayer();
   return (
@@ -151,9 +154,168 @@ function Market() {
         </ul>
       )}
 
+      <LocalSwap />
+
       <Link href="/game/chizu-tane/collection" className="block text-center text-xs text-emerald-700 underline underline-offset-2 mt-6">
         ← 集めたものに戻る
       </Link>
     </div>
+  );
+}
+
+const prefNameOf = (item: TaneLocalItem) => TANE_LOCAL_PREFS.find((p) => p.prefCode === item.local)?.prefName ?? "";
+
+/**
+ * ご当地の実の取り替え。市場には、実って1か月たって撤去したご当地の畑の残りの実が、生産者の実として並ぶ。
+ * 何個目(現地・お土産・記念品)を選び、市場にある自分の実から出すものを1つ選んで、ほかの人の実からもらうものを選ぶ(相手には自分の実が届く)。
+ * 並んでいる実の生産者と産地(地区)は出さない(生活圏の手がかりになるため)
+ */
+function LocalSwap() {
+  const [market, setMarket] = useState<TaneLocalMarketItem[] | null>(null);
+  const [rank, setRank] = useState(1);
+  const [giveId, setGiveId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchLocalMarket()
+      .then((m) => !cancelled && setMarket(m))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const rows = (market ?? [])
+    .filter((m) => m.localRank === rank)
+    .flatMap((m) => {
+      const item = TANE_LOCAL_ITEM_BY_ID.get(m.itemId);
+      return item ? [{ ...m, item }] : [];
+    })
+    .sort((a, b) => a.item.local.localeCompare(b.item.local));
+  const gives = rows.filter((r) => r.mine > 0);
+  const give = gives.find((r) => r.itemId === giveId) ?? null;
+  const takes = rows.filter((r) => r.others > 0);
+
+  const trade = async (take: TaneLocalItem) => {
+    if (!give) return;
+    setBusy(take.itemId);
+    setError("");
+    setMessage("");
+    try {
+      const res = await tradeLocalFruit(give.itemId, take.itemId);
+      setMarket(await fetchLocalMarket());
+      setMessage(
+        `市場のあなたの「${give.item.name}」1個と、「${take.name}」（${prefNameOf(take)}）を取り替えました（市場のあなたの実は のこり${res.mineLeft}個）`
+      );
+      if (res.mineLeft === 0) setGiveId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="mt-8">
+      <h2 className="text-sm font-bold text-[#3c2a14] mb-1">🔄 ご当地の実の取り替え</h2>
+      <p className="text-xs text-[#78716c] leading-relaxed mb-3">
+        実ってから1か月たったご当地の畑は、残りの実が市場に並びます。市場にあるあなたの実1個と、ほかの人が育てた同じ「{TANE_LOCAL_RANK_LABELS.join("・")}」の実1個を取り替えられます（相手にはあなたの実が届きます）。
+        同じ人が育てた同じ実は、1人1個までです。市場のあなたの実が全部渡ると、次のご当地のタネが届きます。
+      </p>
+
+      <div className="flex gap-1 mb-3" role="tablist">
+        {TANE_LOCAL_RANK_LABELS.map((label, i) => (
+          <button
+            key={label}
+            type="button"
+            role="tab"
+            aria-selected={rank === i + 1}
+            onClick={() => {
+              setRank(i + 1);
+              setGiveId(null);
+            }}
+            className={`flex-1 rounded-lg py-1.5 text-xs font-semibold ${rank === i + 1 ? "bg-amber-600 text-white" : "bg-white text-[#78716c]"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {message && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-xs text-emerald-800 mb-3 leading-relaxed">{message}</div>
+      )}
+      {error && <ErrorText message={error} />}
+      {!market && !error && <Loading />}
+
+      {market && (
+        <>
+          <h3 className="text-xs font-bold text-[#3c2a14] mb-1.5">1. 市場にあるあなたの実から選ぶ</h3>
+          {gives.length === 0 ? (
+            <p className="text-xs text-[#a8937a] bg-white rounded-xl p-3 mb-4">
+              市場に、あなたが育てた「{TANE_LOCAL_RANK_LABELS[rank - 1]}」のご当地の実はありません（ご当地の畑が実って1か月たつと、残りの実が並びます）
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {gives.map((r) => {
+                const selected = r.itemId === giveId;
+                return (
+                  <button
+                    key={r.itemId}
+                    type="button"
+                    onClick={() => setGiveId(selected ? null : r.itemId)}
+                    aria-pressed={selected}
+                    className={`inline-flex items-center gap-1.5 rounded-full pl-2 pr-3 py-1 text-xs border-2 ${
+                      selected ? "border-amber-500 bg-amber-50 text-[#3c2a14]" : "border-transparent bg-white text-[#3c2a14]"
+                    }`}
+                  >
+                    <ItemIcon item={r.item} size={24} />
+                    {r.item.name}
+                    <span className="text-[#a8937a]">×{r.mine}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <h3 className="text-xs font-bold text-[#3c2a14] mb-1.5">2. もらう実を選ぶ</h3>
+          {takes.length === 0 ? (
+            <p className="text-xs text-[#a8937a] bg-white rounded-xl p-3">
+              いま市場に、ほかの人が育てた「{TANE_LOCAL_RANK_LABELS[rank - 1]}」のご当地の実はありません
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {takes.map(({ item, others, available }) => {
+                const can = !!give && available > 0;
+                return (
+                  <li key={item.itemId} className="bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] p-3 flex items-center gap-2">
+                    <ItemIcon item={item} size={36} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[#3c2a14] truncate">
+                        {item.name}
+                        <span className="ml-1 text-[#a8937a]">{prefNameOf(item)}</span>
+                      </p>
+                      <p className="text-2xs text-[#a8937a]">
+                        {others}個並んでいます{available < others && `（もらえるのは${available}個）`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => trade(item)}
+                      disabled={!can || busy !== null}
+                      className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 disabled:bg-[#d6cfc4] active:scale-[0.98] transition-transform"
+                    >
+                      {busy === item.itemId ? "取り替えています..." : available === 0 ? "もう持っています" : give ? "取り替える" : "1. を選んでね"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }

@@ -221,7 +221,7 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
         )}
       </div>
       <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
-        遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝った畑が実ると、お礼に実が1個届きます。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
+        遠くから水をやって手伝えます（1つの畑に朝・昼・夜それぞれ1回、効き目は現地の10分の1）。手伝った畑が実ると、お礼に実が1個届きます（ご当地の畑は手伝うだけです）。手伝い{HELPS_PER_VISIT}回で、たずねたタネ1か所と数えます（いま{helpCount}回）。
       </p>
       {error && <ErrorText message={error} />}
       {message && <p className="text-xs text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2 mb-2 whitespace-pre-line">{message}</p>}

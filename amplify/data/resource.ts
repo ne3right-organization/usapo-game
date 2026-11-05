@@ -1,6 +1,7 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
 import { chizuTaneSweep } from "../functions/chizu-tane-sweep/resource";
+import { chizuTaneAdmin } from "../functions/chizu-tane-admin/resource";
 import { chizuTaneMarket } from "../functions/chizu-tane-market/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
@@ -471,6 +472,21 @@ const schema = a
       .identifier(["userId", "sourceKey"])
       .authorization((allow) => [allow.group("admin")]),
 
+    // 市場に並んでいるご当地の実(生産者×もの。2026-11-05)。実って1週間たって撤去したご当地の畑の残りの実(leftover)で、生産者の実のまま並ぶ。
+    // 生産者どうしで、市場にある自分の実1個と、同じ何個目(現地・お土産・記念品)のほかの人の実1個を取り替える(お互いに相手の実が1個届く)。
+    // 0になったら(全部誰かに渡ったら)、生産者に次のご当地のタネが届く。どこの畑の実かは生活圏の手がかりになるので、画面には生産者も地区も出さない。
+    // Lambda(chizu-tane-market・chizu-tane-sweep)だけが DynamoDB で直接、条件付きで書く
+    GameTaneMarketLocal: a
+      .model({
+        listingKey: a.string().required(), // 生産者のID#もの
+        producerId: a.id().required(),
+        itemId: a.string().required(),
+        localRank: a.integer().required(), // 何個目のご当地のものか(1〜3)
+        leftover: a.integer(),
+      })
+      .identifier(["listingKey"])
+      .authorization((allow) => [allow.group("admin")]),
+
     // 持っているもの(実。ユーザー×アイテム)。収穫したときだけ増える(訪ねてもらえるのはタネだけ)。ガーデンに飾れる数はこれ。
     // firstAreaName は初めて収穫した地区(「○○区 ○○町」)。産地ごとの記録は GameTaneHarvest
     GameTaneItem: a
@@ -645,6 +661,23 @@ const schema = a
       seedsHeld: a.integer().required(),
     }),
 
+    // ご当地の実の取り替えの結果(もらった実の手元の数と、市場に残っている自分の実の数)
+    TaneLocalTradeResult: a.customType({
+      takeItemId: a.string().required(),
+      takeQuantity: a.integer().required(),
+      mineLeft: a.integer().required(),
+    }),
+
+    // 市場に並んでいるご当地の実(ものごと。生産者は出さない)。mine は自分が生産者の数(取り替えに使える)、
+    // others はほかの人の数、available はそのうち自分がもらえる数(同じ生産者の同じ実をもう持っているものを除く)
+    TaneLocalMarketItem: a.customType({
+      itemId: a.string().required(),
+      localRank: a.integer().required(),
+      mine: a.integer().required(),
+      others: a.integer().required(),
+      available: a.integer().required(),
+    }),
+
     // フォローしてもらうリンクを開いたときの、リンクの持ち主
     FollowInviteOwner: a.customType({
       userId: a.id().required(),
@@ -723,6 +756,14 @@ const schema = a
       .handler(a.handler.function(chizuTanePlayer)),
 
     // 地図タネ: コースごとの遊んでいる人数
+    // 管理画面: ご当地の実の状況(ご当地の畑・市場の実・タネをもらった記録・持っている人の数。JSON の文字列)。
+    // 利用者のデータを含むので、Cognito の admin グループの人だけ(amplify/auth/resource.ts の groups)
+    adminTaneLocalStatus: a
+      .query()
+      .returns(a.string())
+      .authorization((allow) => [allow.group("admin")])
+      .handler(a.handler.function(chizuTaneAdmin)),
+
     taneCourseCounts: a
       .query()
       .returns(a.ref("TaneCourseCount").array())
@@ -913,6 +954,22 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneMarket)),
 
+    // うさぽ農園の市場: 並んでいるご当地の実の一覧(listLocal は引数で見分けるための目印)
+    listTaneLocalMarket: a
+      .query()
+      .arguments({ listLocal: a.boolean().required() })
+      .returns(a.ref("TaneLocalMarketItem").array())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneMarket)),
+
+    // うさぽ農園の市場: ご当地の実の取り替え。市場にある自分の実1個(giveItemId)と、同じ何個目のほかの人の実1個(takeItemId)を取り替える
+    exchangeTaneLocalFruit: a
+      .mutation()
+      .arguments({ giveItemId: a.string().required(), takeItemId: a.string().required() })
+      .returns(a.ref("TaneLocalTradeResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneMarket)),
+
     setFollowing: a
       .mutation()
       .arguments({ followeeId: a.id().required(), follow: a.boolean().required() })
@@ -957,6 +1014,7 @@ const schema = a
     allow.resource(chizuTaneStats),
     allow.resource(chizuTaneShelf),
     allow.resource(chizuTaneSweep),
+    allow.resource(chizuTaneAdmin),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

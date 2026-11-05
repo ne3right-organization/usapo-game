@@ -1,17 +1,19 @@
 import type { ScheduledHandler } from "aws-lambda";
 import { env } from "$amplify/env/chizu-tane-sweep";
 import { dataClient, unwrap, type DataClient } from "../shared/dataClient";
-import { markEndingNotice, removeEndedBase } from "../shared/chizuTane";
+import { addSeeds, markEndingNotice, moveLocalFruitsToMarket, removeEndedBase } from "../shared/chizuTane";
 import { notifyUsers } from "../shared/push";
 import { TANE_BASE_TYPE_BY_ID } from "../../../src/lib/game/chizuTane/courses";
-import { fieldEnding, fieldNotice, rotAt } from "../../../src/lib/game/chizuTane/growth";
-import { isLocalBaseTypeId } from "../../../src/lib/game/chizuTane/localItems";
+import { fieldEnding, fieldNotice, localMarketAt, rotAt } from "../../../src/lib/game/chizuTane/growth";
+import { TANE_LOCAL_ITEM_BY_ID, isLocalBaseTypeId } from "../../../src/lib/game/chizuTane/localItems";
 
 type Base = NonNullable<Awaited<ReturnType<DataClient["models"]["GameTaneBase"]["get"]>>["data"]>;
 
 /**
  * うさぽ農園の畑の終わり方(src/lib/game/chizuTane/growth.ts)を、定期実行(resource.ts の schedule)で行う。全部の畑を読んで、
- * - 期限を過ぎた畑(タネ待ちのまま1週間・腐り落ちた・枯れた)は行を消して空き地に戻し、持ち主に知らせる
+ * - 実って1か月たったご当地の畑は撤去して、残りの実を市場に並べ、持ち主に知らせる(物々交換でほかの人に渡る)
+ * - 期限を過ぎた畑(タネ待ちのまま1週間・腐り落ちた・枯れた)は行を消して空き地に戻し、持ち主に知らせる。
+ *   枯れたのがご当地の畑なら、まいたご当地のタネを持ち主に返す(ご当地のタネは1回ずつしかもらえず、そのままだと次のタネに進めないため)
  * - 期限が近い畑(宅急便で回収できるようになった・もうすぐ腐る・もうすぐ枯れる)の持ち主に、1回だけ知らせる(GameTaneBase.endingNotice)
  * 試作の規模なので毎回全件を読む。畑が増えたら、期限の日時で引ける索引を持つなどに変える
  */
@@ -26,18 +28,20 @@ export const handler: ScheduledHandler = async () => {
     nextToken = page.nextToken;
   } while (nextToken);
 
+  let moved = 0;
   let ended = 0;
   let noticed = 0;
   for (const base of bases) {
     try {
-      if (await endIfDue(c, base, now)) ended++;
+      if (await moveLocalIfDue(c, base, now)) moved++;
+      else if (await endIfDue(c, base, now)) ended++;
       else if (await noticeIfDue(c, base, now)) noticed++;
     } catch (err) {
       // 1つの畑で失敗しても、ほかの畑は続ける(次の定期実行でまた試す)
       console.error("畑の終わりを処理できませんでした", base.areaKey, err);
     }
   }
-  console.log(`畑 ${bases.length}か所: 空き地に戻した ${ended}・知らせた ${noticed}`);
+  console.log(`畑 ${bases.length}か所: ご当地の畑を撤去した ${moved}・空き地に戻した ${ended}・知らせた ${noticed}`);
 };
 
 function placeOf(base: Base): string {
@@ -56,6 +60,24 @@ async function ownersOf(c: DataClient, areaKey: string): Promise<string[]> {
     .map((r) => r.ownerId);
 }
 
+/** 実って1か月たったご当地の畑なら、撤去して残りの実を市場に並べ、持ち主に知らせる。撤去したら true */
+async function moveLocalIfDue(c: DataClient, base: Base, now: Date): Promise<boolean> {
+  const item = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
+  const at = localMarketAt(base);
+  if (!isLocalBaseTypeId(base.baseTypeId) || !item || !at || at.getTime() > now.getTime()) return false;
+  const owners = await ownersOf(c, base.areaKey);
+  if (owners.length === 0 || !(await moveLocalFruitsToMarket(c, base, owners[0], item))) return false;
+  await notifyUsers(c, owners, {
+    title: "ご当地の畑の実が市場に並びました",
+    body: `実ってから1か月たったので、${placeOf(base)}は役目を終えました。残りの実${base.fruits ?? 0}個は市場に並びました。市場で、ほかの人の育てたご当地の実と取り替えられます${
+      item.rank < 3 ? "（全部渡ると、次のご当地のタネが届きます）" : ""
+    }`,
+    url: "/game/chizu-tane/market",
+    tag: `tane-end-${base.areaKey}`,
+  });
+  return true;
+}
+
 /** 期限を過ぎていれば、行を消して持ち主に知らせる。消したら true */
 async function endIfDue(c: DataClient, base: Base, now: Date): Promise<boolean> {
   const ending = fieldEnding(base, now);
@@ -64,10 +86,18 @@ async function endIfDue(c: DataClient, base: Base, now: Date): Promise<boolean> 
   const owners = await ownersOf(c, base.areaKey);
   if (!(await removeEndedBase(c, base.areaKey, base.updatedAt))) return false;
   const place = placeOf(base);
+  const local = TANE_LOCAL_ITEM_BY_ID.get(base.seedItemId);
+  const refund = ending === "withered" && local && owners.length > 0;
+  if (refund) await addSeeds(c, owners[0], local.itemId, 1);
   const message = {
     abandoned: { title: "畑が空き地に戻りました", body: `タネ待ちのまま1週間まき直さなかった${place}は、空き地に戻りました` },
     rotten: { title: "実が腐り落ちました", body: `${place}の実（のこり${base.fruits ?? 0}個）が腐り落ちて、畑は空き地に戻りました` },
-    withered: { title: "畑が枯れました", body: `1か月水が入らなかった${place}は、枯れて空き地に戻りました` },
+    withered: {
+      title: "畑が枯れました",
+      body: `1か月水が入らなかった${place}は、枯れて空き地に戻りました${
+        refund ? `。ご当地のタネ「${local.name}」は手元に戻しました（もう一度まけます${local.rank === 1 ? "。その都道府県でまいてください" : ""}）` : ""
+      }`,
+    },
   }[ending];
   await notifyUsers(c, owners, { ...message, url: "/game/chizu-tane", tag: `tane-end-${base.areaKey}` });
   return true;

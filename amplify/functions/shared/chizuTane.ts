@@ -210,17 +210,14 @@ export async function grantLevelSeeds(
 }
 
 /**
- * ご当地の畑の次のタネを持ち主に1個渡す。1個目の畑が実ったとき(ripened)は2個目、2個目の畑の実が全部収穫されたとき(harvested)は3個目。
- * もらった記録(GameTaneLocalGrant)を見て、1人1都道府県に1回だけ渡す。渡したもの(渡さなかったら null)を返す
+ * ご当地の畑の実(1個目・2個目の畑)が全部誰かに渡ったら、持ち主(生産者)に次のご当地のタネ(2個目・3個目)を1個届ける
+ * (2026-11-05。それまでは、2個目は1個目の畑が実ったとき、3個目は2個目の畑の実が全部収穫されたとき)。
+ * 「全部渡った」は、畑で取りきられたときと、実って1か月で撤去されて市場に並んだ残りの実(GameTaneMarketLocal.leftover)がなくなったとき。
+ * もらった記録(GameTaneLocalGrant)を見て、1都道府県に1回ずつだけ。届けたタネを返す(届けなければ null)
  */
-export async function grantNextLocalSeed(
-  c: DataClient,
-  ownerId: string,
-  seedItemId: string,
-  event: "ripened" | "harvested"
-): Promise<TaneLocalItem | null> {
+export async function grantNextLocalSeed(c: DataClient, ownerId: string, seedItemId: string): Promise<TaneLocalItem | null> {
   const item = TANE_LOCAL_ITEM_BY_ID.get(seedItemId);
-  if (!item || item.rank !== (event === "ripened" ? 1 : 2)) return null;
+  if (!item) return null;
   const next = nextLocalItem(item);
   if (!next) return null;
   const grant = unwrap(await c.models.GameTaneLocalGrant.get({ userId: ownerId, prefCode: item.local }));
@@ -242,6 +239,7 @@ const HELD_SEED_TABLE = process.env.CHIZU_TANE_HELD_SEED_TABLE ?? "";
 const ITEM_TABLE = process.env.CHIZU_TANE_ITEM_TABLE ?? "";
 const HARVEST_TABLE = process.env.CHIZU_TANE_HARVEST_TABLE ?? "";
 const LOCAL_FRUIT_TABLE = process.env.CHIZU_TANE_LOCAL_FRUIT_TABLE ?? "";
+const MARKET_LOCAL_TABLE = process.env.CHIZU_TANE_MARKET_LOCAL_TABLE ?? "";
 
 /** ご当地の実をもらった記録(GameTaneLocalFruit)のキー。生産者とものの組み */
 export function localFruitSourceKey(producerId: string, itemId: string): string {
@@ -623,6 +621,125 @@ export async function deliverFruits(c: DataClient, base: FruitSource, itemId: st
   }
   await releaseOwnerships(c, base.areaKey);
   return true;
+}
+
+// ─── 市場のご当地の実(GameTaneMarketLocal。2026-11-05) ─────────────────────────────
+// 実って1か月たったご当地の畑の残りの実を、生産者の実として市場に並べる。生産者どうしで、市場にある自分の実1個と、
+// 同じ何個目のほかの人の実1個を取り替える(お互いに相手の実が1個届く)。並べられるのは自分が生産者の実だけ(もらった実は出せない)
+
+/** 市場に並んでいるご当地の実の行のキー(生産者のID#もの) */
+export function marketListingKey(producerId: string, itemId: string): string {
+  return `${producerId}#${itemId}`;
+}
+
+/**
+ * 実って1か月たったご当地の畑を撤去して、残りの実を市場に並べる(生産者は畑の持ち主)。
+ * 「畑を消す(読んだときと同じ実の数・実った日時のときだけ)」と「市場の行に残りの実を足す」を1つのトランザクションで行う。
+ * 消せたら持ち主の行に「手放した」と書いて true
+ */
+export async function moveLocalFruitsToMarket(
+  c: DataClient,
+  base: { areaKey: string; ripenedAt?: string | null; fruits?: number | null },
+  producerId: string,
+  item: TaneLocalItem
+): Promise<boolean> {
+  const fruits = base.fruits ?? 0;
+  if (!base.ripenedAt || fruits < 1) return false;
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: BASE_TABLE,
+              Key: { areaKey: { S: base.areaKey } },
+              ConditionExpression: "fruits = :n AND ripenedAt = :r",
+              ExpressionAttributeValues: { ":n": { N: String(fruits) }, ":r": { S: base.ripenedAt } },
+            },
+          },
+          {
+            // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
+            Update: {
+              TableName: MARKET_LOCAL_TABLE,
+              Key: { listingKey: { S: marketListingKey(producerId, item.itemId) } },
+              UpdateExpression:
+                "SET leftover = if_not_exists(leftover, :zero) + :n, producerId = :p, itemId = :i, localRank = :r, " +
+                "#tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now",
+              ExpressionAttributeNames: { "#tn": "__typename" },
+              ExpressionAttributeValues: {
+                ":zero": { N: "0" },
+                ":n": { N: String(fruits) },
+                ":p": { S: producerId },
+                ":i": { S: item.itemId },
+                ":r": { N: String(item.rank) },
+                ":tn": { S: "GameTaneMarketLocal" },
+                ":now": { S: now },
+              },
+            },
+          },
+        ],
+      })
+    );
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return false;
+    throw err;
+  }
+  await releaseOwnerships(c, base.areaKey);
+  return true;
+}
+
+/** 市場にある、ある生産者のご当地の実 */
+export interface MarketFruit {
+  producerId: string;
+  item: TaneLocalItem;
+}
+
+/**
+ * ご当地の実の取り替え。1つのトランザクションで、
+ * 「両方の市場の行から1個ずつ減らす」「お互いに相手の実を1個増やす」「お互いのもらった記録(生産者とものの組みにつき1人1個)と収穫の記録を書く」を行う。
+ * 収穫の記録の産地は都道府県だけにする(市場の実は、どこの畑のものかを出さない)。
+ * 先にほかの人が取った・もうもらっていたなどで書けなければ false
+ */
+export async function swapLocalFruits(mine: MarketFruit, theirs: MarketFruit, prefNameOf: (item: TaneLocalItem) => string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const take = (from: MarketFruit): TransactWriteItem => ({
+    Update: {
+      TableName: MARKET_LOCAL_TABLE,
+      Key: { listingKey: { S: marketListingKey(from.producerId, from.item.itemId) } },
+      UpdateExpression: "SET leftover = leftover - :one, updatedAt = :now",
+      ConditionExpression: "leftover >= :one",
+      ExpressionAttributeValues: { ":one": { N: "1" }, ":now": { S: now } },
+    },
+  });
+  // 相手の実を受け取る(実を1個増やす・収穫の記録・もらった記録)
+  const receive = (userId: string, from: MarketFruit) =>
+    fruitGainWrites(
+      { areaKey: "market", ownerId: from.producerId, prefName: prefNameOf(from.item), cityName: "市場", townName: "物々交換", ripenedAt: null },
+      userId,
+      from.item.itemId,
+      true,
+      now
+    );
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [take(mine), take(theirs), ...receive(mine.producerId, theirs), ...receive(theirs.producerId, mine)],
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return false;
+    throw err;
+  }
+}
+
+/** 市場の行に残っている実の数(読み直す) */
+export async function marketLeftover(producerId: string, itemId: string): Promise<number> {
+  const res = await ddb.send(
+    new GetItemCommand({ TableName: MARKET_LOCAL_TABLE, Key: { listingKey: { S: marketListingKey(producerId, itemId) } }, ConsistentRead: true })
+  );
+  return Number(res.Item?.leftover?.N ?? 0);
 }
 
 // ─── 畑の終わり方(定期実行の chizu-tane-sweep。src/lib/game/chizuTane/growth.ts) ─────────────────

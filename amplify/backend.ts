@@ -11,6 +11,7 @@ import { chizuTaneSeeds } from "./functions/chizu-tane-seeds/resource";
 import { chizuTaneShelf } from "./functions/chizu-tane-shelf/resource";
 import { chizuTaneStats } from "./functions/chizu-tane-stats/resource";
 import { chizuTaneSweep } from "./functions/chizu-tane-sweep/resource";
+import { chizuTaneAdmin } from "./functions/chizu-tane-admin/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setFollowing } from "./functions/set-following/resource";
 import { setNickname } from "./functions/set-nickname/resource";
@@ -33,6 +34,7 @@ const backend = defineBackend({
   chizuTaneShelf,
   chizuTaneStats,
   chizuTaneSweep,
+  chizuTaneAdmin,
 });
 
 // 地図タネの落ちているタネ・実は早い者勝ちなので、拾う・落とす・実をもらう Lambda は拠点のテーブルを DynamoDB で直接(条件付きで)書き換える
@@ -63,6 +65,14 @@ backend.chizuTanePlace.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tab
 // 畑の終わり方の定期実行も、期限を過ぎた畑の行を「読んだときのままなら」の条件で消し、知らせた印を書く(amplify/functions/chizu-tane-sweep)
 taneBaseTable.grantReadWriteData(backend.chizuTaneSweep.resources.lambda);
 backend.chizuTaneSweep.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
+
+// 市場のご当地の実(撤去したご当地の畑の残りの実)は早い者勝ちなので、条件付きで書き換える。
+// 定期実行は撤去した畑の残りの実を並べ、市場は生産者どうしで取り替える(amplify/functions/shared/chizuTane.ts)
+const taneMarketLocalTable = backend.data.resources.tables["GameTaneMarketLocal"];
+for (const fn of [backend.chizuTaneMarket, backend.chizuTaneSweep]) {
+  taneMarketLocalTable.grantReadWriteData(fn.resources.lambda);
+  fn.addEnvironment("CHIZU_TANE_MARKET_LOCAL_TABLE", taneMarketLocalTable.tableName);
+}
 
 // 公式の畑の育ちと落ちているタネも、二重に押されても1回分だけ進むよう条件付きで書き換える(amplify/functions/chizu-tane-checkin/handler.ts)
 const taneOfficialVisitTable = backend.data.resources.tables["GameTaneOfficialVisit"];

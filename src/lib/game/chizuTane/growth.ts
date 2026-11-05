@@ -95,7 +95,9 @@ export function isAbandoned(base: GrowingBase, now: Date): boolean {
 // - 実って1週間(DELIVERY_AFTER_MS)たつと、持ち主は遠くから「宅急便」で残りの実を全部回収できる(回収すると畑は空き地に戻り、ランクも無くなる)
 // - 宅急便で回収できるようになってから1か月(ROT_AFTER_MS)たつと、実が腐り落ちて空き地に戻る
 // - 実っていない畑は、最後に水が入ってから1か月(WITHER_AFTER_MS)たつと枯れて空き地に戻る(持ち主でもほかの人でも、現地でも遠くからでも、水が入れば延びる)
-// ご当地の畑は宅急便で回収できない(実をいろいろな人に渡すための畑なので)。腐る・枯れるは同じ
+// ご当地の畑は宅急便で回収できない(実をいろいろな人に渡すための畑なので)。代わりに、実って1か月(LOCAL_TO_MARKET_MS。現地に行って
+// もらうのが前提なので長めにとる)で畑を撤去して、残りの実を市場に並べる(定期実行の chizu-tane-sweep。生産者どうしの取り替えでほかの人に渡る)ので、
+// 腐ることもない。枯れるのは同じ
 
 /** 実ってから、宅急便で回収できるようになるまで(1週間) */
 export const DELIVERY_AFTER_MS = 7 * DAY;
@@ -103,6 +105,8 @@ export const DELIVERY_AFTER_MS = 7 * DAY;
 export const ROT_AFTER_MS = 30 * DAY;
 /** 最後に水が入ってから、枯れるまで(30日) */
 export const WITHER_AFTER_MS = 30 * DAY;
+/** ご当地の畑が実ってから、撤去して残りの実を市場に並べるまで(30日) */
+export const LOCAL_TO_MARKET_MS = 30 * DAY;
 
 /** 畑の終わり方を計算するのに使う項目 */
 export interface EndingBase extends GrowingBase {
@@ -120,6 +124,12 @@ function isRipe(base: GrowingBase): boolean {
 export function deliveryFrom(base: EndingBase): Date | null {
   if (!isRipe(base) || !base.ripenedAt) return null;
   return new Date(Date.parse(base.ripenedAt) + DELIVERY_AFTER_MS);
+}
+
+/** ご当地の畑を撤去して、残りの実を市場に並べる日時(実っていなければ null) */
+export function localMarketAt(base: EndingBase): Date | null {
+  if (!isRipe(base) || !base.ripenedAt) return null;
+  return new Date(Date.parse(base.ripenedAt) + LOCAL_TO_MARKET_MS);
 }
 
 /** 実が腐り落ちる日時(実っていなければ null) */
@@ -165,7 +175,8 @@ export interface FieldNotice {
 export function fieldNotice(base: EndingBase, now: Date, local: boolean): FieldNotice | null {
   const t = now.getTime();
   const soon = NOTICE_BEFORE_MS;
-  const rot = rotAt(base);
+  // ご当地の畑は、実って1週間で市場に並べるので、腐る・宅急便は知らせない
+  const rot = local ? null : rotAt(base);
   if (rot && rot.getTime() - soon <= t) return { kind: "rotSoon", at: rot, key: `rotSoon#${rot.toISOString()}` };
   const from = deliveryFrom(base);
   if (!local && from && from.getTime() <= t) return { kind: "deliverable", at: from, key: `deliverable#${from.toISOString()}` };
