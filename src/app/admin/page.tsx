@@ -16,6 +16,11 @@ const ADMIN_LINKS: { section: string; links: { href: string; label: string; desc
         description: "ユーザーのレベルアップの条件・もらえるタネ・家と柵、ガーデンが増える条件、畑のランク",
       },
       {
+        href: "/admin/chizu-tane/fields",
+        label: "遊んでいる人と畑",
+        description: "遊んでいる人ごとのレベル・畑の数・たずねた数・手伝い・収穫・最後に動いた日時と、その人の畑（状態・最後の水・次に起きること）",
+      },
+      {
         href: "/admin/chizu-tane/local",
         label: "ご当地の実の状況",
         description: "ご当地の畑（持ち主・実の数・市場に並ぶ日・枯れる日）、市場に並んでいる実、ご当地のタネをもらった記録、ご当地の実を集めた人の数",

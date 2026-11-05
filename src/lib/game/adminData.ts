@@ -35,3 +35,42 @@ export async function fetchAdminLocalStatus(): Promise<AdminLocalStatus> {
   if (!value) throw new Error("読み込めませんでした");
   return value as AdminLocalStatus;
 }
+
+/** 遊んでいる人と畑の状況(chizu-tane-admin の adminTaneFieldStatus) */
+export interface AdminFieldStatus {
+  generatedAt: string;
+  players: {
+    userId: string;
+    nickname: string;
+    course: string;
+    level: number;
+    visits: number;
+    official: number;
+    helps: number;
+    harvests: number;
+    opened: number;
+    lastMovedAt: string | null;
+    startedAt: string;
+  }[];
+  fields: {
+    areaKey: string;
+    ownerId: string;
+    place: string;
+    baseTypeId: string;
+    seedItemId: string;
+    rank: number;
+    water: number;
+    fruits: number;
+    plantedAt: string;
+    ripenedAt: string | null;
+    waitingSince: string | null;
+    lastWateredAt: string | null;
+  }[];
+}
+
+export async function fetchAdminFieldStatus(): Promise<AdminFieldStatus> {
+  let value: unknown = unwrap(await data.queries.adminTaneFieldStatus({ fields: true }));
+  while (typeof value === "string") value = JSON.parse(value);
+  if (!value) throw new Error("読み込めませんでした");
+  return value as AdminFieldStatus;
+}

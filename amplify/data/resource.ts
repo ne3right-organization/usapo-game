@@ -764,6 +764,14 @@ const schema = a
       .authorization((allow) => [allow.group("admin")])
       .handler(a.handler.function(chizuTaneAdmin)),
 
+    // 管理画面: 遊んでいる人と畑の状況(ゲームが進んでいるかの確認用。JSON の文字列。fields は引数で見分けるための目印)。admin グループの人だけ
+    adminTaneFieldStatus: a
+      .query()
+      .arguments({ fields: a.boolean().required() })
+      .returns(a.string())
+      .authorization((allow) => [allow.group("admin")])
+      .handler(a.handler.function(chizuTaneAdmin)),
+
     taneCourseCounts: a
       .query()
       .returns(a.ref("TaneCourseCount").array())
