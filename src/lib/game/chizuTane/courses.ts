@@ -297,6 +297,25 @@ export function firstBaseType(course: TaneCourse): TaneBaseType {
   return baseTypesOf(course)[0];
 }
 
+// ─── 市場: 実3個 → タネ1個(2026-11-05) ─────────────────────────────────────
+// 同じ実を FRUITS_PER_EXCHANGE_SEED 個で、同じコースの1つ上のレベルの種類の、同じ番号のタネ1個と交換できる
+// (みかんの木 → チューリップ、梨の木 → ひまわり)。ほかのコースの実からは、そのコースのタネになる。
+// いまの環境の上限レベル(本番は Lv.3)の種類の実は、上のタネが手に入らないので交換できない(本番で交換できるのは Lv.2 の種類の実まで)。
+// ご当地の実も交換できない
+
+export const FRUITS_PER_EXCHANGE_SEED = 3;
+
+/** その実と交換できるタネ。交換できなければ null */
+export function exchangeSeedFor(itemId: string, maxLevel: number = taneMaxLevel()): TaneItem | null {
+  const item = TANE_ITEM_BY_ID.get(itemId);
+  const type = item ? TANE_BASE_TYPE_BY_ID.get(item.baseTypeId) : undefined;
+  if (!item || !type || !baseTypesOf(type.course).includes(type)) return null;
+  const nextLevel = type.unlockLevel + 1;
+  if (nextLevel > maxLevel) return null;
+  const nextType = baseTypesOf(type.course).find((t) => t.unlockLevel === nextLevel);
+  return nextType ? (TANE_ITEM_BY_ID.get(`${nextType.id}_${item.rank}`) ?? null) : null;
+}
+
 
 /** いまの環境で手に入るもの(集めたものの一覧に出す範囲)。上限レベル(taneMaxLevel)までの種類のもの */
 export function prototypeItems(): TaneItem[] {

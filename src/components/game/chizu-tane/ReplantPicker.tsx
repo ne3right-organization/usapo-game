@@ -29,7 +29,7 @@ export default function ReplantPicker({
   const [openedAt] = useState(() => Date.now());
   const typeName = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "この畑";
   const usable = seeds.filter((s) => !TANE_LOCAL_ITEM_BY_ID.has(s.itemId));
-  const deadline = replantDeadline(base, taneDayMs());
+  const deadline = replantDeadline(base);
   const openAt = openToOthersAt(base, taneDayMs());
 
   const handle = async () => {

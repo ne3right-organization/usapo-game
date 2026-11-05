@@ -37,4 +37,7 @@ export const auth = defineAuth({
   },
   // 初めてログインしたときにプロフィール(ニックネーム未設定)を作る
   triggers: { postConfirmation: createGameProfile },
+  // 管理画面(/admin)を見られる人。Cognito のコンソールで、ユーザーをこのグループに入れる(はじめは誰もいない)。
+  // スキーマで allow.group("admin") にしているモデル(Lambda だけが書くもの)も、このグループの人は読み書きできるようになる
+  groups: ["admin"],
 });

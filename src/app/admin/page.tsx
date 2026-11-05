@@ -16,6 +16,16 @@ const ADMIN_LINKS: { section: string; links: { href: string; label: string; desc
         description: "ユーザーのレベルアップの条件・もらえるタネ・家と柵、ガーデンが増える条件、畑のランク",
       },
       {
+        href: "/admin/chizu-tane/fields",
+        label: "遊んでいる人と畑",
+        description: "遊んでいる人ごとのレベル・畑の数・たずねた数・手伝い・収穫・最後に動いた日時と、その人の畑（状態・最後の水・次に起きること）",
+      },
+      {
+        href: "/admin/chizu-tane/local",
+        label: "ご当地の実の状況",
+        description: "ご当地の畑（持ち主・実の数・市場に並ぶ日・枯れる日）、市場に並んでいる実、ご当地のタネをもらった記録、ご当地の実を集めた人の数",
+      },
+      {
         href: "/admin/chizu-tane/gardens",
         label: "ガーデンのデザイン",
         description: "ガーデン4種類 × 家と柵の4段階の見た目",
@@ -28,7 +38,7 @@ export default function AdminPage() {
   return (
     <main className="max-w-2xl mx-auto px-4 py-6 text-[#3c2a14]">
       <h1 className="text-xl font-bold mb-1">管理</h1>
-      <p className="text-xs text-[#78716c] mb-6">開発・運営用のページです（どこからもリンクしていません）</p>
+      <p className="text-xs text-[#78716c] mb-6">開発・運営用のページです（どこからもリンクしていません。Cognito の admin グループの人だけが見られます）</p>
       {ADMIN_LINKS.map((group) => (
         <section key={group.section} className="mb-6">
           <h2 className="text-sm font-bold text-[#a8937a] mb-2">{group.section}</h2>

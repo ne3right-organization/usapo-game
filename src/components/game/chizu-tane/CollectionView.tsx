@@ -31,6 +31,15 @@ export default function CollectionView() {
   return (
     <TaneScreen>
       <TaneHeading title="🧺 集めたもの">全国の畑で収穫した実が集まります。タップすると産地が分かります</TaneHeading>
+      {/* 市場(実をタネと交換する) */}
+      <Link
+        href="/game/chizu-tane/market"
+        className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-4 text-xs text-amber-800"
+      >
+        <span className="text-lg">🏪</span>
+        <span className="flex-1">市場で、実を集めてタネと交換できます</span>
+        <span className="shrink-0 font-semibold">市場へ →</span>
+      </Link>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}

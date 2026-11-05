@@ -1,6 +1,9 @@
 // うさぽ農園のアイテムの絵を、画像生成AIで作った元の画像(art/chizu-tane/)から切り抜く処理。
 // process-item-images.mts(ゲーム用の絵)と make-app-icons.mts(アプリのアイコン)で使う
 
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import * as coursesModule from "../../src/lib/game/chizuTane/courses";
 import * as localItemsModule from "../../src/lib/game/chizuTane/localItems";
@@ -15,8 +18,25 @@ const { localItemFor } = localItems;
 /** ご当地のもののシートの並び(左から右へ)。1シート = 1都道府県の同じ何個目の5点を横1列に */
 export const LOCAL_SHEET_COURSES = ["plant", "animal", "hobby", "vehicle", "building"] as const;
 
-/** ご当地のもののシートID(local-13-2 = 東京都の2個目) */
+/** ご当地のもののシートID(local-13-1 = 東京都の1個目) */
 export const localSheetId = (prefCode: string, rank: number) => `local-${prefCode}-${rank}`;
+
+/** 2個目・3個目は、1シートに3都道府県ずつ(1行が1都道府県) */
+export const LOCAL_GROUP_PREFS = 3;
+/** 何都道府県かをまとめたシートのID(local-2-p01-03 = 北海道〜岩手県の2個目) */
+export const localGroupSheetId = (rank: number, fromPrefCode: string, toPrefCode: string) => `local-${rank}-p${fromPrefCode}-${toPrefCode}`;
+
+/**
+ * 描き直しのシート(redo-1 など。3×3 の9点)の並び。local-art-prompts.mts --redo が redo.md から作る。
+ * redo.md が変わっても、置いたシートの切り分けがずれないよう、頼む文を作ったときの並びをファイルに残しておく
+ */
+export const REDO_SHEETS_FILE = join(dirname(fileURLToPath(import.meta.url)), "../../art/chizu-tane/redo-sheets.json");
+
+function redoRows(sheetId: string): string[][] | null {
+  if (!existsSync(REDO_SHEETS_FILE)) return null;
+  const sheets = JSON.parse(readFileSync(REDO_SHEETS_FILE, "utf8")) as Record<string, string[][]>;
+  return sheets[sheetId] ?? null;
+}
 
 // 育つ途中の絵(growth.ts の GROWTH_STAGES のタネ〜花と、タネ待ちの空き地。実りはその畑の実の絵を出す)
 export const GROWTH_SHEET_ID = "growth";
@@ -38,6 +58,17 @@ export type Rgba = { data: Buffer; width: number; height: number };
 /** シートID(plant-1 など)から、行ごとのアイテムID(1行 = 1種類のタネ1〜3。ご当地の local-13-2 などは1行に5コース) */
 export function sheetRows(sheetId: string): string[][] | null {
   if (sheetId === GROWTH_SHEET_ID) return GROWTH_ROWS;
+  if (/^redo-\d+$/.test(sheetId)) return redoRows(sheetId);
+  const group = /^local-([123])-p(\d{2})-(\d{2})$/.exec(sheetId);
+  if (group) {
+    const rows: string[][] = [];
+    for (let code = Number(group[2]); code <= Number(group[3]); code++) {
+      const row = LOCAL_SHEET_COURSES.map((course) => localItemFor(String(code).padStart(2, "0"), course, Number(group[1]))?.itemId);
+      if (!row.every((id) => id)) return null;
+      rows.push(row as string[]);
+    }
+    return rows.length > 0 ? rows : null;
+  }
   const local = /^local-(\d{2})-([123])$/.exec(sheetId);
   if (local) {
     const row = LOCAL_SHEET_COURSES.map((course) => localItemFor(local[1], course, Number(local[2]))?.itemId);

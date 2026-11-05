@@ -52,6 +52,15 @@ function PlayerCollectionView({ initialPref }: { initialPref: string }) {
       <div className="mt-2">
         <TaneHeading title="📖 ご当地コレクション">都道府県を選ぶと、その県のご当地のもの15種類が見られます</TaneHeading>
       </div>
+      {/* 市場(ご当地の実の取り替え) */}
+      <Link
+        href="/game/chizu-tane/market"
+        className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-4 text-xs text-amber-800"
+      >
+        <span className="text-lg">🏪</span>
+        <span className="flex-1">市場で、ご当地の実をほかの人の実と取り替えられます</span>
+        <span className="shrink-0 font-semibold">市場へ →</span>
+      </Link>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorText message={state.message} />}
       {(state.status === "signed-out" || state.status === "not-started") && <NeedStart signedOut={state.status === "signed-out"} />}

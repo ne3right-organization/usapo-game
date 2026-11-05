@@ -1,4 +1,5 @@
 import {
+  BatchWriteItemCommand,
   ConditionalCheckFailedException,
   DeleteItemCommand,
   GetItemCommand,
@@ -13,6 +14,7 @@ import type { DataClient } from "./dataClient";
 import { unwrap } from "./dataClient";
 import { levelFor, levelVisitCount, seedsForLevel, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem, type TaneLocalItem } from "../../../src/lib/game/chizuTane/localItems";
+import { countPlaced, type GardenLayouts, type GardenObject } from "../../../src/lib/game/chizuTane/garden";
 import {
   findTownDistrict,
   isCityCode,
@@ -208,17 +210,14 @@ export async function grantLevelSeeds(
 }
 
 /**
- * ご当地の畑の次のタネを持ち主に1個渡す。1個目の畑が実ったとき(ripened)は2個目、2個目の畑の実が全部収穫されたとき(harvested)は3個目。
- * もらった記録(GameTaneLocalGrant)を見て、1人1都道府県に1回だけ渡す。渡したもの(渡さなかったら null)を返す
+ * ご当地の畑の実(1個目・2個目の畑)が全部誰かに渡ったら、持ち主(生産者)に次のご当地のタネ(2個目・3個目)を1個届ける
+ * (2026-11-05。それまでは、2個目は1個目の畑が実ったとき、3個目は2個目の畑の実が全部収穫されたとき)。
+ * 「全部渡った」は、畑で取りきられたときと、実って1か月で撤去されて市場に並んだ残りの実(GameTaneMarketLocal.leftover)がなくなったとき。
+ * もらった記録(GameTaneLocalGrant)を見て、1都道府県に1回ずつだけ。届けたタネを返す(届けなければ null)
  */
-export async function grantNextLocalSeed(
-  c: DataClient,
-  ownerId: string,
-  seedItemId: string,
-  event: "ripened" | "harvested"
-): Promise<TaneLocalItem | null> {
+export async function grantNextLocalSeed(c: DataClient, ownerId: string, seedItemId: string): Promise<TaneLocalItem | null> {
   const item = TANE_LOCAL_ITEM_BY_ID.get(seedItemId);
-  if (!item || item.rank !== (event === "ripened" ? 1 : 2)) return null;
+  if (!item) return null;
   const next = nextLocalItem(item);
   if (!next) return null;
   const grant = unwrap(await c.models.GameTaneLocalGrant.get({ userId: ownerId, prefCode: item.local }));
@@ -240,6 +239,7 @@ const HELD_SEED_TABLE = process.env.CHIZU_TANE_HELD_SEED_TABLE ?? "";
 const ITEM_TABLE = process.env.CHIZU_TANE_ITEM_TABLE ?? "";
 const HARVEST_TABLE = process.env.CHIZU_TANE_HARVEST_TABLE ?? "";
 const LOCAL_FRUIT_TABLE = process.env.CHIZU_TANE_LOCAL_FRUIT_TABLE ?? "";
+const MARKET_LOCAL_TABLE = process.env.CHIZU_TANE_MARKET_LOCAL_TABLE ?? "";
 
 /** ご当地の実をもらった記録(GameTaneLocalFruit)のキー。生産者とものの組み */
 export function localFruitSourceKey(producerId: string, itemId: string): string {
@@ -353,7 +353,7 @@ export async function addWater(areaKey: string, amount: number, toRipe: number, 
       new UpdateItemCommand({
         TableName: BASE_TABLE,
         Key: { areaKey: { S: areaKey } },
-        UpdateExpression: "SET water = if_not_exists(water, :zero) + :n, updatedAt = :now",
+        UpdateExpression: "SET water = if_not_exists(water, :zero) + :n, lastWateredAt = :now, updatedAt = :now",
         ConditionExpression: `attribute_exists(areaKey) AND ${NOT_RIPE}`,
         ExpressionAttributeValues: { ":zero": { N: "0" }, ":n": { N: String(amount) }, ":now": { S: now }, ":nullType": { S: "NULL" } },
         ReturnValues: "UPDATED_NEW",
@@ -565,9 +565,226 @@ export async function removeHarvestedBase(c: DataClient, areaKey: string): Promi
     if (err instanceof ConditionalCheckFailedException) return;
     throw err;
   }
+  await releaseOwnerships(c, areaKey);
+}
+
+/** 消した畑の持ち主の行に「手放した」と書く(行は消さない。開拓した地区の数・まいたタネに数え続ける) */
+export async function releaseOwnerships(c: DataClient, areaKey: string): Promise<void> {
   const now = new Date().toISOString();
   for (const row of unwrap(await c.models.GameTaneOwnership.listTaneOwnershipByArea({ areaKey }))) {
     if (!row.releasedAt) unwrap(await c.models.GameTaneOwnership.update({ ownerId: row.ownerId, areaKey, releasedAt: now }));
+  }
+}
+
+/**
+ * 宅急便: 実っている畑の残りの実を全部、持ち主に届けて、畑を消す(空き地に戻り、ランクも無くなる。growth.ts の「畑の終わり方」)。
+ * 「畑を消す(読んだときと同じ実の数・実った日時のときだけ)」と「持ち主の実を増やす」を1つのトランザクションで行い、
+ * 収穫の記録(実1個に1行)はそのあとに書く(トランザクションに入れると、実が多いとき項目の数の上限を超えるため)。
+ * 先にほかの人が実を取った・回収したなどで書けなければ false
+ */
+export async function deliverFruits(c: DataClient, base: FruitSource, itemId: string, fruits: number): Promise<boolean> {
+  if (!base.ripenedAt || fruits < 1) return false;
+  const start = Date.now();
+  const now = new Date(start).toISOString();
+  const [itemWrite, harvestWrite] = fruitGainWrites(base, base.ownerId, itemId, false, now);
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: BASE_TABLE,
+              Key: { areaKey: { S: base.areaKey } },
+              ConditionExpression: "fruits = :n AND ripenedAt = :r",
+              ExpressionAttributeValues: { ":n": { N: String(fruits) }, ":r": { S: base.ripenedAt } },
+            },
+          },
+          { Update: { ...itemWrite.Update!, ExpressionAttributeValues: { ...itemWrite.Update!.ExpressionAttributeValues, ":one": { N: String(fruits) } } } },
+        ],
+      })
+    );
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return false;
+    throw err;
+  }
+  // 収穫の記録は実1個に1行。同じ日時にならないよう、1ミリ秒ずつずらす
+  const item = harvestWrite.Put!.Item!;
+  const rows = Array.from({ length: fruits }, (_, i) => ({
+    PutRequest: { Item: { ...item, harvestedAt: { S: new Date(start + i).toISOString() } } },
+  }));
+  for (let i = 0; i < rows.length; i += 25) {
+    let requests: typeof rows | undefined = rows.slice(i, i + 25);
+    for (let attempt = 0; requests && requests.length > 0 && attempt < 5; attempt++) {
+      const res = await ddb.send(new BatchWriteItemCommand({ RequestItems: { [HARVEST_TABLE]: requests } }));
+      requests = res.UnprocessedItems?.[HARVEST_TABLE] as typeof rows | undefined;
+    }
+  }
+  await releaseOwnerships(c, base.areaKey);
+  return true;
+}
+
+// ─── 市場のご当地の実(GameTaneMarketLocal。2026-11-05) ─────────────────────────────
+// 実って1か月たったご当地の畑の残りの実を、生産者の実として市場に並べる。生産者どうしで、市場にある自分の実1個と、
+// 同じ何個目のほかの人の実1個を取り替える(お互いに相手の実が1個届く)。並べられるのは自分が生産者の実だけ(もらった実は出せない)
+
+/** 市場に並んでいるご当地の実の行のキー(生産者のID#もの) */
+export function marketListingKey(producerId: string, itemId: string): string {
+  return `${producerId}#${itemId}`;
+}
+
+/**
+ * 実って1か月たったご当地の畑を撤去して、残りの実を市場に並べる(生産者は畑の持ち主)。
+ * 「畑を消す(読んだときと同じ実の数・実った日時のときだけ)」と「市場の行に残りの実を足す」を1つのトランザクションで行う。
+ * 消せたら持ち主の行に「手放した」と書いて true
+ */
+export async function moveLocalFruitsToMarket(
+  c: DataClient,
+  base: { areaKey: string; ripenedAt?: string | null; fruits?: number | null },
+  producerId: string,
+  item: TaneLocalItem
+): Promise<boolean> {
+  const fruits = base.fruits ?? 0;
+  if (!base.ripenedAt || fruits < 1) return false;
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: BASE_TABLE,
+              Key: { areaKey: { S: base.areaKey } },
+              ConditionExpression: "fruits = :n AND ripenedAt = :r",
+              ExpressionAttributeValues: { ":n": { N: String(fruits) }, ":r": { S: base.ripenedAt } },
+            },
+          },
+          {
+            // Amplify Data のモデルの行として読めるよう、__typename・createdAt・updatedAt も入れる
+            Update: {
+              TableName: MARKET_LOCAL_TABLE,
+              Key: { listingKey: { S: marketListingKey(producerId, item.itemId) } },
+              UpdateExpression:
+                "SET leftover = if_not_exists(leftover, :zero) + :n, producerId = :p, itemId = :i, localRank = :r, " +
+                "#tn = :tn, createdAt = if_not_exists(createdAt, :now), updatedAt = :now",
+              ExpressionAttributeNames: { "#tn": "__typename" },
+              ExpressionAttributeValues: {
+                ":zero": { N: "0" },
+                ":n": { N: String(fruits) },
+                ":p": { S: producerId },
+                ":i": { S: item.itemId },
+                ":r": { N: String(item.rank) },
+                ":tn": { S: "GameTaneMarketLocal" },
+                ":now": { S: now },
+              },
+            },
+          },
+        ],
+      })
+    );
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return false;
+    throw err;
+  }
+  await releaseOwnerships(c, base.areaKey);
+  return true;
+}
+
+/** 市場にある、ある生産者のご当地の実 */
+export interface MarketFruit {
+  producerId: string;
+  item: TaneLocalItem;
+}
+
+/**
+ * ご当地の実の取り替え。1つのトランザクションで、
+ * 「両方の市場の行から1個ずつ減らす」「お互いに相手の実を1個増やす」「お互いのもらった記録(生産者とものの組みにつき1人1個)と収穫の記録を書く」を行う。
+ * 収穫の記録の産地は都道府県だけにする(市場の実は、どこの畑のものかを出さない)。
+ * 先にほかの人が取った・もうもらっていたなどで書けなければ false
+ */
+export async function swapLocalFruits(mine: MarketFruit, theirs: MarketFruit, prefNameOf: (item: TaneLocalItem) => string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const take = (from: MarketFruit): TransactWriteItem => ({
+    Update: {
+      TableName: MARKET_LOCAL_TABLE,
+      Key: { listingKey: { S: marketListingKey(from.producerId, from.item.itemId) } },
+      UpdateExpression: "SET leftover = leftover - :one, updatedAt = :now",
+      ConditionExpression: "leftover >= :one",
+      ExpressionAttributeValues: { ":one": { N: "1" }, ":now": { S: now } },
+    },
+  });
+  // 相手の実を受け取る(実を1個増やす・収穫の記録・もらった記録)
+  const receive = (userId: string, from: MarketFruit) =>
+    fruitGainWrites(
+      { areaKey: "market", ownerId: from.producerId, prefName: prefNameOf(from.item), cityName: "市場", townName: "物々交換", ripenedAt: null },
+      userId,
+      from.item.itemId,
+      true,
+      now
+    );
+  try {
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [take(mine), take(theirs), ...receive(mine.producerId, theirs), ...receive(theirs.producerId, mine)],
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof TransactionCanceledException) return false;
+    throw err;
+  }
+}
+
+/** 市場の行に残っている実の数(読み直す) */
+export async function marketLeftover(producerId: string, itemId: string): Promise<number> {
+  const res = await ddb.send(
+    new GetItemCommand({ TableName: MARKET_LOCAL_TABLE, Key: { listingKey: { S: marketListingKey(producerId, itemId) } }, ConsistentRead: true })
+  );
+  return Number(res.Item?.leftover?.N ?? 0);
+}
+
+// ─── 畑の終わり方(定期実行の chizu-tane-sweep。src/lib/game/chizuTane/growth.ts) ─────────────────
+
+/**
+ * 期限を過ぎた畑(タネ待ちのまま1週間・腐り落ちた・枯れた)の行を消す。読んだときから書き換わっていない(updatedAt が同じ)ときだけ
+ * (消す直前に水が入った・実を取られた・まき直されたなら消さない)。消せたら持ち主の行に「手放した」と書いて true
+ */
+export async function removeEndedBase(c: DataClient, areaKey: string, seenUpdatedAt: string): Promise<boolean> {
+  try {
+    await ddb.send(
+      new DeleteItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        ConditionExpression: "updatedAt = :seen",
+        ExpressionAttributeValues: { ":seen": { S: seenUpdatedAt } },
+      })
+    );
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
+  await releaseOwnerships(c, areaKey);
+  return true;
+}
+
+/**
+ * 前もって知らせたことの印(growth.ts の FieldNotice.key)を書く。まだその印でないときだけ書き、書けたら true(2回知らせないため)。
+ * updatedAt は変えない(畑が書き換わったかの目印に使っているので)
+ */
+export async function markEndingNotice(areaKey: string, key: string): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: BASE_TABLE,
+        Key: { areaKey: { S: areaKey } },
+        UpdateExpression: "SET endingNotice = :k",
+        ConditionExpression: "attribute_exists(areaKey) AND (attribute_not_exists(endingNotice) OR endingNotice <> :k)",
+        ExpressionAttributeValues: { ":k": { S: key } },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
   }
 }
 
@@ -589,7 +806,7 @@ export interface NewBaseRow {
 
 /**
  * 新しくタネをまいた拠点の行を書く。空き地(行が無い)か、タネ待ちのまま waitingBefore より前から待っている
- * (ほかの人もまけるようになった・空き地に戻った)ときだけ書ける。同時にまこうとしても(持ち主のまき直しとも)先に書いた方だけが通る。
+ * (ほかの人もまけるようになった)ときだけ書ける。同時にまこうとしても(持ち主のまき直しとも)先に書いた方だけが通る。
  * 書けなければ false
  */
 export async function putNewBase(row: NewBaseRow, waitingBefore: string): Promise<boolean> {
@@ -631,10 +848,10 @@ export async function putNewBase(row: NewBaseRow, waitingBefore: string): Promis
 }
 
 /**
- * タネ待ちの拠点にタネをまき直す(タネから育ち直す。畑の種類はまいたタネのものになり、ランクはそのまま)。タネ待ちで、まだ空き地に戻っていない
- * (abandonedBefore 以降から待っている)ときだけ。書けなければ false
+ * タネ待ちの拠点にタネをまき直す(タネから育ち直す。畑の種類はまいたタネのものになり、ランクはそのまま)。タネ待ちのときだけ
+ * (空き地に戻った畑は、定期実行の chizu-tane-sweep が行を消している)。書けなければ false
  */
-export async function replantBaseRow(areaKey: string, itemId: string, baseTypeId: string, abandonedBefore: string): Promise<boolean> {
+export async function replantBaseRow(areaKey: string, itemId: string, baseTypeId: string): Promise<boolean> {
   const now = new Date().toISOString();
   try {
     await ddb.send(
@@ -643,14 +860,51 @@ export async function replantBaseRow(areaKey: string, itemId: string, baseTypeId
         Key: { areaKey: { S: areaKey } },
         UpdateExpression:
           "SET seedItemId = :item, baseTypeId = :type, water = :zero, plantedAt = :now, updatedAt = :now REMOVE waitingSince, lastRemoteWaterOn, lastOwnerVisitOn",
-        ConditionExpression: "attribute_exists(waitingSince) AND waitingSince >= :cutoff",
+        ConditionExpression: "attribute_exists(waitingSince)",
         ExpressionAttributeValues: {
           ":item": { S: itemId },
           ":type": { S: baseTypeId },
           ":zero": { N: "0" },
           ":now": { S: now },
-          ":cutoff": { S: abandonedBefore },
         },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
+}
+
+/** a.json の値は二重に文字列化されて返ることがあるので、文字列である限り戻し続ける */
+function parseJson<T = unknown>(value: unknown): T {
+  let v = value;
+  while (typeof v === "string") v = JSON.parse(v);
+  return v as T;
+}
+
+/** ガーデン(全部)に飾っている、その実の数(おすそ分けの棚・市場では、飾っている分は出せない) */
+export async function placedInGardens(c: DataClient, userId: string, itemId: string): Promise<number> {
+  const garden = unwrap(await c.models.GameTaneGarden.get({ userId }));
+  if (!garden) return 0;
+  const layouts = parseJson<GardenLayouts | null>(garden.layouts) ?? {};
+  const all: GardenObject[] = [...parseJson<GardenObject[]>(garden.objects), ...Object.values(layouts).flatMap((objs) => objs ?? [])];
+  return countPlaced(all).get(itemId) ?? 0;
+}
+
+/**
+ * 手元の実を count 個減らす。ガーデンに飾っている分(keep)は残し、足りるときだけ減らす(同時に押しても、数がずれない)。
+ * 減らせなければ false
+ */
+export async function spendFruits(userId: string, itemId: string, count: number, keep: number): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: ITEM_TABLE,
+        Key: { userId: { S: userId }, itemId: { S: itemId } },
+        UpdateExpression: "SET quantity = quantity - :n, updatedAt = :now",
+        ConditionExpression: "quantity >= :need",
+        ExpressionAttributeValues: { ":n": { N: String(count) }, ":need": { N: String(count + keep) }, ":now": { S: new Date().toISOString() } },
       })
     );
     return true;

@@ -1,5 +1,8 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
+import { chizuTaneSweep } from "../functions/chizu-tane-sweep/resource";
+import { chizuTaneAdmin } from "../functions/chizu-tane-admin/resource";
+import { chizuTaneMarket } from "../functions/chizu-tane-market/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "../functions/chizu-tane-seeds/resource";
@@ -248,6 +251,20 @@ const schema = a
         allow.ownerDefinedIn("followeeId").identityClaim("sub").to(["read"]),
       ]),
 
+    // フォローしてもらうリンク(/follow/{token})。1人1つで、作り直すと前のリンクは使えなくなる。
+    // リンクを開いた人は持ち主をフォローし、同時に持ち主の農園を見せてもらえる(GameTaneShare)。
+    // 誰でも踏めば農園が見えるようになるので、推測できない token にし、ユーザーID からは引けないようにしている。
+    // 書くのも token から引くのも set-following の Lambda だけ。持ち主は自分の行を読める
+    GameFollowInvite: a
+      .model({
+        ownerId: a.id().required(),
+        token: a.string().required(),
+        createdAt: a.datetime().required(),
+      })
+      .identifier(["ownerId"])
+      .secondaryIndexes((index) => [index("token").queryField("listFollowInvitesByToken")])
+      .authorization((allow) => [allow.ownerDefinedIn("ownerId").identityClaim("sub").to(["read"])]),
+
     // ─── 最近のクリア(地図パズル・地図ポットン共通) ──────────────────────────
     // 各ゲームのトップに出す「最近クリアされたエリア」。誰がクリアしたかは持たない。未ログインでも読める。
     // game = map-puzzle / map-pack(図鑑クイズを消す前の zukan-quiz の行が残っていることがある)、areaKey はゲームごとのエリアのキー
@@ -313,8 +330,13 @@ const schema = a
         // たまると実って fruits(残っている実の数)がランク×10になり、実が全部取られると water を0に戻してタネ待ちになる
         water: a.integer(),
         fruits: a.integer(),
-        // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す
+        // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す。
+        // 実って1週間で持ち主が宅急便で回収でき、そこから1か月で腐り落ちて空き地に戻る(growth.ts の「畑の終わり方」)
         ripenedAt: a.datetime(),
+        // 最後に水が入った日時(誰の水でも)。1か月水が入らないと枯れて空き地に戻る(2026-11-05 に足した。無い行はまいた日時から数える)
+        lastWateredAt: a.datetime(),
+        // 畑の終わりが近いことを、持ち主にもう知らせた印(growth.ts の FieldNotice.key。定期実行の chizu-tane-sweep が書く)
+        endingNotice: a.string(),
         // 持ち主が最後に遠くから水をやった時間帯(朝・昼・夜に1回。src/lib/game/chizuTane/geo.ts の slotKey。dev は5分ごと)
         lastRemoteWaterOn: a.string(),
         // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
@@ -323,7 +345,7 @@ const schema = a
         lastOwnerVisitOn: a.string(),
         // 実が全部取られて、持ち主がタネをまき直すのを待ち始めた日時(まき直したら消す)。
         // 1日(growth.ts の OWNER_PRIORITY_SLOTS)まき直さなければ、現地に来たほかの人もまけて、まいた人の畑になる(ご当地の畑はタネ待ちにならず、消える)。
-        // 1週間(REPLANT_LIMIT_SLOTS)まかなければ空き地に戻り、誰でもまける(どちらも行は新しくまいた人が上書きする)
+        // 1週間(REPLANT_LIMIT_MS)まかなければ空き地に戻り、誰でもまける(ほかの人がまくときは行を上書きし、空き地に戻すのは定期実行の chizu-tane-sweep が行を消す)
         waitingSince: a.datetime(),
       })
       .identifier(["areaKey"])
@@ -383,6 +405,7 @@ const schema = a
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
 
     // 手伝いの水やり(手伝った人×拠点)。lastWaterOn は最後に水をやった時間帯(slotKey)で、1つの畑に朝・昼・夜に1回の判定に使う。
+    // 畑が実ったら、その畑をまいたあと(lastWaterOn がまいた時間帯以降)に手伝った人に、お礼の実を1個ずつ届ける(2026-11-05。地区から引く)。
     // 書くのも読むのも Lambda だけ(クライアントからは読ませない。誰も入っていない admin グループ)
     GameTaneHelp: a
       .model({
@@ -391,6 +414,7 @@ const schema = a
         lastWaterOn: a.string().required(),
       })
       .identifier(["helperId", "areaKey"])
+      .secondaryIndexes((index) => [index("areaKey").queryField("listTaneHelpsByArea")])
       .authorization((allow) => [allow.group("admin")]),
 
     // 公式の畑(ユーザー×公式の畑。2026-10-31、src/lib/game/chizuTane/official.ts)。ほかの人の畑をたずねる練習なので、畑の育ちは1人ずつ別に持つ。
@@ -446,6 +470,21 @@ const schema = a
         sourceKey: a.string().required(),
       })
       .identifier(["userId", "sourceKey"])
+      .authorization((allow) => [allow.group("admin")]),
+
+    // 市場に並んでいるご当地の実(生産者×もの。2026-11-05)。実って1週間たって撤去したご当地の畑の残りの実(leftover)で、生産者の実のまま並ぶ。
+    // 生産者どうしで、市場にある自分の実1個と、同じ何個目(現地・お土産・記念品)のほかの人の実1個を取り替える(お互いに相手の実が1個届く)。
+    // 0になったら(全部誰かに渡ったら)、生産者に次のご当地のタネが届く。どこの畑の実かは生活圏の手がかりになるので、画面には生産者も地区も出さない。
+    // Lambda(chizu-tane-market・chizu-tane-sweep)だけが DynamoDB で直接、条件付きで書く
+    GameTaneMarketLocal: a
+      .model({
+        listingKey: a.string().required(), // 生産者のID#もの
+        producerId: a.id().required(),
+        itemId: a.string().required(),
+        localRank: a.integer().required(), // 何個目のご当地のものか(1〜3)
+        leftover: a.integer(),
+      })
+      .identifier(["listingKey"])
       .authorization((allow) => [allow.group("admin")]),
 
     // 持っているもの(実。ユーザー×アイテム)。収穫したときだけ増える(訪ねてもらえるのはタネだけ)。ガーデンに飾れる数はこれ。
@@ -544,6 +583,12 @@ const schema = a
 
     // フォローしている人の畑(手伝いの水やりの一覧)。fieldId は畑をまいた日時(畑の目印)。
     // 地区も出す(全国農地と見比べれば地区は分かってしまうので隠さない。見せる相手は持ち主が選んでいる)
+    // 宅急便で回収した結果(届いた実と数)
+    TaneDeliveryResult: a.customType({
+      itemId: a.string().required(),
+      delivered: a.integer().required(),
+    }),
+
     TaneHelpField: a.customType({
       fieldId: a.string().required(),
       prefName: a.string().required(),
@@ -561,6 +606,7 @@ const schema = a
     TaneHelpResult: a.customType({
       field: a.ref("TaneHelpField").required(),
       ripened: a.boolean().required(), // この水やりで実った
+      thanked: a.boolean(), // 実って、手伝ったお礼の実が自分に届いた
       helpCount: a.integer().required(), // 手伝った回数(合計)
       level: a.integer(),
       leveledUp: a.boolean(),
@@ -572,6 +618,7 @@ const schema = a
       fields: a.ref("TaneHelpField").required().array().required(),
       watered: a.integer().required(), // 水をやった畑の数
       ripened: a.integer().required(), // この水やりで実った畑の数
+      thanked: a.integer(), // 実って、手伝ったお礼の実が自分に届いた畑の数
       helpCount: a.integer().required(), // 手伝った回数(合計)
       level: a.integer(),
       leveledUp: a.boolean(),
@@ -605,6 +652,38 @@ const schema = a
     TaneCourseCount: a.customType({
       course: a.string().required(),
       players: a.integer().required(),
+    }),
+
+    // 市場で実をタネと交換した結果。seedItemId はもらったタネ、fruitsLeft は交換に使った実の残り、seedsHeld はそのタネの手元の数
+    TaneExchangeResult: a.customType({
+      seedItemId: a.string().required(),
+      fruitsLeft: a.integer().required(),
+      seedsHeld: a.integer().required(),
+    }),
+
+    // ご当地の実の取り替えの結果(もらった実の手元の数と、市場に残っている自分の実の数)
+    TaneLocalTradeResult: a.customType({
+      takeItemId: a.string().required(),
+      takeQuantity: a.integer().required(),
+      mineLeft: a.integer().required(),
+    }),
+
+    // 市場に並んでいるご当地の実(ものごと。生産者は出さない)。mine は自分が生産者の数(取り替えに使える)、
+    // others はほかの人の数、available はそのうち自分がもらえる数(同じ生産者の同じ実をもう持っているものを除く)
+    // blockedGives は、並べている相手が全員もう持っていて、そのものとの取り替えに出せない自分の実
+    TaneLocalMarketItem: a.customType({
+      itemId: a.string().required(),
+      localRank: a.integer().required(),
+      mine: a.integer().required(),
+      others: a.integer().required(),
+      available: a.integer().required(),
+      blockedGives: a.string().required().array().required(),
+    }),
+
+    // フォローしてもらうリンクを開いたときの、リンクの持ち主
+    FollowInviteOwner: a.customType({
+      userId: a.id().required(),
+      nickname: a.string().required(),
     }),
 
     // ほかの人のガーデン(見るだけ)。nickname は持ち主のニックネーム
@@ -679,6 +758,22 @@ const schema = a
       .handler(a.handler.function(chizuTanePlayer)),
 
     // 地図タネ: コースごとの遊んでいる人数
+    // 管理画面: ご当地の実の状況(ご当地の畑・市場の実・タネをもらった記録・持っている人の数。JSON の文字列)。
+    // 利用者のデータを含むので、Cognito の admin グループの人だけ(amplify/auth/resource.ts の groups)
+    adminTaneLocalStatus: a
+      .query()
+      .returns(a.string())
+      .authorization((allow) => [allow.group("admin")])
+      .handler(a.handler.function(chizuTaneAdmin)),
+
+    // 管理画面: 遊んでいる人と畑の状況(ゲームが進んでいるかの確認用。JSON の文字列。fields は引数で見分けるための目印)。admin グループの人だけ
+    adminTaneFieldStatus: a
+      .query()
+      .arguments({ fields: a.boolean().required() })
+      .returns(a.string())
+      .authorization((allow) => [allow.group("admin")])
+      .handler(a.handler.function(chizuTaneAdmin)),
+
     taneCourseCounts: a
       .query()
       .returns(a.ref("TaneCourseCount").array())
@@ -726,6 +821,14 @@ const schema = a
       .mutation()
       .arguments({ areaKey: a.string().required() })
       .returns(a.ref("GameTaneBase"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
+    // 地図タネ: 実って1週間たった自分の畑の残りの実を、遠くから宅急便で全部回収する(畑は空き地に戻る。2026-11-05)
+    deliverTaneFruits: a
+      .mutation()
+      .arguments({ areaKey: a.string().required(), deliver: a.boolean().required() })
+      .returns(a.ref("TaneDeliveryResult"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
@@ -853,10 +956,50 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTanePlayer)),
 
+    // 市場: 同じ実3個を、同じコースの1つ上のレベルの同じ番号のタネ1個と交換する(courses.ts の exchangeSeedFor)
+    exchangeTaneFruits: a
+      .mutation()
+      .arguments({ itemId: a.string().required() })
+      .returns(a.ref("TaneExchangeResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneMarket)),
+
+    // うさぽ農園の市場: 並んでいるご当地の実の一覧(listLocal は引数で見分けるための目印)
+    listTaneLocalMarket: a
+      .query()
+      .arguments({ listLocal: a.boolean().required() })
+      .returns(a.ref("TaneLocalMarketItem").array())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneMarket)),
+
+    // うさぽ農園の市場: ご当地の実の取り替え。市場にある自分の実1個(giveItemId)と、同じ何個目のほかの人の実1個(takeItemId)を取り替える
+    exchangeTaneLocalFruit: a
+      .mutation()
+      .arguments({ giveItemId: a.string().required(), takeItemId: a.string().required() })
+      .returns(a.ref("TaneLocalTradeResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneMarket)),
+
     setFollowing: a
       .mutation()
       .arguments({ followeeId: a.id().required(), follow: a.boolean().required() })
       .returns(a.boolean())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(setFollowing)),
+
+    // フォローしてもらうリンクの token を返す(無ければ作る。renew なら作り直して、前のリンクを使えなくする)
+    issueFollowInvite: a
+      .mutation()
+      .arguments({ renew: a.boolean().required() })
+      .returns(a.string())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(setFollowing)),
+
+    // フォローしてもらうリンクを開いた: リンクの持ち主をフォローし、持ち主の農園を見せてもらう。持ち主を返す
+    acceptFollowInvite: a
+      .mutation()
+      .arguments({ token: a.string().required() })
+      .returns(a.ref("FollowInviteOwner"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(setFollowing)),
 
@@ -876,9 +1019,12 @@ const schema = a
     allow.resource(chizuTanePlayer),
     allow.resource(chizuTanePlace),
     allow.resource(chizuTaneCheckin),
+    allow.resource(chizuTaneMarket),
     allow.resource(chizuTaneSeeds),
     allow.resource(chizuTaneStats),
     allow.resource(chizuTaneShelf),
+    allow.resource(chizuTaneSweep),
+    allow.resource(chizuTaneAdmin),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

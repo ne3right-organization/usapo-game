@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { TaneCourse } from "@/lib/game/chizuTane/courses";
 import { growthStage } from "@/lib/game/chizuTane/growth";
 import { OFFICIAL_DAILY_LIMIT, officialDayKey, officialFieldsFor } from "@/lib/game/chizuTane/official";
+import { OFFICIAL_FIELDS_ANCHOR } from "@/lib/game/chizuTane/tips";
 import { fetchOfficialVisits, taneDayMs, type TaneOfficialVisit } from "@/lib/game/chizuTaneData";
 import { CardBody, CardGrid } from "./TaneCards";
 import { ErrorText, GrowthStageIcon, ItemIcon, Loading } from "./TaneParts";
@@ -53,7 +54,7 @@ export default function OfficialFields({ course }: { course: TaneCourse }) {
   );
 
   return (
-    <section className="mt-8">
+    <section id={OFFICIAL_FIELDS_ANCHOR} className="mt-8 scroll-mt-4">
       {allDone ? (
         <h2 className="mb-1">
           <button
