@@ -19,7 +19,7 @@ import { useTanePlayer } from "./useTanePlayer";
 // 市場(2026-11-05。集めたものの画面の上からリンクする)。
 // - 同じ実3個を1つ上のレベルの同じ番号のタネ1個と交換できる(みかんの木 → チューリップ。courses.ts の exchangeSeedFor)。
 //   いまの環境の上限レベル(本番は Lv.3)の種類の実と、ご当地の実は交換できない
-//   ガーデンに飾っている分は使えない
+//   ガーデンに飾っている分は使えない。並べるのは、いま交換できる(飾っていない分が3個以上ある)実だけ
 // - ご当地の実の取り替え(LocalSwap): 市場にある自分が育てたご当地の実1個と、同じ何個目のほかの人の実1個を取り替える(生産者とものの組みにつき1人1個)
 export default function MarketView() {
   const [state] = useTanePlayer();
@@ -86,6 +86,9 @@ function Market() {
   };
 
   const maxLevel = taneMaxLevel();
+  // いま交換できる実だけ並べる(交換して足りなくなったものは消える)
+  const spareOf = (row: Row) => Math.max(0, row.quantity - row.placed);
+  const shown = rows?.filter((row) => spareOf(row) >= FRUITS_PER_EXCHANGE_SEED) ?? null;
 
   return (
     <div>
@@ -104,16 +107,14 @@ function Market() {
       )}
       {error && <ErrorText message={error} />}
       {!rows && !error && <Loading />}
-      {rows?.length === 0 && (
+      {shown?.length === 0 && (
         <p className="text-sm text-[#a8937a] text-center py-8">
-          交換できる実がまだありません。畑で実を収穫すると、ここで交換できます
+          いま交換できる実はありません。同じ実を{FRUITS_PER_EXCHANGE_SEED}個集めると、ここで交換できます
         </p>
       )}
-      {rows && rows.length > 0 && (
+      {shown && shown.length > 0 && (
         <ul className="space-y-2">
-          {rows.map((row) => {
-            const spare = Math.max(0, row.quantity - row.placed);
-            const can = spare >= FRUITS_PER_EXCHANGE_SEED;
+          {shown.map((row) => {
             const fromType = TANE_BASE_TYPE_BY_ID.get(row.fruit.baseTypeId);
             const toType = TANE_BASE_TYPE_BY_ID.get(row.seed.baseTypeId);
             return (
@@ -142,10 +143,10 @@ function Market() {
                   <button
                     type="button"
                     onClick={() => exchange(row)}
-                    disabled={!can || busy !== null}
+                    disabled={busy !== null}
                     className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 disabled:bg-[#d6cfc4] active:scale-[0.98] transition-transform"
                   >
-                    {busy === row.fruit.itemId ? "交換しています..." : can ? "交換する" : `あと${FRUITS_PER_EXCHANGE_SEED - spare}個`}
+                    {busy === row.fruit.itemId ? "交換しています..." : "交換する"}
                   </button>
                 </div>
               </li>
