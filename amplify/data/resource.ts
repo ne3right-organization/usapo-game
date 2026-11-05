@@ -670,12 +670,14 @@ const schema = a
 
     // 市場に並んでいるご当地の実(ものごと。生産者は出さない)。mine は自分が生産者の数(取り替えに使える)、
     // others はほかの人の数、available はそのうち自分がもらえる数(同じ生産者の同じ実をもう持っているものを除く)
+    // blockedGives は、並べている相手が全員もう持っていて、そのものとの取り替えに出せない自分の実
     TaneLocalMarketItem: a.customType({
       itemId: a.string().required(),
       localRank: a.integer().required(),
       mine: a.integer().required(),
       others: a.integer().required(),
       available: a.integer().required(),
+      blockedGives: a.string().required().array().required(),
     }),
 
     // フォローしてもらうリンクを開いたときの、リンクの持ち主

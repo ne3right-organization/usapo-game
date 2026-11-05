@@ -288,8 +288,10 @@ function LocalSwap() {
             </p>
           ) : (
             <ul className="space-y-2">
-              {takes.map(({ item, others, available }) => {
-                const can = !!give && available > 0;
+              {takes.map(({ item, others, available, blockedGives }) => {
+                // 選んだ実を、並べている相手が全員もう持っていると取り替えられない
+                const blocked = !!give && blockedGives.includes(give.itemId);
+                const can = !!give && available > 0 && !blocked;
                 return (
                   <li key={item.itemId} className="bg-white rounded-xl shadow-[0_2px_8px_rgba(120,90,40,0.06)] p-3 flex items-center gap-2">
                     <ItemIcon item={item} size={36} />
@@ -308,7 +310,15 @@ function LocalSwap() {
                       disabled={!can || busy !== null}
                       className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 disabled:bg-[#d6cfc4] active:scale-[0.98] transition-transform"
                     >
-                      {busy === item.itemId ? "取り替えています..." : available === 0 ? "もう持っています" : give ? "取り替える" : "1. を選んでね"}
+                      {busy === item.itemId
+                        ? "取り替えています..."
+                        : available === 0
+                          ? "もう持っています"
+                          : blocked
+                            ? "相手が持っています"
+                            : give
+                              ? "取り替える"
+                              : "1. を選んでね"}
                     </button>
                   </li>
                 );

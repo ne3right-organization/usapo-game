@@ -97,19 +97,40 @@ async function receivedKeys(c: DataClient, userId: string): Promise<Set<string>>
   return keys;
 }
 
-/** 並んでいるご当地の実を、ものごとにまとめる(生産者は出さない) */
+/**
+ * 並んでいるご当地の実を、ものごとにまとめる(生産者は出さない)。
+ * blockedGives: そのものを並べている相手が全員、自分のその実をもう持っていて、取り替えに出せない自分の実(画面で、選んだ実では取り替えられないと出す)
+ */
 async function listLocalMarket(c: DataClient, userId: string): Promise<MarketItem[]> {
   const [listings, received] = await Promise.all([listListings(c), receivedKeys(c, userId)]);
   const byItem = new Map<string, MarketItem>();
+  const partnersOf = new Map<string, string[]>(); // もの → もらえる相手
   for (const l of listings) {
     const n = l.leftover ?? 0;
-    const row = byItem.get(l.itemId) ?? { itemId: l.itemId, localRank: l.localRank, mine: 0, others: 0, available: 0 };
+    const row = byItem.get(l.itemId) ?? { itemId: l.itemId, localRank: l.localRank, mine: 0, others: 0, available: 0, blockedGives: [] };
     if (l.producerId === userId) row.mine += n;
     else {
       row.others += n;
-      if (!received.has(localFruitSourceKey(l.producerId, l.itemId))) row.available += n;
+      if (!received.has(localFruitSourceKey(l.producerId, l.itemId))) {
+        row.available += n;
+        partnersOf.set(l.itemId, [...(partnersOf.get(l.itemId) ?? []), l.producerId]);
+      }
     }
     byItem.set(l.itemId, row);
+  }
+
+  // 相手が自分の実をもう持っているか(相手ごとに1回だけ読む)
+  const gives = [...byItem.values()].filter((r) => r.mine > 0);
+  if (gives.length > 0) {
+    const partners = [...new Set([...partnersOf.values()].flat())];
+    const keysOf = new Map(await Promise.all(partners.map(async (p) => [p, await receivedKeys(c, p)] as const)));
+    for (const row of byItem.values()) {
+      const ps = partnersOf.get(row.itemId) ?? [];
+      if (ps.length === 0) continue;
+      row.blockedGives = gives
+        .filter((g) => g.localRank === row.localRank && ps.every((p) => keysOf.get(p)?.has(localFruitSourceKey(userId, g.itemId))))
+        .map((g) => g.itemId);
+    }
   }
   return [...byItem.values()];
 }
