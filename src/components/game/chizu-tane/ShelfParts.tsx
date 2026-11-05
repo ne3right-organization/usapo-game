@@ -52,6 +52,7 @@ async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]
         .map((x) => ({ kind: "seed" as const, ...x, quantity: x.quantity - (needed.has(x.itemId) ? 1 : 0) }))
         .filter((x) => x.quantity > 0),
       ...garden.items
+        .filter((x) => !TANE_LOCAL_ITEM_BY_ID.has(x.itemId))
         .map((x) => ({ kind: "fruit" as const, itemId: x.itemId, quantity: x.quantity - (placed.get(x.itemId) ?? 0) }))
         .filter((x) => x.quantity > 0),
     ],
@@ -170,7 +171,7 @@ export function MyShelf() {
     <section className="mt-6">
       <h2 className="text-xs font-bold text-[#a8937a] mb-1">🧺 おすそ分けの棚</h2>
       <p className="text-2xs text-[#a8937a] mb-2 leading-relaxed">
-        余ったタネや実を棚に出しておくと、あなたが「農園を見せる」にしたフォロワーが、遠くから1日1個ずつ持っていけます。出したものは手元から減ります（戻すこともできます）。ガーデンに飾っている実と、ご当地のタネは出せません。レベルを上げるのにまだまいていないタネは、1個は手元に残します。
+        余ったタネや実を棚に出しておくと、あなたが「農園を見せる」にしたフォロワーが、遠くから1日1個ずつ持っていけます。出したものは手元から減ります（戻すこともできます）。ガーデンに飾っている実と、ご当地のタネ・実は出せません。レベルを上げるのにまだまいていないタネは、1個は手元に残します。
       </p>
       {error && <ErrorText message={error} />}
       {!shelf && !error && <Loading />}
