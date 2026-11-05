@@ -10,6 +10,7 @@ import { chizuTanePlayer } from "./functions/chizu-tane-player/resource";
 import { chizuTaneSeeds } from "./functions/chizu-tane-seeds/resource";
 import { chizuTaneShelf } from "./functions/chizu-tane-shelf/resource";
 import { chizuTaneStats } from "./functions/chizu-tane-stats/resource";
+import { chizuTaneSweep } from "./functions/chizu-tane-sweep/resource";
 import { createGameProfile } from "./functions/create-game-profile/resource";
 import { setFollowing } from "./functions/set-following/resource";
 import { setNickname } from "./functions/set-nickname/resource";
@@ -31,6 +32,7 @@ const backend = defineBackend({
   chizuTaneSeeds,
   chizuTaneShelf,
   chizuTaneStats,
+  chizuTaneSweep,
 });
 
 // 地図タネの落ちているタネ・実は早い者勝ちなので、拾う・落とす・実をもらう Lambda は拠点のテーブルを DynamoDB で直接(条件付きで)書き換える
@@ -57,6 +59,10 @@ for (const fn of [backend.chizuTaneSeeds, backend.chizuTaneCheckin, backend.chiz
 // タネをまく・まき直すのも「空き地か、空き地に戻った畑のときだけ」「タネ待ちのときだけ」の条件付きで拠点のテーブルに書く
 taneBaseTable.grantReadWriteData(backend.chizuTanePlace.resources.lambda);
 backend.chizuTanePlace.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
+
+// 畑の終わり方の定期実行も、期限を過ぎた畑の行を「読んだときのままなら」の条件で消し、知らせた印を書く(amplify/functions/chizu-tane-sweep)
+taneBaseTable.grantReadWriteData(backend.chizuTaneSweep.resources.lambda);
+backend.chizuTaneSweep.addEnvironment("CHIZU_TANE_BASE_TABLE", taneBaseTable.tableName);
 
 // 公式の畑の育ちと落ちているタネも、二重に押されても1回分だけ進むよう条件付きで書き換える(amplify/functions/chizu-tane-checkin/handler.ts)
 const taneOfficialVisitTable = backend.data.resources.tables["GameTaneOfficialVisit"];

@@ -14,11 +14,11 @@ import {
 } from "../shared/chizuTane";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/courses";
 import { DAY_MS_PRODUCTION } from "../../../src/lib/game/chizuTane/geo";
-import { REPLANT_LIMIT_SLOTS, isAbandoned, openToOthersAt } from "../../../src/lib/game/chizuTane/growth";
+import { openToOthersAt } from "../../../src/lib/game/chizuTane/growth";
 import { notifyUsers } from "../shared/push";
 import { TANE_LOCAL_ITEM_BY_ID, TANE_LOCAL_PREFS, isLocalBaseTypeId } from "../../../src/lib/game/chizuTane/localItems";
 
-// 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。タネ待ちの畑が空き地に戻るまでは REPLANT_LIMIT_SLOTS 区切り
+// 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。タネ待ちの畑にほかの人もまけるようになるまでは OWNER_PRIORITY_SLOTS 区切り
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
 
 type Args = Partial<LocateArgs> & { itemId: string; areaKey?: string };
@@ -34,11 +34,6 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
   if (typeof areaKey === "string") return replant(c, userId, areaKey, itemId);
   return place(c, userId, event.arguments as LocateArgs & { itemId: string });
 };
-
-/** 空き地に戻ったとみなす境目(これより前からタネ待ちの畑は空き地) */
-function abandonedBefore(now: Date): string {
-  return new Date(now.getTime() - REPLANT_LIMIT_SLOTS * DAY_MS).toISOString();
-}
 
 async function requireHeldSeed(c: DataClient, userId: string, itemId: string, name: string) {
   const seed = unwrap(await c.models.GameTaneHeldSeed.get({ userId, itemId }));
@@ -57,7 +52,8 @@ function jstLabel(d: Date): string {
 }
 
 /**
- * いまいる地区にタネ(拠点)をまく。1地区に1つ、早い者勝ち。タネ待ちのまま1週間たって空き地に戻った畑にもまける。
+ * いまいる地区にタネ(拠点)をまく。1地区に1つ、早い者勝ち。空き地に戻った畑(タネ待ちのまま1週間・腐り落ちた・枯れた。growth.ts)は、
+ * 定期実行の chizu-tane-sweep が行を消すので、その地区は空き地と同じ。
  * タネ待ちの畑は、持ち主がまき直さないまま1日たつと、現地に来たほかの人もまけて、まいた人の畑になる
  * (growth.ts の OWNER_PRIORITY_SLOTS。前の持ち主は手放したことになり、通知で知らせる)。
  * 持っているタネ(もの)を1つ使い、そのものの種類の拠点を作る(梨の木のタネ → 果樹園)。種類やレベルの制限は無い。
@@ -71,12 +67,11 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
   assertNotTooFast(player, district, now);
 
   const found = unwrap(await c.models.GameTaneBase.get({ areaKey: district.areaKey }));
-  // 空き地に戻った畑は、無いのと同じ
-  const existing = found && !isAbandoned(found, now, DAY_MS) ? found : null;
+  const existing = found;
   // タネ待ちの畑に、ほかの人として(持ち主から取って)まくときの前の持ち主
   let previousOwnerId: string | null = null;
-  // ほかの人もまけるようになった境目(これより前からタネ待ちの畑にまける)
-  let waitingBefore = abandonedBefore(now);
+  // ほかの人もまけるようになった境目(これより前からタネ待ちの畑にまける)。空き地なら、行が無いときだけ書ける
+  let waitingBefore = new Date(0).toISOString();
   if (existing) {
     if (!existing.waitingSince) throw new Error("この地区にはもうタネがあります");
     previousOwnerId = await baseOwnerId(c, existing.areaKey);
@@ -169,7 +164,6 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
  * まき直しは開拓した地区の数(ガーデン)には数えないが、まいたことのあるタネ(レベルの条件)には入る
  */
 async function replant(c: DataClient, userId: string, areaKey: string, itemId: string) {
-  const now = new Date();
   const player = await requirePlayer(c, userId);
   const own = unwrap(await c.models.GameTaneOwnership.get({ ownerId: userId, areaKey }));
   const base = unwrap(await c.models.GameTaneBase.get({ areaKey }));
@@ -177,13 +171,12 @@ async function replant(c: DataClient, userId: string, areaKey: string, itemId: s
   if (!own || !base) throw new Error("自分の畑にだけ、タネをまき直せます");
   if (!base.waitingSince) throw new Error("この畑はタネ待ちではありません（実が全部収穫されると、まき直せます）");
   if (isLocalBaseTypeId(base.baseTypeId)) throw new Error("ご当地の畑はまき直せません（1回かぎりの畑です）");
-  if (isAbandoned(base, now, DAY_MS)) throw new Error("1週間たったので、この畑は空き地に戻りました");
   const item = TANE_ITEM_BY_ID.get(itemId);
   if (!item || !TANE_BASE_TYPE_BY_ID.has(item.baseTypeId)) throw new Error("そのタネはまけません");
   if (TANE_LOCAL_ITEM_BY_ID.has(item.itemId)) throw new Error("ご当地のタネは、空き地にだけまけます");
   const seed = await requireHeldSeed(c, userId, item.itemId, item.name);
 
-  if (!(await replantBaseRow(areaKey, item.itemId, item.baseTypeId, abandonedBefore(now)))) {
+  if (!(await replantBaseRow(areaKey, item.itemId, item.baseTypeId))) {
     throw new Error("タネをまき直せませんでした。画面を読み直してください");
   }
   unwrap(await c.models.GameTaneOwnership.update({ ownerId: userId, areaKey, seedItemId: item.itemId, pastSeedItemIds: withPastSeed(own) }));

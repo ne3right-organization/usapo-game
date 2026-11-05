@@ -15,6 +15,7 @@ import {
   type TaneCourse,
 } from "@/lib/game/chizuTane/courses";
 import {
+  deliverFruits,
   fetchCourseCounts,
   fetchMyBases,
   fetchMyPlantedItemIds,
@@ -34,7 +35,7 @@ import { houseTierFor } from "@/lib/game/chizuTane/garden";
 import { TANE_LOCAL_ITEM_BY_ID, nextLocalItem } from "@/lib/game/chizuTane/localItems";
 import SwipePages from "./SwipePages";
 import { CardBody, useCardLayout } from "./TaneCards";
-import { GROWTH_STAGES, RIPE_STAGE, growthStage } from "@/lib/game/chizuTane/growth";
+import { GROWTH_STAGES, RIPE_STAGE, deliveryFrom, growthStage, rotAt, witherAt } from "@/lib/game/chizuTane/growth";
 import ReplantPicker from "./ReplantPicker";
 import InstallHint from "./InstallHint";
 import OfficialFields from "./OfficialFields";
@@ -220,6 +221,13 @@ function Home({ course }: { course: TaneCourse }) {
   };
 
   // タネ待ちの畑にまき直したあと: その畑と、持っているタネ・まいたことのあるタネを読み直す
+  // 宅急便で回収した畑は空き地に戻るので、一覧から消す
+  const handleDelivered = (base: TaneBase, delivered: number) => {
+    setBases((cur) => cur?.filter((x) => x.areaKey !== base.areaKey) ?? null);
+    setOpenAreaKey(null);
+    const place = `${base.townName}の${TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "畑"}`;
+    setWaterNotice({ message: `🚚 ${place}の実${delivered}個が、宅急便で届きました。畑は空き地に戻りました`, error: "" });
+  };
   const handleReplanted = async (next: TaneBase) => {
     setBases((cur) => cur?.map((x) => (x.areaKey === next.areaKey ? next : x)) ?? null);
     await Promise.all([loadSeeds(), fetchMyPlantedItemIds().then(setPlantedIds)]).catch(() => {});
@@ -339,6 +347,9 @@ function Home({ course }: { course: TaneCourse }) {
               const type = TANE_BASE_TYPE_BY_ID.get(b.baseTypeId);
               const stage = growthStage(b);
               const active = openAreaKey === b.areaKey;
+              // 宅急便で回収できる畑は、実の数の前にトラックを出す(タップすると回収のボタンが出る)
+              const from = TANE_LOCAL_ITEM_BY_ID.has(b.seedItemId) ? null : deliveryFrom(b);
+              const truck = from && from.getTime() <= new Date().getTime() ? "🚚" : "";
               // 絵の左に育ち(芽・花など)、右にランク(★)を出す。タネ待ちは短く「空き」(詳しくはタップで出す)
               const status = b.waitingSince
                 ? { text: "空き", className: "text-[#a16207] font-bold" }
@@ -384,7 +395,7 @@ function Home({ course }: { course: TaneCourse }) {
                         note={
                           cards.columns !== 1 &&
                           stage === RIPE_STAGE &&
-                          !b.waitingSince && <span className="block text-3xs mt-0.5 text-amber-600 font-bold">実{b.fruits ?? 0}個</span>
+                          !b.waitingSince && <span className="block text-3xs mt-0.5 text-amber-600 font-bold">{truck}実{b.fruits ?? 0}個</span>
                         }
                       />
                     </button>
@@ -392,7 +403,7 @@ function Home({ course }: { course: TaneCourse }) {
                       // 右端は「実○個」でもボタンでも同じ幅にして、名前の折り返し方をそろえる
                       <span className="shrink-0 w-[7em] text-2xs text-center">
                         {stage === RIPE_STAGE && !b.waitingSince ? (
-                          <span className="text-sm text-amber-600 font-bold">実{b.fruits ?? 0}個</span>
+                          <span className="text-sm text-amber-600 font-bold">{truck}実{b.fruits ?? 0}個</span>
                         ) : (
                           <RemoteWaterButton base={b} compact="side" onWatered={handleWatered} onNotice={setWaterNotice} />
                         )}
@@ -430,6 +441,7 @@ function Home({ course }: { course: TaneCourse }) {
                 <div className="mt-1">
                   <WaterHint base={b} />
                 </div>
+                <FieldEndingNote base={b} onDelivered={handleDelivered} />
                 {b.waitingSince && <ReplantPicker base={b} seeds={seeds ?? []} onReplanted={handleReplanted} />}
               </div>
             );
@@ -453,6 +465,64 @@ function Home({ course }: { course: TaneCourse }) {
 }
 
 const noopSubscribe = () => () => {};
+
+/** 日時を「11月2日 14:30」の形に(日本時間) */
+function dateLabel(d: Date): string {
+  return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * 畑の終わり方(growth.ts)の案内。実っている畑は、宅急便で回収できる日時(過ぎていれば回収のボタン)と腐り落ちる日時、
+ * 育っている途中の畑は、水が入らないと枯れる日時を出す。ご当地の畑は宅急便で回収できない。
+ * 腐る・枯れるは定期実行(chizu-tane-sweep。1日3回)で行うので、その日時の次の区切りまでに空き地に戻る(「ごろ」と出す)
+ */
+function FieldEndingNote({ base, onDelivered }: { base: TaneBase; onDelivered: (base: TaneBase, delivered: number) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const now = new Date();
+  const local = TANE_LOCAL_ITEM_BY_ID.has(base.seedItemId);
+  const from = deliveryFrom(base);
+  const rot = rotAt(base);
+  const wither = witherAt(base);
+
+  if (wither) {
+    return <p className="text-2xs text-[#a8937a] mt-1">🍂 {dateLabel(wither)}ごろまでに水が入らないと、枯れて空き地に戻ります</p>;
+  }
+  if (!from || !rot) return null;
+  const canDeliver = !local && from.getTime() <= now.getTime();
+
+  const handle = async () => {
+    if (!window.confirm(`残りの実${base.fruits ?? 0}個を宅急便で回収しますか？
+回収すると畑は空き地に戻り、ランクも無くなります`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      onDelivered(base, await deliverFruits(base.areaKey));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 text-2xs text-[#78716c] space-y-1">
+      {!local && !canDeliver && <p>🚚 {dateLabel(from)}から、残りの実を宅急便で全部回収できます（畑は空き地に戻ります）</p>}
+      {canDeliver && (
+        <button
+          type="button"
+          onClick={handle}
+          disabled={busy}
+          className="w-full rounded-xl py-2 text-xs font-semibold text-white bg-amber-600 disabled:opacity-50 active:scale-[0.98] transition-transform"
+        >
+          {busy ? "回収しています..." : `🚚 宅急便で残りの実${base.fruits ?? 0}個を回収する`}
+        </button>
+      )}
+      {canDeliver && <p>回収すると畑は空き地に戻り、ランクも無くなります</p>}
+      <p className="text-[#a16207]">🍂 {dateLabel(rot)}ごろに実が腐り落ちて、畑は空き地に戻ります</p>
+      {error && <ErrorText message={error} />}
+    </div>
+  );
+}
 
 /** 遠くから水をやったときの知らせ(message は緑の枠、error は赤い字) */
 type WaterNotice = { message: string; error: string };

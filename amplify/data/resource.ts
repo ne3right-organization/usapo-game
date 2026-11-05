@@ -1,5 +1,6 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 import { chizuTaneCheckin } from "../functions/chizu-tane-checkin/resource";
+import { chizuTaneSweep } from "../functions/chizu-tane-sweep/resource";
 import { chizuTaneMarket } from "../functions/chizu-tane-market/resource";
 import { chizuTanePlace } from "../functions/chizu-tane-place/resource";
 import { chizuTanePlayer } from "../functions/chizu-tane-player/resource";
@@ -328,8 +329,13 @@ const schema = a
         // たまると実って fruits(残っている実の数)がランク×10になり、実が全部取られると water を0に戻してタネ待ちになる
         water: a.integer(),
         fruits: a.integer(),
-        // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す
+        // いまなっている実が実った日時(実が全部取られたら消す)。収穫の記録に「実がなった日」として写す。
+        // 実って1週間で持ち主が宅急便で回収でき、そこから1か月で腐り落ちて空き地に戻る(growth.ts の「畑の終わり方」)
         ripenedAt: a.datetime(),
+        // 最後に水が入った日時(誰の水でも)。1か月水が入らないと枯れて空き地に戻る(2026-11-05 に足した。無い行はまいた日時から数える)
+        lastWateredAt: a.datetime(),
+        // 畑の終わりが近いことを、持ち主にもう知らせた印(growth.ts の FieldNotice.key。定期実行の chizu-tane-sweep が書く)
+        endingNotice: a.string(),
         // 持ち主が最後に遠くから水をやった時間帯(朝・昼・夜に1回。src/lib/game/chizuTane/geo.ts の slotKey。dev は5分ごと)
         lastRemoteWaterOn: a.string(),
         // 落ちているタネ(まかれたタネと同じもの)。ほかの人のチェックインのたびに1個落ち、3個まで。誰でも早い者勝ちで拾える
@@ -338,7 +344,7 @@ const schema = a
         lastOwnerVisitOn: a.string(),
         // 実が全部取られて、持ち主がタネをまき直すのを待ち始めた日時(まき直したら消す)。
         // 1日(growth.ts の OWNER_PRIORITY_SLOTS)まき直さなければ、現地に来たほかの人もまけて、まいた人の畑になる(ご当地の畑はタネ待ちにならず、消える)。
-        // 1週間(REPLANT_LIMIT_SLOTS)まかなければ空き地に戻り、誰でもまける(どちらも行は新しくまいた人が上書きする)
+        // 1週間(REPLANT_LIMIT_MS)まかなければ空き地に戻り、誰でもまける(ほかの人がまくときは行を上書きし、空き地に戻すのは定期実行の chizu-tane-sweep が行を消す)
         waitingSince: a.datetime(),
       })
       .identifier(["areaKey"])
@@ -561,6 +567,12 @@ const schema = a
 
     // フォローしている人の畑(手伝いの水やりの一覧)。fieldId は畑をまいた日時(畑の目印)。
     // 地区も出す(全国農地と見比べれば地区は分かってしまうので隠さない。見せる相手は持ち主が選んでいる)
+    // 宅急便で回収した結果(届いた実と数)
+    TaneDeliveryResult: a.customType({
+      itemId: a.string().required(),
+      delivered: a.integer().required(),
+    }),
+
     TaneHelpField: a.customType({
       fieldId: a.string().required(),
       prefName: a.string().required(),
@@ -761,6 +773,14 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(chizuTaneCheckin)),
 
+    // 地図タネ: 実って1週間たった自分の畑の残りの実を、遠くから宅急便で全部回収する(畑は空き地に戻る。2026-11-05)
+    deliverTaneFruits: a
+      .mutation()
+      .arguments({ areaKey: a.string().required(), deliver: a.boolean().required() })
+      .returns(a.ref("TaneDeliveryResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneCheckin)),
+
     // 地図タネ: フォローしていて、自分に「農園を見せる」にしている人の畑の一覧(手伝いの水やり用)
     listTaneHelpFields: a
       .query()
@@ -936,6 +956,7 @@ const schema = a
     allow.resource(chizuTaneSeeds),
     allow.resource(chizuTaneStats),
     allow.resource(chizuTaneShelf),
+    allow.resource(chizuTaneSweep),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;
