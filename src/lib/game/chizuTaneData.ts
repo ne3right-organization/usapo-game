@@ -366,6 +366,17 @@ export async function fetchShelf(ownerId?: string): Promise<TaneShelf> {
   return toShelf(unwrap(await data.queries.taneShelf(ownerId ? { ownerId } : {})));
 }
 
+/** タネ待ちの畑にタネをまき直したことがあるか(まき直すと、前のタネが pastSeedItemIds に残る。手放した畑も含む) */
+export async function fetchEverReplanted(): Promise<boolean> {
+  return (await fetchMyOwnerships()).some((o) => (o.pastSeedItemIds ?? []).length > 0);
+}
+
+/** 棚に一度でも出したことがあるか(棚の行は、全部戻して0個になっても消さずに残る) */
+export async function fetchEverStockedShelf(): Promise<boolean> {
+  const ownerId = await requireUserId();
+  return unwrap(await data.models.GameTaneShelf.list({ ownerId, limit: 1 })).length > 0;
+}
+
 /** 自分の棚に、手元のタネ・実を出す(count > 0)・手元に戻す(count < 0) */
 export async function stockShelf(kind: TaneShelfItem["kind"], itemId: string, count: number): Promise<TaneShelf> {
   await requireUserId();

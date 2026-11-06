@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { isPushEnabled, pushAvailability } from "@/lib/push/client";
 import { DisplaySizeChooser } from "@/components/DisplaySizeSettings";
+import { INSTALL_HINT_ANCHOR } from "@/lib/game/chizuTane/tips";
 
 const noopSubscribe = () => () => {};
 
@@ -48,7 +49,7 @@ export default function InstallHint() {
   const what = "タネが実った・誰かが来た・実が全部収穫された（タネのまき直しは1日以内に）などを、通知で知らせます。";
 
   return (
-    <section className="mt-6">
+    <section id={INSTALL_HINT_ANCHOR} className="mt-6 scroll-mt-4">
       <h2 className="text-sm font-bold text-[#3c2a14] mb-1">快適に遊ぶために</h2>
       {(showInstall || showNotify) && (
         <p className="text-xs text-[#78716c] mb-3">
