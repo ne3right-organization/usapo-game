@@ -58,6 +58,8 @@ export interface TaneTipStatus {
   hasIcon: boolean;
   /** ご当地のタネをまいたことがある(手放した畑も含む) */
   everPlantedLocal: boolean;
+  /** 毎日のガチャを引いたことがある */
+  everDrewGacha: boolean;
 }
 
 export interface TaneTip {
@@ -86,6 +88,9 @@ export const TANE_TIP_INTERVAL_MS = 3 * 3_600_000;
 /** ホームの公式の畑のところ(OfficialFields)。ヒントのボタンから、ここまでスクロールする */
 export const OFFICIAL_FIELDS_ANCHOR = "official-fields";
 
+/** ホームの毎日のガチャ(DailyGacha)。ヒントのボタンから、ここまでスクロールする */
+export const DAILY_GACHA_ANCHOR = "daily-gacha";
+
 /** ホームのホーム画面への追加と通知の案内(InstallHint)。ヒントのボタンから、ここまでスクロールする */
 export const INSTALL_HINT_ANCHOR = "install-hint";
 
@@ -103,6 +108,21 @@ export function taneTips(s: TaneTipStatus): TaneTip[] {
       ],
       action: { label: "✏️ 設定を開く", href: "/nickname" },
       done: (s) => s.hasNickname,
+      applies: () => true,
+    },
+    {
+      // なぞのタネのことは秘密なので書かない
+      id: "gacha",
+      stage: 1,
+      nonBlocking: true,
+      emoji: "🎁",
+      title: "毎日ガチャを引こう",
+      body: [
+        "ホームの「今日のガチャ」は1日1回引けて、タネか実がもらえます。土日祝は朝・昼・夜に1回ずつ引けて、当たりも出やすくなります。",
+        "ホームを開いたら、まず引いてみましょう。",
+      ],
+      action: { label: "🎁 ガチャを見る", anchor: DAILY_GACHA_ANCHOR },
+      done: (s) => s.everDrewGacha,
       applies: () => true,
     },
     {

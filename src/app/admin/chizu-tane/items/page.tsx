@@ -4,7 +4,7 @@ import { MAX_LEVEL_DEV, MAX_LEVEL_PRODUCTION, TANE_COURSES, TANE_ITEMS, type Tan
 import { TANE_LOCAL_BASE_TYPE_IDS, TANE_LOCAL_ITEMS, TANE_LOCAL_PREFS, TANE_LOCAL_RANK_ROLES } from "@/lib/game/chizuTane/localItems";
 import { ItemIcon, SeedIcon } from "@/components/game/chizu-tane/TaneParts";
 import { MYSTERY_BASE_TYPE, MYSTERY_ITEMS } from "@/lib/game/chizuTane/mysteryItems";
-import { GACHA_MYSTERY_RATE } from "@/lib/game/chizuTane/gacha";
+import { GACHA_RATES_HOLIDAY, GACHA_RATES_WEEKDAY } from "@/lib/game/chizuTane/gacha";
 
 // 管理: アイテム定義(src/lib/game/chizuTane/courses.ts)と、その絵の一覧。
 // 絵を描く人との確認用。絵ができたら courses.ts のアイテムに imageUrl を足すと、ここにも出る
@@ -96,7 +96,7 @@ export default function ChizuTaneItemsPage() {
           {MYSTERY_BASE_TYPE.emoji} {MYSTERY_BASE_TYPE.name}（なぞのタネ）<span className="text-xs font-normal text-[#a8937a]"> ({MYSTERY_BASE_TYPE.id})</span>
         </h2>
         <p className="text-xs text-[#78716c] mb-3">
-          定義: <code>src/lib/game/chizuTane/mysteryItems.ts</code>。毎日のガチャ（<code>gacha.ts</code>）で {Math.round(GACHA_MYSTERY_RATE * 100)}% で出るなぞのタネからなるもの。
+          定義: <code>src/lib/game/chizuTane/mysteryItems.ts</code>。毎日のガチャ（<code>gacha.ts</code>）で平日 {Math.round(GACHA_RATES_WEEKDAY.mystery * 100)}%・土日祝 {Math.round(GACHA_RATES_HOLIDAY.mystery * 100)}% で出るなぞのタネからなるもの。
           {MYSTERY_ITEMS.length}件（絵あり {MYSTERY_ITEMS.filter((i) => i.imageUrl).length}件）。遊ぶ人には秘密（画面の説明・お知らせ・あそびかたには書かない）。絵は <code>kokumin</code> のシート
         </p>
         <div className="overflow-x-auto">

@@ -114,6 +114,7 @@ async function loadStatus(): Promise<TaneTipStatus | null> {
     hasFruit: harvests.length > 0,
     hasIcon: !!iconItemId,
     everPlantedLocal: [...planted].some((itemId) => TANE_LOCAL_ITEM_BY_ID.has(itemId)),
+    everDrewGacha: !!player?.lastGachaOn,
     sharing: viewers.size,
     push,
     everStocked,

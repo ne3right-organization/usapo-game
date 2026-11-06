@@ -18,6 +18,12 @@ export default function Home() {
           <p className="text-sm text-[#78716c] mt-2 leading-relaxed">
             うさぽの境界データ（geojson）を使った<br />地図ゲームコーナーです
           </p>
+          {/* 非公式・非営利であることを、トップのいちばん上に出す */}
+          <p className="mt-3 inline-block bg-white border border-[#eadfcb] rounded-xl px-3 py-2 text-xs text-[#78716c] leading-relaxed">
+            このサイトは、有志がボランティアで運営している<b className="text-[#3c2a14]">非公式・非営利</b>のサイトです。
+            <br />
+            料金はかからず、広告も載せていません。
+          </p>
           <div className="mt-3 flex items-center justify-center gap-4">
             <Link href="/history" className="inline-flex items-center gap-1 text-sm text-[#78716c] underline underline-offset-2">
               📜 遊んだ履歴

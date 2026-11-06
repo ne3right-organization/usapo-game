@@ -16,11 +16,11 @@ import {
   type LocateArgs,
 } from "../shared/chizuTane";
 import { DROPPED_SEEDS_MAX, levelFor, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
-import { GACHA_OWNER_ID, GACHA_PLACE, drawGacha, gachaDayKey } from "../../../src/lib/game/chizuTane/gacha";
+import { GACHA_OWNER_ID, GACHA_PLACE, drawGacha, gachaDayKey, gachaRates, isGachaHoliday } from "../../../src/lib/game/chizuTane/gacha";
 import { DAY_MS_PRODUCTION } from "../../../src/lib/game/chizuTane/geo";
 import { LOCAL_SEED_MIN_LEVEL, localItemFor } from "../../../src/lib/game/chizuTane/localItems";
 
-// 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。毎日のガチャは、本番は日本時間の日付、それ以外はこの区切りで1回
+// 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。毎日のガチャは、本番の平日は1日1回・土日祝はこの区切りで1回、それ以外はこの区切りで1回
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
 
 type Args = Partial<LocateArgs> & { count?: number; gacha?: boolean };
@@ -90,9 +90,11 @@ async function draw(c: DataClient, userId: string) {
   const player = await requirePlayer(c, userId);
   const now = new Date();
   const dayKey = gachaDayKey(now, DAY_MS);
-  if (!(await claimGachaDay(userId, dayKey))) throw new Error("今日のガチャはもう引きました。また明日引けます");
+  if (!(await claimGachaDay(userId, dayKey))) {
+    throw new Error(isGachaHoliday(now) ? "この時間帯のガチャはもう引きました。土日祝は朝・昼・夜に1回ずつ引けます" : "今日のガチャはもう引きました。また明日引けます");
+  }
   const [visited, planted] = await Promise.all([countVisitedBases(c, userId), plantedItemIds(c, userId)]);
-  const prize = drawGacha(levelFor(player.course as TaneCourse, visited, planted));
+  const prize = drawGacha(levelFor(player.course as TaneCourse, visited, planted), gachaRates(now));
   try {
     if (prize.kind === "seed") await addSeeds(c, userId, prize.item.itemId, 1);
     else await giveFruit({ areaKey: `gacha#${dayKey}`, ownerId: GACHA_OWNER_ID, ...GACHA_PLACE }, userId, prize.item.itemId);
