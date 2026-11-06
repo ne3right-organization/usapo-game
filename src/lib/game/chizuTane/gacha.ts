@@ -17,10 +17,13 @@ export interface GachaRates {
   seed: number;
 }
 
-/** 平日の確率(レア5%・タネ25%・実70%)。タネは増えやすいので、実を多めに */
-export const GACHA_RATES_WEEKDAY: GachaRates = { mystery: 0.05, seed: 0.25 };
-/** 土日祝の確率(レア20%・タネ50%・実30%) */
-export const GACHA_RATES_HOLIDAY: GachaRates = { mystery: 0.2, seed: 0.5 };
+/**
+ * 平日の確率(レア5%・タネ85%・実10%)。実がすぐ出るとタネをまいて育てる楽しみがなくなるので、ほとんどタネにする
+ * (2026-11-06 の v1.4.0 は タネ25%・実70% だった)
+ */
+export const GACHA_RATES_WEEKDAY: GachaRates = { mystery: 0.05, seed: 0.85 };
+/** 土日祝の確率(レア20%・タネ80%・実0%。実は出ない) */
+export const GACHA_RATES_HOLIDAY: GachaRates = { mystery: 0.2, seed: 0.8 };
 /** 平日のなぞのタネの確率(管理画面に出す) */
 export const GACHA_MYSTERY_RATE = GACHA_RATES_WEEKDAY.mystery;
 
