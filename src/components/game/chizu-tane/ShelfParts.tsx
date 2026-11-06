@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { TANE_ITEM_BY_ID, seedsNeededToLevelUp, type TaneCourse, type TaneItem } from "@/lib/game/chizuTane/courses";
 import { countPlaced } from "@/lib/game/chizuTane/garden";
 import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
+import { isMysteryItemId } from "@/lib/game/chizuTane/mysteryItems";
 import {
   fetchMyPlantedItemIds,
   fetchMySeeds,
@@ -48,7 +49,8 @@ async function loadMyShelf(): Promise<{ shelf: TaneShelf; spare: TaneShelfItem[]
     haveFruit: new Set(garden.items.filter((x) => x.quantity > 0).map((x) => x.itemId)),
     spare: [
       ...seeds
-        .filter((x) => !TANE_LOCAL_ITEM_BY_ID.has(x.itemId))
+        // ご当地のタネと、なぞのタネ(毎日のガチャの大当たり)は棚に出せない
+        .filter((x) => !TANE_LOCAL_ITEM_BY_ID.has(x.itemId) && !isMysteryItemId(x.itemId))
         .map((x) => ({ kind: "seed" as const, ...x, quantity: x.quantity - (needed.has(x.itemId) ? 1 : 0) }))
         .filter((x) => x.quantity > 0),
       ...garden.items

@@ -86,6 +86,11 @@ taneHelpTable.grantReadWriteData(backend.chizuTaneCheckin.resources.lambda);
 backend.chizuTaneCheckin.addEnvironment("CHIZU_TANE_VISIT_TABLE", taneVisitTable.tableName);
 backend.chizuTaneCheckin.addEnvironment("CHIZU_TANE_HELP_TABLE", taneHelpTable.tableName);
 
+// 毎日のガチャも、2台で同時に押しても1回分だけ引けるよう、プレイヤーの行に引いた印を条件付きで書く(amplify/functions/chizu-tane-seeds/handler.ts)
+const tanePlayerTable = backend.data.resources.tables["GameTanePlayer"];
+tanePlayerTable.grantReadWriteData(backend.chizuTaneSeeds.resources.lambda);
+backend.chizuTaneSeeds.addEnvironment("CHIZU_TANE_PLAYER_TABLE", tanePlayerTable.tableName);
+
 // おすそ分けの棚の数も早い者勝ちなので、棚のテーブルを条件付きで書き換える(amplify/functions/chizu-tane-shelf/handler.ts)
 const taneShelfTable = backend.data.resources.tables["GameTaneShelf"];
 taneShelfTable.grantReadWriteData(backend.chizuTaneShelf.resources.lambda);

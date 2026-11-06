@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import * as coursesModule from "../../src/lib/game/chizuTane/courses";
 import * as localItemsModule from "../../src/lib/game/chizuTane/localItems";
+import * as mysteryItemsModule from "../../src/lib/game/chizuTane/mysteryItems";
 
 // package.json が "type": "module" ではないので、tsx で動かすと courses.ts は CommonJS として読まれ、中身は default に入る。
 // 型の上(next build の型チェック)では ES モジュールなので、どちらでも取り出せるようにする
@@ -14,6 +15,10 @@ const courses = (coursesModule as unknown as { default?: typeof coursesModule })
 const { TANE_COURSES, TANE_ITEMS, baseTypesOf } = courses;
 const localItems = (localItemsModule as unknown as { default?: typeof localItemsModule }).default ?? localItemsModule;
 const { localItemFor } = localItems;
+const { MYSTERY_ITEMS } = (mysteryItemsModule as unknown as { default?: typeof mysteryItemsModule }).default ?? mysteryItemsModule;
+
+/** こくみんうさぎのぬいぐるみ(なぞのタネからなるもの。mysteryItems.ts)のシート。3つずつ1行に並べる(9点で 3×3) */
+export const MYSTERY_SHEET_ID = "kokumin";
 
 /** ご当地のもののシートの並び(左から右へ)。1シート = 1都道府県の同じ何個目の5点を横1列に */
 export const LOCAL_SHEET_COURSES = ["plant", "animal", "hobby", "vehicle", "building"] as const;
@@ -60,6 +65,10 @@ export type Rgba = { data: Buffer; width: number; height: number };
 /** シートID(plant-1 など)から、行ごとのアイテムID(1行 = 1種類のタネ1〜3。ご当地の local-13-2 などは1行に5コース) */
 export function sheetRows(sheetId: string): string[][] | null {
   if (sheetId === GROWTH_SHEET_ID) return GROWTH_ROWS;
+  if (sheetId === MYSTERY_SHEET_ID) {
+    const ids = MYSTERY_ITEMS.map((i) => i.itemId);
+    return Array.from({ length: Math.ceil(ids.length / 3) }, (_, r) => ids.slice(r * 3, r * 3 + 3));
+  }
   if (/^redo-\d+$/.test(sheetId)) return redoRows(sheetId);
   const group = /^local-([123])-p(\d{2})-(\d{2})$/.exec(sheetId);
   if (group) {

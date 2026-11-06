@@ -1,6 +1,7 @@
 "use client";
 
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID } from "@/lib/game/chizuTane/courses";
+import { asSeedLook } from "@/lib/game/chizuTane/mysteryItems";
 import type { TaneSeedCount } from "@/lib/game/chizuTaneData";
 import SwipePages from "./SwipePages";
 import { CardBody, useCardLayout } from "./TaneCards";
@@ -44,7 +45,7 @@ export default function SeedPicker({
             >
               <CardBody
                 icon={item ? <SeedIcon item={item} size={44} /> : null}
-                title={item?.name ?? sd.itemId}
+                title={item ? asSeedLook(item).name : sd.itemId}
                 note={type && <span className="block text-3xs text-[#a8937a] leading-tight">{type.name}になる</span>}
               >
                 <span className="block text-2xs text-emerald-700">×{sd.quantity}</span>

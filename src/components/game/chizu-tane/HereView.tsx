@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isHiddenMysteryFruit, isMysteryBaseTypeId, isMysteryItemId } from "@/lib/game/chizuTane/mysteryItems";
 import { TANE_BASE_TYPE_BY_ID, TANE_ITEM_BY_ID, fruitName, type TaneCourse } from "@/lib/game/chizuTane/courses";
 import type { TownDistrict } from "@/lib/game/chizuTane/geo";
 import { RIPE_STAGE, growthStage, openToOthersAt, waterUntilRipe } from "@/lib/game/chizuTane/growth";
@@ -318,6 +319,8 @@ function Here({ player }: { player: TanePlayer }) {
       const levelSeeds = res.seedsGained.filter((g) => g.reason === "level");
       const localSeeds = res.seedsGained.filter((g) => g.reason === "local");
       const local = isLocalBaseTypeId(res.baseTypeId);
+      // レアな畑(なぞのタネの畑)。実は1人1個で、配り終えたらなくなる。タネは落ちない
+      const rare = isMysteryBaseTypeId(res.baseTypeId);
       const item = res.itemId ? TANE_ITEM_BY_ID.get(res.itemId) : undefined;
       const parts: string[] = [];
       if (res.status === "fruit") {
@@ -325,13 +328,13 @@ function Here({ player }: { player: TanePlayer }) {
         parts.push(
           res.fruits > 0
             ? `ここの実は、あと${res.fruits}個です。`
-            : local
-              ? "実がなくなったので、このご当地の畑は役目を終えて、なくなりました。この地区には、また誰でもタネをまけます。"
+            : local || rare
+              ? `実がなくなったので、この${rare ? "レアな畑" : "ご当地の畑"}は役目を終えて、なくなりました。この地区には、また誰でもタネをまけます。`
               : `実がなくなったので、畑のランクが${res.rank ?? ""}に上がりました。持ち主がタネをまき直すのを待ちます。`
         );
       } else if (res.status === "have") {
         parts.push(
-          `この畑の${item?.name ?? "実"}は、もうもらっています。ご当地の実は1つの畑から1人1個なので、ほかの人のために残しておきました（ここの実は、あと${res.fruits}個です）。`
+          `この畑の${item?.name ?? "実"}は、もうもらっています。${rare ? "レアな畑" : "ご当地"}の実は1つの畑から1人1個なので、ほかの人のために残しておきました（ここの実は、あと${res.fruits}個です）。`
         );
       } else if (res.status === "ripened") {
         parts.push(
@@ -354,8 +357,8 @@ function Here({ player }: { player: TanePlayer }) {
           `このタネには、この時間帯はもう来ました。朝（4〜12時）・昼（12〜20時）・夜（20〜翌4時）にそれぞれ1回来られます${overrideAllowed ? `（開発環境では${Math.round(taneDayMs() / 60_000)}分ごとに区切っているので、その区切りが変わればまた来られます）` : ""}`
         );
       }
-      // ご当地の畑にはタネが落ちない
-      if (res.firstVisit && !local) {
+      // ご当地の畑・レアな畑にはタネが落ちない
+      if (res.firstVisit && !local && !rare) {
         parts.push(`初めて来たので、ここに${item?.name ?? ""}のタネが落ちました。欲しければ下から拾ってください。`);
       } else if (res.typeChanged) {
         parts.push(`前に来たときから畑の種類が変わったので、ここに${item?.name ?? ""}のタネが落ちました。欲しければ下から拾ってください。`);
@@ -367,7 +370,7 @@ function Here({ player }: { player: TanePlayer }) {
         kind: res.status === "already" ? "info" : "ok",
         text: parts.join(" "),
         // 実ったあと(実をもらった・もう持っていた)か、タネが落ちたときだけ絵を出す(ご当地の畑は実るまで伏せる)
-        itemId: gotFruit || res.status === "have" || (res.firstVisit && !local) || res.typeChanged ? res.itemId ?? undefined : undefined,
+        itemId: gotFruit || res.status === "have" || (res.firstVisit && !local && !rare) || res.typeChanged ? res.itemId ?? undefined : undefined,
         seed: !gotFruit && res.status !== "have",
       });
       if (res.seedsGained.length > 0) await reloadSeeds();
@@ -429,9 +432,10 @@ function Here({ player }: { player: TanePlayer }) {
       </>
     );
   };
-  // ほかの人のタネ待ちの畑にまけるタネ(ご当地のタネは空き地にだけまける)
-  const takeoverSeeds = (seeds ?? []).filter((s) => !TANE_LOCAL_ITEM_BY_ID.has(s.itemId));
-  const fruitHere = baseHere && !hiddenHere ? TANE_ITEM_BY_ID.get(baseHere.seedItemId) : undefined;
+  // ほかの人のタネ待ちの畑にまけるタネ(ご当地のタネ・なぞのタネは空き地にだけまける)
+  const takeoverSeeds = (seeds ?? []).filter((s) => !TANE_LOCAL_ITEM_BY_ID.has(s.itemId) && !isMysteryItemId(s.itemId));
+  // レアな畑は、実るまで何がなるかを伏せる
+  const fruitHere = baseHere && !hiddenHere && !isHiddenMysteryFruit(baseHere) ? TANE_ITEM_BY_ID.get(baseHere.seedItemId) : undefined;
 
   return (
     <div>

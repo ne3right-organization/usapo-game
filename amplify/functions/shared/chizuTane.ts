@@ -247,6 +247,19 @@ export function localFruitSourceKey(producerId: string, itemId: string): string 
 }
 
 /**
+ * レアな畑(なぞのタネの畑)の実をもらった記録のキー。畑ごと(地区とまいた日時)に1人1個なので、
+ * 同じ人が同じぬいぐるみのレアな畑をいくつ作っても、それぞれの畑から1個ずつもらえる
+ */
+export function rareFruitSourceKey(areaKey: string, plantedAt: string): string {
+  return `rare#${areaKey}#${plantedAt}`;
+}
+
+/** このレアな畑の実を、もうもらったか */
+export async function hasRareFruitFrom(c: DataClient, userId: string, areaKey: string, plantedAt: string): Promise<boolean> {
+  return !!unwrap(await c.models.GameTaneLocalFruit.get({ userId, sourceKey: rareFruitSourceKey(areaKey, plantedAt) }));
+}
+
+/**
  * この生産者のこのご当地の実を、もうもらったか(ご当地の実は生産者とものの組みにつき1人1個)。
  * 2026-11-02 より前は「ものにつき1人1個」で記録を持っていなかったので、収穫の記録(生産者が写してある)でも見る
  */
@@ -419,6 +432,8 @@ export interface FruitSource {
   cityName: string;
   townName: string;
   ripenedAt?: string | null;
+  /** 1人1個の実で、もらった記録(GameTaneLocalFruit)に使うキー。無ければ生産者とものの組み(ご当地の実) */
+  onceKey?: string;
 }
 
 /**
@@ -515,7 +530,7 @@ function fruitGainWrites(base: FruitSource, userId: string, itemId: string, once
               TableName: LOCAL_FRUIT_TABLE,
               Item: {
                 userId: { S: userId },
-                sourceKey: { S: localFruitSourceKey(base.ownerId, itemId) },
+                sourceKey: { S: base.onceKey ?? localFruitSourceKey(base.ownerId, itemId) },
                 __typename: { S: "GameTaneLocalFruit" },
                 createdAt: { S: now },
                 updatedAt: { S: now },
@@ -911,5 +926,46 @@ export async function spendFruits(userId: string, itemId: string, count: number,
   } catch (err) {
     if (err instanceof ConditionalCheckFailedException) return false;
     throw err;
+  }
+}
+
+const PLAYER_TABLE = process.env.CHIZU_TANE_PLAYER_TABLE ?? "";
+
+/**
+ * 毎日のガチャ(src/lib/game/chizuTane/gacha.ts)を、この区切り(dayKey)に引いた印を書く。まだ引いていないときだけ書けるので、
+ * 2台で同時に押しても1回分だけ引ける。書けなければ(もう引いていれば) false
+ */
+export async function claimGachaDay(userId: string, dayKey: string): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: PLAYER_TABLE,
+        Key: { userId: { S: userId } },
+        UpdateExpression: "SET lastGachaOn = :day, updatedAt = :now",
+        ConditionExpression: "attribute_exists(userId) AND (attribute_not_exists(lastGachaOn) OR lastGachaOn <> :day)",
+        ExpressionAttributeValues: { ":day": { S: dayKey }, ":now": { S: new Date().toISOString() } },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof ConditionalCheckFailedException) return false;
+    throw err;
+  }
+}
+
+/** ガチャの当たりを渡せなかったときに、引いた印を消す(もう一度引けるように)。ほかの区切りの印になっていれば何もしない */
+export async function releaseGachaDay(userId: string, dayKey: string): Promise<void> {
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: PLAYER_TABLE,
+        Key: { userId: { S: userId } },
+        UpdateExpression: "REMOVE lastGachaOn",
+        ConditionExpression: "lastGachaOn = :day",
+        ExpressionAttributeValues: { ":day": { S: dayKey } },
+      })
+    );
+  } catch (err) {
+    if (!(err instanceof ConditionalCheckFailedException)) throw err;
   }
 }

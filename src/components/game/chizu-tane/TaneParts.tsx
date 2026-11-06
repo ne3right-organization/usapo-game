@@ -1,5 +1,6 @@
 "use client";
 
+import { asSeedLook } from "@/lib/game/chizuTane/mysteryItems";
 import Link from "next/link";
 import { useDisplaySize } from "@/lib/displaySize";
 import { usePathname } from "next/navigation";
@@ -80,8 +81,10 @@ export function UserIcon({ iconItemId, size: baseSize = 24 }: { iconItemId?: str
  * タネの絵。実(もの)と見分けがつくよう、タネ袋の形にして、何のタネかを小さく出す(絵があれば絵、無ければ絵文字。実の絵はそのまま ItemIcon)。
  * haveFruit なら袋を緑にする(その実をもう持っているので、人にあげてもよいタネ。おすそ分けの棚に出すところ)
  */
-export function SeedIcon({ item, size: baseSize = 40, haveFruit = false }: { item: TaneItem; size?: number; haveFruit?: boolean }) {
+export function SeedIcon({ item: real, size: baseSize = 40, haveFruit = false }: { item: TaneItem; size?: number; haveFruit?: boolean }) {
   const size = baseSize * useDisplaySize().iconScale;
+  // なぞのタネは、何がなるかを伏せる
+  const item = asSeedLook(real);
   return (
     <span
       role="img"

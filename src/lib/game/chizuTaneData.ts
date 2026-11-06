@@ -327,6 +327,25 @@ export async function pickUpOfficialSeed(fieldId: string): Promise<number> {
   return unwrap(await data.mutations.pickUpTaneOfficialSeed({ officialFieldId: fieldId })) ?? 0;
 }
 
+// ─── 毎日のガチャ(src/lib/game/chizuTane/gacha.ts) ─────────────────────────
+
+export interface TaneGachaResult {
+  kind: "seed" | "fruit";
+  itemId: string;
+  /** なぞのタネ(大当たり) */
+  mystery: boolean;
+  /** 引いた区切り(GameTanePlayer.lastGachaOn と同じ値) */
+  dayKey: string;
+}
+
+/** 毎日のガチャを引く(1日1回)。タネは持っているタネに、実は集めたものに入る */
+export async function drawGacha(): Promise<TaneGachaResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.drawTaneGacha({ gacha: true }));
+  if (!res) throw new Error("ガチャを引けませんでした");
+  return { kind: res.kind as TaneGachaResult["kind"], itemId: res.itemId, mystery: res.mystery, dayKey: res.dayKey };
+}
+
 // ─── アイコン(集めたものから1つ) ───────────────────────────────────────────
 
 /** 自分のアイコン(集めたものの itemId。無ければ null) */

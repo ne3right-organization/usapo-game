@@ -17,6 +17,7 @@ import { DAY_MS_PRODUCTION } from "../../../src/lib/game/chizuTane/geo";
 import { openToOthersAt } from "../../../src/lib/game/chizuTane/growth";
 import { notifyUsers } from "../shared/push";
 import { TANE_LOCAL_ITEM_BY_ID, TANE_LOCAL_PREFS, isLocalBaseTypeId } from "../../../src/lib/game/chizuTane/localItems";
+import { isMysteryItemId } from "../../../src/lib/game/chizuTane/mysteryItems";
 
 // 区切りの長さ(本番は朝・昼・夜の8時間、それ以外は5分)。タネ待ちの畑にほかの人もまけるようになるまでは OWNER_PRIORITY_SLOTS 区切り
 const DAY_MS = Number(process.env.CHIZU_TANE_DAY_MS ?? DAY_MS_PRODUCTION);
@@ -90,8 +91,9 @@ async function place(c: DataClient, userId: string, args: LocateArgs & { itemId:
     const prefName = TANE_LOCAL_PREFS.find((p) => p.prefCode === local.local)?.prefName ?? "その都道府県";
     throw new Error(`「${item.name}」のタネは、${prefName}でしかまけません`);
   }
-  // ご当地のタネは空き地にだけまける(ほかの人のタネ待ちの畑を取るのには使えない)
+  // ご当地のタネ・なぞのタネは空き地にだけまける(ほかの人のタネ待ちの畑を取るのには使えない)
   if (local && existing) throw new Error("ご当地のタネは、空き地にだけまけます");
+  if (isMysteryItemId(item.itemId) && existing) throw new Error("なぞのタネは、空き地にだけまけます");
   const seed = await requireHeldSeed(c, userId, item.itemId, item.name);
 
   // 空き地か、空き地に戻った畑か、ほかの人もまけるようになったタネ待ちの畑のときだけ書ける
@@ -174,6 +176,7 @@ async function replant(c: DataClient, userId: string, areaKey: string, itemId: s
   const item = TANE_ITEM_BY_ID.get(itemId);
   if (!item || !TANE_BASE_TYPE_BY_ID.has(item.baseTypeId)) throw new Error("そのタネはまけません");
   if (TANE_LOCAL_ITEM_BY_ID.has(item.itemId)) throw new Error("ご当地のタネは、空き地にだけまけます");
+  if (isMysteryItemId(item.itemId)) throw new Error("なぞのタネは、空き地にだけまけます");
   const seed = await requireHeldSeed(c, userId, item.itemId, item.name);
 
   if (!(await replantBaseRow(areaKey, item.itemId, item.baseTypeId))) {
