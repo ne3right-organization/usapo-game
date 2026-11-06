@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isMysteryBaseTypeId } from "@/lib/game/chizuTane/mysteryItems";
 import Link from "next/link";
 import { fetchFollowInviteUrl, fetchFollowList, type FollowUser } from "@/lib/game/followData";
 import { currentUser } from "@/lib/auth";
@@ -155,7 +156,9 @@ function HelpFields({ ownerId, nickname, initialHelpCount }: { ownerId: string; 
       setFields((cur) => cur?.map((x) => (x.fieldId === f.fieldId ? res.field : x)) ?? null);
       setHelpCount(res.helpCount);
       const lines = [
-        res.ripened
+        res.ripened && isMysteryBaseTypeId(f.baseTypeId)
+          ? "💧 水をやって、実りました！ レアな畑の実は、現地に来た人が1人1個ずつもらえます"
+          : res.ripened
           ? `💧 水をやって、実りました！ ${nickname}さんに生産者の取り分が届きました。${res.thanked ? "手伝ったお礼に、あなたにも実が1個届きました🎁" : "実は現地でもらえます"}`
           : "💧 水をやりました",
       ];

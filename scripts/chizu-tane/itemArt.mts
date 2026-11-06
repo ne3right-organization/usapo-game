@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import * as coursesModule from "../../src/lib/game/chizuTane/courses";
 import * as localItemsModule from "../../src/lib/game/chizuTane/localItems";
+import * as mysteryItemsModule from "../../src/lib/game/chizuTane/mysteryItems";
 
 // package.json が "type": "module" ではないので、tsx で動かすと courses.ts は CommonJS として読まれ、中身は default に入る。
 // 型の上(next build の型チェック)では ES モジュールなので、どちらでも取り出せるようにする
@@ -14,6 +15,10 @@ const courses = (coursesModule as unknown as { default?: typeof coursesModule })
 const { TANE_COURSES, TANE_ITEMS, baseTypesOf } = courses;
 const localItems = (localItemsModule as unknown as { default?: typeof localItemsModule }).default ?? localItemsModule;
 const { localItemFor } = localItems;
+const { MYSTERY_ITEMS } = (mysteryItemsModule as unknown as { default?: typeof mysteryItemsModule }).default ?? mysteryItemsModule;
+
+/** こくみんうさぎのぬいぐるみ(なぞのタネからなるもの。mysteryItems.ts)のシート。3つずつ1行に並べる(9点で 3×3) */
+export const MYSTERY_SHEET_ID = "kokumin";
 
 /** ご当地のもののシートの並び(左から右へ)。1シート = 1都道府県の同じ何個目の5点を横1列に */
 export const LOCAL_SHEET_COURSES = ["plant", "animal", "hobby", "vehicle", "building"] as const;
@@ -46,8 +51,10 @@ export const GROWTH_ROWS = [
 ];
 
 // 背景とみなす色: 明るくて(いちばん暗いチャンネルがこれ以上)、色みが無い(チャンネルの差がこれ以下)。
-// 白のほか、AI が「透明」のつもりで描き込んでくる市松模様の薄い灰色もこれで消える
+// 白のほか、AI が「透明」のつもりで描き込んでくる市松模様の灰色もこれで消える。
+// 市松模様の灰色はシートによって 150 〜 230 くらいまでばらつくので、ふちが市松模様のシートは、ふちの灰色のマスより少し暗いところまで下げる
 const BACKGROUND_MIN = 210;
+const BACKGROUND_FLOOR = 120; // 市松模様のシートでも、これより下げない
 const BACKGROUND_MAX_SPREAD = 14;
 const HAZE_ALPHA = 128; // うすい半透明のもや(これより透明な画素)
 const HAZE_RATIO = 0.02; // うすい画素が画像全体のこれより多ければ、もやのあるシートとみなす
@@ -58,6 +65,10 @@ export type Rgba = { data: Buffer; width: number; height: number };
 /** シートID(plant-1 など)から、行ごとのアイテムID(1行 = 1種類のタネ1〜3。ご当地の local-13-2 などは1行に5コース) */
 export function sheetRows(sheetId: string): string[][] | null {
   if (sheetId === GROWTH_SHEET_ID) return GROWTH_ROWS;
+  if (sheetId === MYSTERY_SHEET_ID) {
+    const ids = MYSTERY_ITEMS.map((i) => i.itemId);
+    return Array.from({ length: Math.ceil(ids.length / 3) }, (_, r) => ids.slice(r * 3, r * 3 + 3));
+  }
   if (/^redo-\d+$/.test(sheetId)) return redoRows(sheetId);
   const group = /^local-([123])-p(\d{2})-(\d{2})$/.exec(sheetId);
   if (group) {
@@ -93,7 +104,11 @@ export async function loadRgba(file: string): Promise<Rgba> {
   return { data, width: info.width, height: info.height };
 }
 
-/** 背景がすでに透明なら何もしない。白(や市松模様の灰色)の背景なら、外側からつながっているその色を透明にする */
+/**
+ * 背景がすでに透明なら何もしない。白(や市松模様の灰色)の背景なら、外側からつながっているその色を透明にする。
+ * 取っ手の輪の中のように絵に囲まれたところは外側とつながらないので、外側の背景が市松模様(明るさが2つ)のときだけ、
+ * 囲まれたところも同じ2つの明るさがまざっていれば背景とみなして消す(白い背景では、白い絵の部分と見分けられないので消さない)
+ */
 export function removeWhiteBackground(img: Rgba): void {
   const { data, width, height } = img;
   const alphaAt = (x: number, y: number) => data[(y * width + x) * 4 + 3];
@@ -103,12 +118,34 @@ export function removeWhiteBackground(img: Rgba): void {
   const transparentEdge = edgePoints.filter(([x, y]) => alphaAt(x, y) < 128).length;
   if (transparentEdge > edgePoints.length / 2) return;
 
-  const isBackground = (p: number) => {
+  const isNeutral = (p: number, min: number) => {
     const r = data[p * 4];
     const g = data[p * 4 + 1];
     const b = data[p * 4 + 2];
-    return Math.min(r, g, b) >= BACKGROUND_MIN && Math.max(r, g, b) - Math.min(r, g, b) <= BACKGROUND_MAX_SPREAD;
+    return Math.min(r, g, b) >= min && Math.max(r, g, b) - Math.min(r, g, b) <= BACKGROUND_MAX_SPREAD;
   };
+  // 市松模様は白っぽいマスと灰色のマスにはっきり分かれ、そのあいだの明るさがほとんど無い。
+  // 白い絵の陰影はなだらかなので、あいだの明るさが多くなる
+  const levelOf = (p: number) => Math.min(data[p * 4], data[p * 4 + 1], data[p * 4 + 2]);
+  const shares = (levels: number[], lo: number, hi: number) => {
+    const lightMin = hi - (hi - lo) / 3;
+    const grayMax = lo + (hi - lo) / 3;
+    const light = levels.filter((v) => v >= lightMin).length / levels.length;
+    const gray = levels.filter((v) => v <= grayMax).length / levels.length;
+    return { light, gray, between: 1 - light - gray };
+  };
+  const isChecker = ({ light, gray, between }: ReturnType<typeof shares>) => light >= 0.2 && gray >= 0.15 && between <= 0.15;
+  // ふちのほとんどが色みの無い画素で、その明るさが2つに分かれていれば市松模様。灰色のマス(lo)と白っぽいマス(hi)の明るさを測る
+  const edgeLevels = edgePoints
+    .map(([x, y]) => y * width + x)
+    .filter((p) => isNeutral(p, 0))
+    .map(levelOf)
+    .sort((a, b) => a - b);
+  const lo = edgeLevels[Math.floor(edgeLevels.length * 0.25)] ?? 255;
+  const hi = edgeLevels[Math.floor(edgeLevels.length * 0.75)] ?? 255;
+  const checker = edgeLevels.length >= edgePoints.length * 0.8 && hi - lo >= 15 && isChecker(shares(edgeLevels, lo, hi));
+  const backgroundMin = checker ? Math.max(BACKGROUND_FLOOR, Math.min(BACKGROUND_MIN, lo - 20)) : BACKGROUND_MIN;
+  const isBackground = (p: number) => isNeutral(p, backgroundMin);
   const seen = new Uint8Array(width * height);
   const stack: number[] = [];
   const push = (p: number) => {
@@ -116,6 +153,20 @@ export function removeWhiteBackground(img: Rgba): void {
       seen[p] = 1;
       stack.push(p);
     }
+  };
+  /** stack から、つながっている背景の色の画素を全部たどる */
+  const flood = (): number[] => {
+    const region: number[] = [];
+    while (stack.length) {
+      const p = stack.pop()!;
+      region.push(p);
+      const x = p % width;
+      if (x > 0) push(p - 1);
+      if (x < width - 1) push(p + 1);
+      if (p >= width) push(p - width);
+      if (p < width * (height - 1)) push(p + width);
+    }
+    return region;
   };
   for (let x = 0; x < width; x++) {
     push(x);
@@ -125,14 +176,41 @@ export function removeWhiteBackground(img: Rgba): void {
     push(y * width);
     push(y * width + width - 1);
   }
-  while (stack.length) {
-    const p = stack.pop()!;
-    data[p * 4 + 3] = 0;
-    const x = p % width;
-    if (x > 0) push(p - 1);
-    if (x < width - 1) push(p + 1);
-    if (p >= width) push(p - width);
-    if (p < width * (height - 1)) push(p + width);
+  const outside = flood();
+  for (const p of outside) data[p * 4 + 3] = 0;
+
+  if (!checker) return;
+  // 囲まれたところは、白い絵の陰影も白と灰色に分かれて見えることがあるので、マス目の並びでも確かめる。
+  // ふちの上の行からマスの大きさ(同じ明るさが続く長さ)を測り、マス1つぶん横にずらした画素と白・灰色が入れ替わっていれば市松模様
+  const mid = (lo + hi) / 2;
+  const runs: number[] = [];
+  let run = 1;
+  for (let x = 1; x < width; x++) {
+    if (levelOf(x) >= mid === levelOf(x - 1) >= mid) run++;
+    else {
+      runs.push(run);
+      run = 1;
+    }
+  }
+  runs.sort((a, b) => a - b);
+  const cell = runs[Math.floor(runs.length / 2)];
+  if (!cell || cell < 3) return;
+  const minSize = Math.max(4, width * height * MIN_PART_RATIO);
+  for (let start = 0; start < width * height; start++) {
+    if (seen[start]) continue;
+    push(start);
+    const region = flood();
+    if (region.length < minSize || !isChecker(shares(region.map(levelOf), lo, hi))) continue;
+    const inRegion = new Set(region);
+    let compared = 0;
+    let flipped = 0;
+    for (const p of region) {
+      const q = p + cell;
+      if ((p % width) + cell >= width || !inRegion.has(q)) continue;
+      compared++;
+      if (levelOf(p) >= mid !== levelOf(q) >= mid) flipped++;
+    }
+    if (compared > 0 && flipped >= compared * 0.6) for (const p of region) data[p * 4 + 3] = 0;
   }
 }
 

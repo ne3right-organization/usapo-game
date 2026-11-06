@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isHiddenMysteryFruit } from "@/lib/game/chizuTane/mysteryItems";
 import Link from "next/link";
 import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -159,7 +160,8 @@ function TaneMap() {
   // ほかの人のご当地の畑は、何の畑か(どこのご当地のものか)を地図では出さない(現地で、実ってからチェックインすると分かる)
   const selHidden = sel ? isHiddenLocalBase(sel, own.has(sel.areaKey)) : false;
   const selType = sel ? (selHidden ? HIDDEN_LOCAL_BASE : TANE_BASE_TYPE_BY_ID.get(sel.baseTypeId)) : undefined;
-  const selFruit = sel && !selHidden ? TANE_ITEM_BY_ID.get(sel.seedItemId) : undefined;
+  // レアな畑は、実るまで何がなるかを伏せる
+  const selFruit = sel && !selHidden && !isHiddenMysteryFruit(sel) ? TANE_ITEM_BY_ID.get(sel.seedItemId) : undefined;
 
   if (error) return <ErrorText message={error} />;
   if (!bases) return <Loading />;

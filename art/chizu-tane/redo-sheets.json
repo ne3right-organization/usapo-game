@@ -143,5 +143,28 @@
       "local_plant_p38_1",
       "local_vehicle_p44_1"
     ]
+  ],
+  "redo-10": [
+    [
+      "local_vehicle_p20_2",
+      "local_building_p21_2",
+      "local_plant_p07_2"
+    ],
+    [
+      "local_building_p07_2",
+      "local_vehicle_p37_2",
+      "local_vehicle_p16_2"
+    ],
+    [
+      "local_vehicle_p18_2",
+      "local_vehicle_p19_2",
+      "local_vehicle_p44_2"
+    ]
+  ],
+  "redo-11": [
+    [
+      "local_vehicle_p45_2",
+      "local_building_p45_2"
+    ]
   ]
 }

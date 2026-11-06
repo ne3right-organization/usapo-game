@@ -303,6 +303,8 @@ const schema = a
         lastMovedAt: a.datetime(),
         // フォローしている人の畑に遠くから水をやった回数(手伝い)。HELPS_PER_VISIT 回で、たずねたタネ1か所と数える(courses.ts の levelVisitCount)
         helpCount: a.integer(),
+        // 毎日のガチャを最後に引いた区切り(gacha.ts の gachaDayKey。本番は日本時間の日付)。chizu-tane-seeds が条件付きで書く
+        lastGachaOn: a.string(),
       })
       .identifier(["userId"])
       .authorization((allow) => [allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"])]),
@@ -628,6 +630,14 @@ const schema = a
 
     // 公式の畑へのチェックイン。status は watered(水をやった)/ ripened(水をやって実り、実をもらった)/ fruit(実っていた実をもらった)/ already(この時間帯はもう来た)。
     // water・fruits・droppedSeeds はチェックインのあとの畑。quantity はもらった実の手元の数。todayCount はこの日に初めて来た公式の畑の数
+    // 毎日のガチャの結果(src/lib/game/chizuTane/gacha.ts)。kind は seed(タネ) / fruit(実)、mystery はなぞのタネ(大当たり)
+    TaneGachaResult: a.customType({
+      kind: a.string().required(),
+      itemId: a.string().required(),
+      mystery: a.boolean().required(),
+      dayKey: a.string().required(),
+    }),
+
     TaneOfficialResult: a.customType({
       status: a.string().required(),
       itemId: a.string().required(),
@@ -889,6 +899,14 @@ const schema = a
       .handler(a.handler.function(chizuTaneSeeds)),
 
     // 地図タネ: いまいる都道府県の1個目のご当地のタネをもらう(Lv.3 以上、1人1都道府県に1回、自分のコースのもの)。もらったタネの itemId を返す
+    // 毎日のガチャを引く(1日1回)。gacha は引数で見分けるための印(いつも true)
+    drawTaneGacha: a
+      .mutation()
+      .arguments({ gacha: a.boolean().required() })
+      .returns(a.ref("TaneGachaResult"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(chizuTaneSeeds)),
+
     claimLocalTaneSeed: a
       .mutation()
       .arguments({

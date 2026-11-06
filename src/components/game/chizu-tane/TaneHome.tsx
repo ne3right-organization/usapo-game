@@ -33,6 +33,8 @@ import {
 import GardenSvg from "./GardenSvg";
 import { houseTierFor } from "@/lib/game/chizuTane/garden";
 import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
+import { asSeedLook, isMysteryBaseTypeId, isMysteryItemId } from "@/lib/game/chizuTane/mysteryItems";
+import DailyGacha from "./DailyGacha";
 import SwipePages from "./SwipePages";
 import { CardBody, useCardLayout } from "./TaneCards";
 import { GROWTH_STAGES, RIPE_STAGE, deliveryFrom, growthStage, localMarketAt, rotAt, witherAt } from "@/lib/game/chizuTane/growth";
@@ -107,7 +109,7 @@ export default function TaneHome() {
         </div>
       )}
       {state.status === "not-started" && <CoursePicker onStarted={reload} />}
-      {state.status === "ready" && <Home course={state.player.course as TaneCourse} />}
+      {state.status === "ready" && <Home course={state.player.course as TaneCourse} lastGachaOn={state.player.lastGachaOn ?? null} />}
       {/* 始めたばかりの人へのヒント(済んでいないことから1つ。全部済んだら出ない) */}
       {state.status === "ready" && <TaneTipPopup />}
     </TaneScreen>
@@ -194,7 +196,7 @@ function CoursePicker({ onStarted }: { onStarted: () => void }) {
   );
 }
 
-function Home({ course }: { course: TaneCourse }) {
+function Home({ course, lastGachaOn }: { course: TaneCourse; lastGachaOn: string | null }) {
   const cards = useCardLayout();
   const [bases, setBases] = useState<TaneBase[] | null>(null);
   // 詳しいことを出している畑
@@ -293,6 +295,9 @@ function Home({ course }: { course: TaneCourse }) {
       </Link>
 
 
+      {/* 毎日のガチャ(1日1回。タネか実、まれになぞのタネ) */}
+      <DailyGacha lastGachaOn={lastGachaOn} onDrawn={(res) => res.kind === "seed" && loadSeeds().catch(() => {})} />
+
       <h2 className="text-sm font-bold text-[#3c2a14] mb-2">持っているタネ</h2>
       {seeds === null ? (
         <Loading />
@@ -307,7 +312,7 @@ function Home({ course }: { course: TaneCourse }) {
             return (
               <span key={sd.itemId} className="inline-flex items-center gap-1.5 bg-white rounded-full pl-2 pr-3 py-1 text-xs text-[#3c2a14]">
                 {item && <SeedIcon item={item} size={24} />}
-                {item?.name ?? sd.itemId}のタネ
+                {item ? asSeedLook(item).name : sd.itemId}のタネ
                 <span className="text-[#a8937a]">×{sd.quantity}</span>
               </span>
             );
@@ -427,7 +432,7 @@ function Home({ course }: { course: TaneCourse }) {
                       {type?.emoji} {b.townName}の{type?.name ?? "タネ"}
                     </p>
                     <p className="text-xs text-[#a8937a]">
-                      {b.cityName}・{TANE_ITEM_BY_ID.get(b.seedItemId)?.name ?? ""}
+                      {b.cityName}・{seedNameOf(b)}
                     </p>
                   </div>
                   <button type="button" onClick={() => setOpenAreaKey(null)} className="shrink-0 text-xs text-[#a8937a] underline underline-offset-2">
@@ -464,6 +469,13 @@ function Home({ course }: { course: TaneCourse }) {
 }
 
 const noopSubscribe = () => () => {};
+
+/** 畑の詳しいところに出す、まいたタネの名前。なぞのタネは、実るまで何がなるかを伏せる */
+function seedNameOf(b: TaneBase): string {
+  const item = TANE_ITEM_BY_ID.get(b.seedItemId);
+  if (!item) return "";
+  return isMysteryItemId(item.itemId) && growthStage(b) !== RIPE_STAGE ? "なぞのタネ" : item.name;
+}
 
 /** 日時を「11月2日 14:30」の形に(日本時間) */
 function dateLabel(d: Date): string {
@@ -561,6 +573,8 @@ function WaterAllButton({
     onNotice(NO_NOTICE);
     let watered = 0;
     const ripened: string[] = [];
+    // レアな畑は、実っても取り分は届かない(現地でもらう)
+    const ripenedRare: string[] = [];
     const errors: string[] = [];
     for (const base of targets) {
       try {
@@ -568,7 +582,7 @@ function WaterAllButton({
         onWatered(next);
         watered++;
         if ((next.fruits ?? 0) > 0) {
-          ripened.push(`${base.townName}の${TANE_BASE_TYPE_BY_ID.get(next.baseTypeId)?.name ?? "畑"}`);
+          (isMysteryBaseTypeId(next.baseTypeId) ? ripenedRare : ripened).push(`${base.townName}の${TANE_BASE_TYPE_BY_ID.get(next.baseTypeId)?.name ?? "畑"}`);
         }
       } catch (err) {
         errors.push(`${base.townName}: ${err instanceof Error ? err.message : String(err)}`);
@@ -577,6 +591,7 @@ function WaterAllButton({
     setBusy(false);
     const lines = [`💧 ${watered}か所に水をやりました`];
     if (ripened.length > 0) lines.push(`${ripened.join("・")}が実りました！ 生産者の取り分として、実が${ripened.length}個届きました`);
+    if (ripenedRare.length > 0) lines.push(`${ripenedRare.join("・")}が実りました！ 現地でチェックインすると、あなたも1個もらえます`);
     onNotice({ message: lines.join("\n"), error: errors.length > 0 ? `水をやれなかった畑: ${errors.join(" / ")}` : "" });
   };
 
@@ -623,7 +638,9 @@ function RemoteWaterButton({
       onWatered(next);
       const lines = [`💧 ${place}に水をやりました`];
       // 実ったら、生産者の取り分の1個が届いている
-      if ((next.fruits ?? 0) > 0) lines.push(`実りました！ 生産者の取り分として、実が1個届きました`);
+      if ((next.fruits ?? 0) > 0) {
+        lines.push(isMysteryBaseTypeId(next.baseTypeId) ? "実りました！ 現地でチェックインすると、あなたも1個もらえます" : "実りました！ 生産者の取り分として、実が1個届きました");
+      }
       onNotice({ message: lines.join("\n"), error: "" });
     } catch (err) {
       onNotice({ message: "", error: `${place}: ${err instanceof Error ? err.message : String(err)}` });

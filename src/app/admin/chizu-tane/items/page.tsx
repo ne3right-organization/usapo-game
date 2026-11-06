@@ -3,6 +3,8 @@ import Link from "next/link";
 import { MAX_LEVEL_DEV, MAX_LEVEL_PRODUCTION, TANE_COURSES, TANE_ITEMS, type TaneItem, baseTypesOf } from "@/lib/game/chizuTane/courses";
 import { TANE_LOCAL_BASE_TYPE_IDS, TANE_LOCAL_ITEMS, TANE_LOCAL_PREFS, TANE_LOCAL_RANK_ROLES } from "@/lib/game/chizuTane/localItems";
 import { ItemIcon, SeedIcon } from "@/components/game/chizu-tane/TaneParts";
+import { MYSTERY_BASE_TYPE, MYSTERY_ITEMS } from "@/lib/game/chizuTane/mysteryItems";
+import { GACHA_RATES_HOLIDAY, GACHA_RATES_WEEKDAY } from "@/lib/game/chizuTane/gacha";
 
 // 管理: アイテム定義(src/lib/game/chizuTane/courses.ts)と、その絵の一覧。
 // 絵を描く人との確認用。絵ができたら courses.ts のアイテムに imageUrl を足すと、ここにも出る
@@ -26,6 +28,9 @@ export default function ChizuTaneItemsPage() {
       <p className="text-xs mb-1">
         <a href="#local" className="text-emerald-700 underline">
           📍 ご当地の一覧へ（絵あり {localWithImage()} / {TANE_LOCAL_ITEMS.length}件）
+        </a>
+        <a href="#mystery" className="ml-3 text-emerald-700 underline">
+          {MYSTERY_BASE_TYPE.emoji} {MYSTERY_BASE_TYPE.name}の一覧へ
         </a>
       </p>
       <p className="text-xs text-[#78716c] mb-6">レベルは本番で Lv.{MAX_LEVEL_PRODUCTION}、テスト用（devgame・手元）で Lv.{MAX_LEVEL_DEV} まで上がり、その種類のものが手に入ります（絵が無いものは絵文字で出します。薄い行は本番ではまだ手に入りません）。アイテムが未定義の種類は「—」</p>
@@ -85,6 +90,34 @@ export default function ChizuTaneItemsPage() {
           </div>
         </section>
       ))}
+
+      <section id="mystery" className="mb-8 scroll-mt-4">
+        <h2 className="font-bold mb-1">
+          {MYSTERY_BASE_TYPE.emoji} {MYSTERY_BASE_TYPE.name}（なぞのタネ）<span className="text-xs font-normal text-[#a8937a]"> ({MYSTERY_BASE_TYPE.id})</span>
+        </h2>
+        <p className="text-xs text-[#78716c] mb-3">
+          定義: <code>src/lib/game/chizuTane/mysteryItems.ts</code>。毎日のガチャ（<code>gacha.ts</code>）で平日 {Math.round(GACHA_RATES_WEEKDAY.mystery * 100)}%・土日祝 {Math.round(GACHA_RATES_HOLIDAY.mystery * 100)}% で出るなぞのタネからなるもの。
+          {MYSTERY_ITEMS.length}件（絵あり {MYSTERY_ITEMS.filter((i) => i.imageUrl).length}件）。遊ぶ人には秘密（画面の説明・お知らせ・あそびかたには書かない）。絵は <code>kokumin</code> のシート
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse bg-white rounded-xl overflow-hidden">
+            <thead>
+              <tr className="bg-[#f5ecd9] text-xs text-[#78716c] text-left">
+                <th className="px-2 py-1.5">番号</th>
+                <ItemHeaders />
+              </tr>
+            </thead>
+            <tbody>
+              {MYSTERY_ITEMS.map((item) => (
+                <tr key={item.itemId} className="border-t border-[#f0e6d2]">
+                  <td className="px-2 py-1.5 text-xs">{item.rank}</td>
+                  <ItemCells item={item} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section id="local" className="mb-8 scroll-mt-4">
         <h2 className="font-bold mb-1">📍 ご当地（案のまま）</h2>

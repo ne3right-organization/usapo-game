@@ -7,6 +7,7 @@ import { addSeeds, hasLocalFruitFrom, localFruitSourceKey, placedInGardens, plan
 import { notifyUsers } from "../shared/push";
 import { TANE_ITEM_BY_ID, seedsNeededToLevelUp, type TaneCourse } from "../../../src/lib/game/chizuTane/courses";
 import { TANE_LOCAL_ITEM_BY_ID } from "../../../src/lib/game/chizuTane/localItems";
+import { isMysteryItemId } from "../../../src/lib/game/chizuTane/mysteryItems";
 import { DAY_MS_PRODUCTION, jstDate, slotKey } from "../../../src/lib/game/chizuTane/geo";
 
 // おすそ分けの棚(2026-10-31)。持ち主が余ったタネや実を手元から棚に出しておき、持ち主が「農園を見せる」にしたフォロワー
@@ -126,6 +127,8 @@ async function stock(c: DataClient, userId: string, kind: Kind, itemId: string, 
   const item = TANE_ITEM_BY_ID.get(itemId);
   if (!item) throw new Error("そのものは棚に出せません");
   if (count > 0 && TANE_LOCAL_ITEM_BY_ID.has(itemId)) throw new Error(kind === "seed" ? "ご当地のタネは棚に出せません" : "ご当地の実は棚に出せません");
+  // なぞのタネは毎日のガチャの大当たりなので、人に回さない(ぬいぐるみの実は出せる)
+  if (count > 0 && kind === "seed" && isMysteryItemId(itemId)) throw new Error("なぞのタネは棚に出せません");
 
   if (count > 0) {
     // 手元から減らしてから棚に足す

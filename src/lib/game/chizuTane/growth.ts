@@ -10,6 +10,8 @@
 // 実ったまま・水が入らないまま放っておかれた畑も、いずれ空き地に戻る(下の「畑の終わり方」)。
 // 実の数はランクとともに増える(ランク1は10個、ランク2は20個…。人が来て育ててくれた畑ほど豊かになる)
 
+import { isMysteryBaseTypeId } from "./mysteryItems";
+
 export interface GrowthStage {
   label: string;
   emoji: string;
@@ -114,7 +116,11 @@ export interface EndingBase extends GrowingBase {
   ripenedAt?: string | null;
   /** 最後に水が入った日時(2026-11-05 に足したので、それより前の畑には無い。無ければまいた日時から数える) */
   lastWateredAt?: string | null;
+  /** 畑の種類。レアな畑(なぞのタネの畑。mysteryItems.ts)は枯れず、腐らず、宅急便も無い(実は現地に来た人に1個ずつ渡す) */
+  baseTypeId?: string;
 }
+
+const isRareField = (base: EndingBase) => !!base.baseTypeId && isMysteryBaseTypeId(base.baseTypeId);
 
 function isRipe(base: GrowingBase): boolean {
   return (base.fruits ?? 0) > 0;
@@ -122,7 +128,7 @@ function isRipe(base: GrowingBase): boolean {
 
 /** 宅急便で回収できるようになる日時(実っていなければ null) */
 export function deliveryFrom(base: EndingBase): Date | null {
-  if (!isRipe(base) || !base.ripenedAt) return null;
+  if (!isRipe(base) || !base.ripenedAt || isRareField(base)) return null;
   return new Date(Date.parse(base.ripenedAt) + DELIVERY_AFTER_MS);
 }
 
@@ -140,7 +146,7 @@ export function rotAt(base: EndingBase): Date | null {
 
 /** 水が入らないと枯れる日時(育っている途中の畑だけ。実っている・タネ待ちなら null) */
 export function witherAt(base: EndingBase): Date | null {
-  if (isRipe(base) || isWaitingReplant(base)) return null;
+  if (isRipe(base) || isWaitingReplant(base) || isRareField(base)) return null;
   // まき直すと plantedAt が新しくなるので、前の育ちのときの水やりの日時より新しい方から数える
   const last = Math.max(Date.parse(base.plantedAt), base.lastWateredAt ? Date.parse(base.lastWateredAt) : 0);
   return new Date(last + WITHER_AFTER_MS);

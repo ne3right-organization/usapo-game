@@ -13,6 +13,8 @@ import {
   dropSeed,
   giveFruit,
   hasLocalFruitFrom,
+  hasRareFruitFrom,
+  rareFruitSourceKey,
   grantLevelSeeds,
   grantNextLocalSeed,
   listOfficialVisits,
@@ -36,6 +38,7 @@ import {
   officialFieldsFor,
 } from "../../../src/lib/game/chizuTane/official";
 import { isLocalBaseTypeId, type TaneLocalItem } from "../../../src/lib/game/chizuTane/localItems";
+import { isMysteryBaseTypeId } from "../../../src/lib/game/chizuTane/mysteryItems";
 import { notifyUsers } from "../shared/push";
 import { DAY_MS_PRODUCTION, slotKey } from "../../../src/lib/game/chizuTane/geo";
 import {
@@ -100,6 +103,8 @@ export const handler: AppSyncResolverHandler<Args, unknown> = async (event) => {
  *   たずねた拠点の数が増えるので、レベルが上がることもある(自分のタネは訪問の記録に残さず、レベルにも数えない)
  * - ご当地の畑(docs/地図タネ_ご当地タネ設計書.md の 4章)は、実が生産者とものの組みにつき1人1個(この畑の実をもうもらった人には渡さない)で、タネは落ちない。
  *   1個目・2個目の畑の実が全部誰かに渡ったら(ここで取りきられたら)、持ち主に次のご当地のタネを届ける(実って1か月で撤去されたら、市場に並んだ残りがなくなったとき)
+ * - レアな畑(なぞのタネの畑。src/lib/game/chizuTane/mysteryItems.ts)も、実(ぬいぐるみ)は生産者とものの組みにつき1人1個で、タネは落ちない。
+ *   持ち主にも現地に来たときだけ渡す(実ったときの生産者の取り分・手伝いのお礼は無い)。実が全部渡ったら畑を消す(1回かぎり)
  */
 async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise<CheckInResult> {
   const now = new Date();
@@ -119,6 +124,10 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   const ownerId = await baseOwnerId(c, base.areaKey);
   const isOwn = ownerId === userId;
   const local = isLocalBaseTypeId(base.baseTypeId);
+  const rare = isMysteryBaseTypeId(base.baseTypeId);
+  // 1人1個の実(ご当地の畑は生産者とものの組みにつき、レアな畑は畑ごとに)
+  const once = local || rare;
+  const onceKey = rare ? rareFruitSourceKey(base.areaKey, base.plantedAt) : undefined;
   // ご当地の畑で、持ち主に届けた次のタネ
   let localSeed: TaneLocalItem | null = null;
   const result: CheckInResult = {
@@ -161,17 +170,19 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     result.status = "waiting";
   } else if ((base.fruits ?? 0) > 0) {
     // ご当地の実は生産者とものの組みにつき1人1個。この畑の実をもうもらっていれば渡さない(実はほかの人のために残る)
-    const have = local && (await hasLocalFruitFrom(c, userId, ownerId, picked.itemId));
-    const left = have ? null : await takeFruit({ ...base, ownerId }, userId, picked.itemId, local);
+    const have = rare
+      ? await hasRareFruitFrom(c, userId, base.areaKey, base.plantedAt)
+      : local && (await hasLocalFruitFrom(c, userId, ownerId, picked.itemId));
+    const left = have ? null : await takeFruit({ ...base, ownerId, onceKey }, userId, picked.itemId, once);
     if (have) result.status = "have";
     if (left !== null) {
       result.status = "fruit";
       result.gainedItems = 1;
       result.fruits = left;
       result.quantity = unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }))?.quantity ?? 1;
-      if (left === 0 && local) {
-        // 次のご当地のタネを届けてから、畑を消す
-        localSeed = await grantNextLocalSeed(c, ownerId, picked.itemId);
+      if (left === 0 && once) {
+        // ご当地の畑は次のご当地のタネを届けてから、畑を消す(レアな畑はそのまま消す)
+        if (local) localSeed = await grantNextLocalSeed(c, ownerId, picked.itemId);
         await removeHarvestedBase(c, base.areaKey);
         result.water = 0;
         result.stage = 0;
@@ -192,16 +203,17 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     result.fruits = watered.ripened ? fruitsWhenRipe(base.rank) : 0;
     result.stage = growthStage({ water: result.water, fruits: result.fruits });
     if (watered.ripened) {
-      const source = { ...base, ownerId, ripenedAt: new Date().toISOString() };
+      const source = { ...base, ownerId, ripenedAt: new Date().toISOString(), onceKey };
       // 実らせた人は、そのまま実を1個もらう(実らせた人が次の時間帯まで待たなくてよいように)。持ち主ならこれが生産者の取り分
-      const left = await takeFruit(source, userId, picked.itemId, local);
+      const left = await takeFruit(source, userId, picked.itemId, once);
       if (left !== null) {
         result.gainedItems = 1;
         result.fruits = left;
         result.quantity = unwrap(await c.models.GameTaneItem.get({ userId, itemId: picked.itemId }))?.quantity ?? 1;
       }
-      // ほかの人が実らせたときは、持ち主にも生産者の取り分を1個届ける(遠くにまいたタネでも、人に来てもらえば実が手に入る)
-      if (!isOwn) {
+      // ほかの人が実らせたときは、持ち主にも生産者の取り分を1個届ける(遠くにまいたタネでも、人に来てもらえば実が手に入る)。
+      // レアな畑は届けない(持ち主も現地に来てもらう)
+      if (!isOwn && !rare) {
         const afterShare = await takeFruit(source, ownerId, picked.itemId, local);
         if (afterShare !== null) result.fruits = afterShare;
       }
@@ -227,12 +239,16 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
         title: "実が全部収穫されました",
         body: local
           ? `${who}が${place}の最後の実を収穫しました。${localSeedText}ご当地の畑はこれで役目を終えて、なくなりました`
+          : rare
+            ? `${who}が${place}の最後の実を収穫しました。レアな畑はこれで役目を終えて、なくなりました`
           : `${who}が${place}の最後の実を収穫しました。畑のランクが${result.rank}に上がりました。1日以内にタネをまき直してください（まかないと、現地に来たほかの人がタネをまけるようになります）`,
       }
     : result.status === "ripened"
       ? {
           title: "タネが実りました",
-          body: `${visitorName ? `${who}が水をやって、` : ""}${place}が実りました！ 生産者の取り分として実が1個届きました（のこり${result.fruits}個）${localSeed ? `。${localSeedText}` : ""}`,
+          body: rare
+            ? `${visitorName ? `${who}が水をやって、` : ""}${place}が実りました！ 現地でチェックインすると、あなたも1個もらえます（のこり${result.fruits}個）`
+            : `${visitorName ? `${who}が水をやって、` : ""}${place}が実りました！ 生産者の取り分として実が1個届きました（のこり${result.fruits}個）${localSeed ? `。${localSeedText}` : ""}`,
         }
       : result.status === "fruit"
         ? { title: "実が収穫されました", body: `${who}が${place}に来て、実を1個収穫しました（のこり${result.fruits}個）` }
@@ -246,7 +262,9 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
   // 前にタネが落ちたときから畑の種類が変わっていれば、またタネが1個落ちる(dropTypeId が無い行も、変わったとみなす。
   // 2026-11-02 より前の行は、前に来たのがいまの畑なら、その種類をデータで入れてある)
   const seedsGained: SeedGain[] = [];
-  if (visit && !local && visit.dropTypeId !== base.baseTypeId) {
+  // なぞの畑にも落ちない(なぞのタネは毎日のガチャでしか出ない)
+  const drops = !local && !isMysteryBaseTypeId(base.baseTypeId);
+  if (visit && drops && visit.dropTypeId !== base.baseTypeId) {
     result.typeChanged = true;
     for (let i = 0; i < SEEDS_PER_CHECKIN; i++) await dropSeed(base.areaKey, DROPPED_SEEDS_MAX);
     result.droppedSeeds = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey }))?.droppedSeeds ?? 0;
@@ -255,7 +273,7 @@ async function checkIn(c: DataClient, userId: string, args: LocateArgs): Promise
     result.firstVisit = true;
     // 落とすのは DynamoDB の条件付きの書き込み(3個未満のときだけ増やす)。同時にチェックインしても数がずれない。
     // ご当地の畑には落ちない(ご当地のタネは、決まった3つの方法でしか増えない)
-    if (!local) for (let i = 0; i < SEEDS_PER_CHECKIN; i++) await dropSeed(base.areaKey, DROPPED_SEEDS_MAX);
+    if (drops) for (let i = 0; i < SEEDS_PER_CHECKIN; i++) await dropSeed(base.areaKey, DROPPED_SEEDS_MAX);
     result.droppedSeeds = unwrap(await c.models.GameTaneBase.get({ areaKey: base.areaKey }))?.droppedSeeds ?? 0;
   }
   // 初めての拠点なら、たずねた拠点の数が増えるのでレベルが上がることがある
@@ -378,7 +396,8 @@ async function waterRemotely(c: DataClient, userId: string, areaKey: string) {
     const item = TANE_ITEM_BY_ID.get(base.seedItemId);
     const local = isLocalBaseTypeId(base.baseTypeId);
     const ripenedAt = new Date().toISOString();
-    if (item) await takeFruit({ ...base, ownerId: userId, ripenedAt }, userId, item.itemId, local);
+    // レアな畑は、持ち主にも現地に来たときだけ渡す
+    if (item && !isMysteryBaseTypeId(base.baseTypeId)) await takeFruit({ ...base, ownerId: userId, ripenedAt }, userId, item.itemId, local);
     // 手伝った人にお礼の実を届ける
     if (item) await thankHelpers(c, base, userId, item.itemId, ripenedAt, null);
   }
@@ -396,6 +415,7 @@ async function deliverRemotely(c: DataClient, userId: string, areaKey: string) {
   const own = unwrap(await c.models.GameTaneOwnership.get({ ownerId: userId, areaKey }));
   if (!base || !own || own.releasedAt) throw new Error("自分の畑の実だけ、宅急便で回収できます");
   if (isLocalBaseTypeId(base.baseTypeId)) throw new Error("ご当地の畑の実は、宅急便で回収できません");
+  if (isMysteryBaseTypeId(base.baseTypeId)) throw new Error("レアな畑の実は、宅急便で回収できません。現地で1個もらってください");
   const from = deliveryFrom(base);
   if (!from) throw new Error("実っている畑の実だけ、宅急便で回収できます");
   if (from.getTime() > now.getTime()) throw new Error("宅急便で回収できるのは、実ってから1週間たってからです");
@@ -488,7 +508,8 @@ async function waterHelpField(c: DataClient, helperId: string, ownerId: string, 
   const item = TANE_ITEM_BY_ID.get(base.seedItemId);
   const local = isLocalBaseTypeId(base.baseTypeId);
   let thanked = false;
-  if (watered.ripened && item) {
+  // レアな畑は、実っても持ち主にも手伝った人にも届けない(現地に来た人だけがもらえる)
+  if (watered.ripened && item && !isMysteryBaseTypeId(base.baseTypeId)) {
     // 持ち主に生産者の取り分を1個届ける
     const ripenedAt = new Date().toISOString();
     await takeFruit({ ...base, ownerId, ripenedAt }, ownerId, item.itemId, local);
@@ -519,7 +540,7 @@ async function thankHelpers(
   ripenedAt: string,
   skipNoticeId: string | null
 ): Promise<string[]> {
-  if (isLocalBaseTypeId(base.baseTypeId)) return [];
+  if (isLocalBaseTypeId(base.baseTypeId) || isMysteryBaseTypeId(base.baseTypeId)) return [];
   const cycleStart = slotKey(new Date(base.plantedAt), DAY_MS);
   const helperIds: string[] = [];
   let nextToken: string | null | undefined;

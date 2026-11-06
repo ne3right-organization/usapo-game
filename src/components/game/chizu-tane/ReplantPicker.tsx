@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { isMysteryItemId } from "@/lib/game/chizuTane/mysteryItems";
 import { TANE_BASE_TYPE_BY_ID } from "@/lib/game/chizuTane/courses";
 import { openToOthersAt, replantDeadline } from "@/lib/game/chizuTane/growth";
 import { TANE_LOCAL_ITEM_BY_ID } from "@/lib/game/chizuTane/localItems";
@@ -28,7 +29,8 @@ export default function ReplantPicker({
   // 残り時間は開いたときの時刻で出す(描画のたびに時刻を読まない)
   const [openedAt] = useState(() => Date.now());
   const typeName = TANE_BASE_TYPE_BY_ID.get(base.baseTypeId)?.name ?? "この畑";
-  const usable = seeds.filter((s) => !TANE_LOCAL_ITEM_BY_ID.has(s.itemId));
+  // ご当地のタネ・なぞのタネは空き地にだけまける
+  const usable = seeds.filter((s) => !TANE_LOCAL_ITEM_BY_ID.has(s.itemId) && !isMysteryItemId(s.itemId));
   const deadline = replantDeadline(base);
   const openAt = openToOthersAt(base, taneDayMs());
 

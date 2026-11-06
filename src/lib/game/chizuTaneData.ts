@@ -327,6 +327,25 @@ export async function pickUpOfficialSeed(fieldId: string): Promise<number> {
   return unwrap(await data.mutations.pickUpTaneOfficialSeed({ officialFieldId: fieldId })) ?? 0;
 }
 
+// ─── 毎日のガチャ(src/lib/game/chizuTane/gacha.ts) ─────────────────────────
+
+export interface TaneGachaResult {
+  kind: "seed" | "fruit";
+  itemId: string;
+  /** なぞのタネ(大当たり) */
+  mystery: boolean;
+  /** 引いた区切り(GameTanePlayer.lastGachaOn と同じ値) */
+  dayKey: string;
+}
+
+/** 毎日のガチャを引く(1日1回)。タネは持っているタネに、実は集めたものに入る */
+export async function drawGacha(): Promise<TaneGachaResult> {
+  await requireUserId();
+  const res = unwrap(await data.mutations.drawTaneGacha({ gacha: true }));
+  if (!res) throw new Error("ガチャを引けませんでした");
+  return { kind: res.kind as TaneGachaResult["kind"], itemId: res.itemId, mystery: res.mystery, dayKey: res.dayKey };
+}
+
 // ─── アイコン(集めたものから1つ) ───────────────────────────────────────────
 
 /** 自分のアイコン(集めたものの itemId。無ければ null) */
@@ -364,6 +383,17 @@ function toShelf(v: { items: unknown; takenToday: boolean } | null | undefined):
 export async function fetchShelf(ownerId?: string): Promise<TaneShelf> {
   await requireUserId();
   return toShelf(unwrap(await data.queries.taneShelf(ownerId ? { ownerId } : {})));
+}
+
+/** タネ待ちの畑にタネをまき直したことがあるか(まき直すと、前のタネが pastSeedItemIds に残る。手放した畑も含む) */
+export async function fetchEverReplanted(): Promise<boolean> {
+  return (await fetchMyOwnerships()).some((o) => (o.pastSeedItemIds ?? []).length > 0);
+}
+
+/** 棚に一度でも出したことがあるか(棚の行は、全部戻して0個になっても消さずに残る) */
+export async function fetchEverStockedShelf(): Promise<boolean> {
+  const ownerId = await requireUserId();
+  return unwrap(await data.models.GameTaneShelf.list({ ownerId, limit: 1 })).length > 0;
 }
 
 /** 自分の棚に、手元のタネ・実を出す(count > 0)・手元に戻す(count < 0) */

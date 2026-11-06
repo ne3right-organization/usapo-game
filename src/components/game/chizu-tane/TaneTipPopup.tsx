@@ -5,16 +5,26 @@ import { useRouter } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { fetchFollowCounts, fetchFollowList } from "@/lib/game/followData";
 import {
+  fetchEverReplanted,
+  fetchEverStockedShelf,
   fetchMyBases,
   fetchMyHarvests,
+  fetchMyIconItemId,
   fetchMyPlantedItemIds,
+  fetchTanePlayer,
+  fetchTaneShareViewerIds,
   fetchTaneSharerIds,
   fetchVisitedCount,
   isLocationOverrideAllowed,
   taneDayMs,
   type TaneBase,
 } from "@/lib/game/chizuTaneData";
+import { levelFor, levelVisitCount, nextLevelNeeds, type TaneCourse } from "@/lib/game/chizuTane/courses";
+import { fieldNotice } from "@/lib/game/chizuTane/growth";
+import { fetchGameProfile } from "@/lib/game/mapPuzzleData";
 import { slotKey } from "@/lib/game/chizuTane/geo";
+import { isPushEnabled, pushAvailability } from "@/lib/push/client";
+import { TANE_LOCAL_ITEM_BY_ID, isLocalBaseTypeId } from "@/lib/game/chizuTane/localItems";
 import { TANE_TIP_INTERVAL_MS, pickTaneTip, taneTips, type TaneTip, type TaneTipStatus } from "@/lib/game/chizuTane/tips";
 
 // 始めたばかりの人に、ホームを開いたときに出すヒントのポップアップ。ヒントの中身と条件は src/lib/game/chizuTane/tips.ts。
@@ -47,10 +57,18 @@ function rememberClosed(): void {
   }
 }
 
+/** この端末の通知の状態(ホーム画面に追加したアプリか・オンにできるか。InstallHint と同じ見分け方) */
+async function pushState(): Promise<TaneTipStatus["push"]> {
+  const availability = pushAvailability();
+  if (availability === "needs-install") return "needs-install";
+  if (availability !== "ok") return "unsupported";
+  return (await isPushEnabled().catch(() => false)) ? "enabled" : "can-enable";
+}
+
 async function loadStatus(): Promise<TaneTipStatus | null> {
   const me = await currentUser();
   if (!me) return null;
-  const [bases, planted, visits, counts, following, sharers, harvests] = await Promise.all([
+  const [bases, planted, visits, counts, following, sharers, harvests, player, iconItemId, viewers, everStocked, push, profile, everReplanted] = await Promise.all([
     fetchMyBases(),
     fetchMyPlantedItemIds(),
     fetchVisitedCount(),
@@ -58,6 +76,13 @@ async function loadStatus(): Promise<TaneTipStatus | null> {
     fetchFollowList("following"),
     fetchTaneSharerIds(),
     fetchMyHarvests(),
+    fetchTanePlayer(),
+    fetchMyIconItemId(),
+    fetchTaneShareViewerIds(),
+    fetchEverStockedShelf(),
+    pushState(),
+    fetchGameProfile(),
+    fetchEverReplanted(),
   ]);
   const now = new Date();
   const slot = slotKey(now, taneDayMs());
@@ -66,6 +91,12 @@ async function loadStatus(): Promise<TaneTipStatus | null> {
   );
   const ownerWatered = (b: TaneBase) => !!b.lastRemoteWaterOn || !!b.lastOwnerVisitOn;
   const helpTarget = following.find((u) => sharers.has(u.userId));
+  const visitCount = levelVisitCount(visits.visited + visits.official, visits.helps);
+  const course = player?.course as TaneCourse | undefined;
+  // たずねた数は足りていて、まいていないタネだけが足りない
+  const needs = course ? nextLevelNeeds(course, visitCount, planted) : null;
+  const unplantedForLevel = needs && needs.visitsRemaining === 0 ? needs.unplanted.map((i) => i.name) : [];
+  const notices = bases.map((b) => fieldNotice(b, now, isLocalBaseTypeId(b.baseTypeId))?.kind);
   return {
     everPlanted: planted.size > 0,
     visited: visits.visited,
@@ -78,6 +109,21 @@ async function loadStatus(): Promise<TaneTipStatus | null> {
     followers: counts.followers,
     following: counts.following,
     helpTargetUserId: helpTarget?.userId ?? null,
+    // ホームのレベルと同じ計算(TaneHome)
+    level: course ? levelFor(course, visitCount, planted) : 1,
+    hasFruit: harvests.length > 0,
+    hasIcon: !!iconItemId,
+    everPlantedLocal: [...planted].some((itemId) => TANE_LOCAL_ITEM_BY_ID.has(itemId)),
+    everDrewGacha: !!player?.lastGachaOn,
+    sharing: viewers.size,
+    push,
+    everStocked,
+    hasNickname: !!profile?.nickname,
+    everReplanted,
+    hasWaitingField: bases.some((b) => !!b.waitingSince),
+    canDeliver: notices.includes("deliverable") || notices.includes("rotSoon"),
+    unplantedForLevel,
+    witherSoon: notices.includes("witherSoon"),
   };
 }
 
